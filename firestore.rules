@@ -1,0 +1,19 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Open read/write access for examSessions for prototyping
+    match /examSessions/{examId} {
+      allow read, write: if true;
+    }
+    match /examSessions/{examId}/{documents=**} {
+       allow read, write: if true;
+    }
+    
+    // Keep user profiles secure
+    match /users/{userId} {
+      allow read, create: if request.auth != null;
+      allow update: if request.auth.uid == userId;
+    }
+  }
+}
