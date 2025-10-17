@@ -106,7 +106,15 @@ export async function getExamSessionsByInstructor(instructorId: string): Promise
 // Obtener todas las sesiones (para super-admin)
 export async function getAllExamSessions(): Promise<ExamSession[]> {
   const result = await query(
-    'SELECT * FROM exam_sessions ORDER BY created_at DESC'
+    `SELECT 
+      es.*,
+      u.nombre as instructor_name,
+      COUNT(DISTINCT sd.student_id) as student_count
+    FROM exam_sessions es
+    LEFT JOIN users u ON es.instructor_id = u.uid
+    LEFT JOIN student_details sd ON es.id = sd.exam_session_id
+    GROUP BY es.id, u.nombre
+    ORDER BY es.created_at DESC`
   );
   
   return result.rows as ExamSession[];

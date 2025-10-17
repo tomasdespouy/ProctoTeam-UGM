@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
     const sessions = await getAllExamSessions();
     
-    return NextResponse.json(sessions, { status: 200 });
+    return NextResponse.json({ sessions }, { status: 200 });
   } catch (error: any) {
     console.error('Error fetching all exam sessions:', error);
     
