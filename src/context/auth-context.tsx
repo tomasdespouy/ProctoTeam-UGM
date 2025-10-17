@@ -2,16 +2,18 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { auth } from '@/lib/firebase';
 import { useRouter, usePathname } from 'next/navigation';
 
 export interface UserProfile {
+  id: string;
+  uid: string;
   nombre: string;
   correo: string;
   role: 'student' | 'instructor' | 'super-admin';
   photoURL?: string | null;
-  creadoEn?: Timestamp;
+  created_at?: Date;
+  updated_at?: Date;
 }
 
 interface AuthContextType {
@@ -43,72 +45,59 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
         if (user) {
-          const userDocRef = doc(db, "users", user.uid);
+          // Obtener perfil de usuario desde PostgreSQL
+          const response = await fetch(`/api/auth/get-user?uid=${user.uid}`);
           
-          // Add retry logic for Firestore operations
-          let retries = 3;
-          let userDocSnap;
-          
-          while (retries > 0) {
-            try {
-              userDocSnap = await getDoc(userDocRef);
-              break; // Success, exit retry loop
-            } catch (error: any) {
-              console.log(`Firestore fetch attempt failed, retries left: ${retries - 1}`);
-              retries--;
+          if (response.ok) {
+            const profileData = await response.json();
+            
+            if (profileData) {
+              setUserProfile({
+                id: profileData.id,
+                uid: profileData.uid,
+                nombre: profileData.nombre,
+                correo: profileData.email,
+                role: profileData.role,
+                photoURL: profileData.photo_url,
+                created_at: profileData.created_at ? new Date(profileData.created_at) : undefined,
+                updated_at: profileData.updated_at ? new Date(profileData.updated_at) : undefined,
+              });
+            } else {
+              // Si no existe en PostgreSQL, crear perfil básico
+              const createResponse = await fetch('/api/auth/create-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  uid: user.uid,
+                  email: user.email || '',
+                  nombre: user.displayName || user.email?.split('@')[0] || 'Usuario',
+                  role: 'student', // Rol por defecto
+                  photo_url: user.photoURL || null,
+                }),
+              });
               
-              if (retries === 0) {
-                console.error('Failed to fetch user profile after retries:', error);
-                // Set basic user info without profile if Firestore fails
-                setUser(user);
-                setUserProfile(null);
-                setLoading(false);
-                return;
-              }
-              
-              // Wait before retrying
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          }
-          
-          if (userDocSnap && userDocSnap.exists()) {
-              const profileData = userDocSnap.data() as UserProfile;
-              const updates: Partial<UserProfile> = {};
-              let needsUpdate = false;
-
-              // Sync from Auth to Firestore if fields are missing in Firestore
-              if (!profileData.nombre && user.displayName) {
-                  updates.nombre = user.displayName;
-                  needsUpdate = true;
-              }
-              if (!profileData.correo && user.email) {
-                  updates.correo = user.email;
-                  needsUpdate = true;
-              }
-              if (profileData.photoURL === undefined && user.photoURL) {
-                  updates.photoURL = user.photoURL;
-                  needsUpdate = true;
-              }
-               if (!profileData.creadoEn && user.metadata.creationTime) {
-                  updates.creadoEn = Timestamp.fromDate(new Date(user.metadata.creationTime));
-                  needsUpdate = true;
-              }
-
-              if (needsUpdate) {
-                  try {
-                    await setDoc(userDocRef, updates, { merge: true });
-                    setUserProfile({ ...profileData, ...updates });
-                  } catch (error) {
-                    console.error('Failed to update user profile:', error);
-                    // Still set the profile data even if update fails
-                    setUserProfile(profileData);
-                  }
+              if (createResponse.ok) {
+                const newProfile = await createResponse.json();
+                setUserProfile({
+                  id: newProfile.id,
+                  uid: newProfile.uid,
+                  nombre: newProfile.nombre,
+                  correo: newProfile.email,
+                  role: newProfile.role,
+                  photoURL: newProfile.photo_url,
+                  created_at: newProfile.created_at ? new Date(newProfile.created_at) : undefined,
+                  updated_at: newProfile.updated_at ? new Date(newProfile.updated_at) : undefined,
+                });
               } else {
-                  setUserProfile(profileData);
+                console.error('Failed to create user profile');
+                setUserProfile(null);
               }
+            }
           } else {
+            console.error('Failed to fetch user profile');
             setUserProfile(null);
           }
+          
           setUser(user);
         } else {
           setUser(null);
@@ -116,7 +105,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
       } catch (error) {
         console.error('Auth state change error:', error);
-        // In case of error, still update loading state
         setUser(null);
         setUserProfile(null);
       } finally {

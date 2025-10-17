@@ -16,9 +16,10 @@ Preferred communication style: Simple, everyday language.
 - **Animation**: Framer Motion for smooth transitions and micro-interactions
 
 ## Authentication & Authorization
-- **Provider**: Firebase Authentication for secure user management
+- **Provider**: Azure AD Single Sign-On (SSO) via Firebase Authentication for UGM institutional accounts
+- **Tenant**: UGM Azure AD (05970e72-c674-4f1f-8033-6e35dd7f76aa)
 - **User Roles**: Role-based access control with 'student', 'instructor', and 'super-admin' roles
-- **Data Storage**: Firestore for user profiles and session data
+- **Data Storage**: PostgreSQL (Replit) for user profiles and session data
 - **Identity Verification**: AI-powered biometric verification comparing ID cards with live facial recognition
 
 ## AI Integration
@@ -40,7 +41,12 @@ Preferred communication style: Simple, everyday language.
 - **Live Session Management**: In-memory service for real-time student tracking and alert management
 
 ## Data Architecture
-- **Primary Database**: Firebase Firestore for persistent data storage
+- **Primary Database**: PostgreSQL (Replit) for persistent data storage with zero latency
+- **Database Schema**: 
+  - `users`: User profiles with Azure AD UID mapping
+  - `exam_sessions`: Exam configurations and student participation
+  - `alerts`: Proctoring alerts generated during exams
+  - `student_details`: Session completion details and timing
 - **Real-time Data**: In-memory session service for live monitoring capabilities
 - **File Storage**: Firebase Storage for exam recordings and identity verification images
 - **Session Management**: Temporary data structures for active exam sessions
@@ -69,7 +75,9 @@ Preferred communication style: Simple, everyday language.
 # External Dependencies
 
 ## Core Services
-- **Firebase**: Authentication, Firestore database, and cloud storage
+- **Azure AD**: Enterprise Single Sign-On for UGM institutional authentication
+- **PostgreSQL (Replit)**: High-performance relational database with zero latency
+- **Firebase**: Authentication middleware and cloud storage
 - **Google AI**: Gemini 1.5 Flash model via Genkit for AI-powered features
 - **Vercel/Deployment Platform**: Application hosting and serverless functions
 
@@ -89,6 +97,8 @@ Preferred communication style: Simple, everyday language.
 - **React Hook Form**: Form state management with validation
 - **Date-fns**: Date manipulation and formatting
 - **Recharts**: Data visualization for analytics dashboards
+- **node-postgres (pg)**: PostgreSQL client for Node.js
+- **Drizzle ORM**: Type-safe SQL toolkit for database operations
 
 ## Browser APIs
 - **MediaDevices API**: Camera and microphone access for monitoring
