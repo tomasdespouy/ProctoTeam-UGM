@@ -1,7 +1,6 @@
 'use client';
 
-import { signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { signOut } from '@/lib/azure-auth';
 import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -25,8 +24,8 @@ export function UserNav() {
 
   const handleLogout = async () => {
     showLoader();
-    await signOut(auth);
-    window.location.href = '/'; // Full reload to clear state
+    await signOut();
+    window.location.href = '/';
   };
 
   const handleNavigate = (path: string) => {
@@ -39,7 +38,7 @@ export function UserNav() {
   }
   
   const userRole = userProfile?.role;
-  const displayName = userProfile?.nombre || user.displayName;
+  const displayName = userProfile?.nombre || user?.account?.name;
 
   return (
     <DropdownMenu>
@@ -55,7 +54,7 @@ export function UserNav() {
           <div className="flex flex-col space-y-1">
             <p className="text-sm font-medium leading-none">{displayName ?? (userRole === 'instructor' ? 'Profesor' : userRole === 'super-admin' ? 'Admin' : 'Estudiante')}</p>
             <p className="text-xs leading-none text-muted-foreground">
-              {user.email}
+              {user?.account?.username}
             </p>
           </div>
         </DropdownMenuLabel>
