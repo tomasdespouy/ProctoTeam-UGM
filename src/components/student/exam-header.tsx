@@ -3,8 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { signOut } from '@/lib/azure-auth';
 import { useAuth } from '@/context/auth-context';
 import { PortalLogo } from '@/components/portal-logo';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -12,17 +11,16 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from '@/components/ui/button';
 import { LogOut, History, Clock, GraduationCap } from 'lucide-react';
-import type { Timestamp } from 'firebase/firestore';
 import { ThemeToggle } from '../theme-toggle';
 import Image from 'next/image';
 
 
 interface ExamData {
     title: string;
-    duration: number; // in minutes
+    duration: number;
     accessCode: string;
     instructorId: string;
-    createdAt: Timestamp;
+    createdAt: string | Date;
     status: 'pending' | 'active' | 'finished';
 }
 interface ExamHeaderProps {
@@ -36,7 +34,7 @@ export function ExamHeader({ examStarted, examData }: ExamHeaderProps) {
   const router = useRouter();
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await signOut();
     window.location.href = '/';
   };
 
