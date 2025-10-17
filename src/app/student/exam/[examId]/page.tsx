@@ -9,6 +9,8 @@ import { ProctoringPanel } from '@/components/student/proctoring-panel';
 import { ExamFooter } from '@/components/student/exam-footer';
 import { RequirementsModal } from '@/components/student/requirements-modal';
 import { Skeleton } from '@/components/ui/skeleton';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, Timestamp, onSnapshot } from 'firebase/firestore';
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

@@ -299,7 +299,7 @@ export default function HistoricPage() {
             let statsCsvContent = "Estadisticas de Alertas\n";
             statsCsvContent += "Tipo de Alerta,Cantidad,Porcentaje\n";
             Object.entries(alertCounts).forEach(([desc, count]) => {
-                 const percentage = totalAlerts > 0 ? (((count as number) / totalAlerts) * 100).toFixed(1) : 0;
+                 const percentage = totalAlerts > 0 ? ((count / totalAlerts) * 100).toFixed(1) : 0;
                  statsCsvContent += `"${desc}",${count},${percentage}%\n`;
             });
             statsCsvContent += `Total de Alertas,${totalAlerts}\n\n`;
@@ -493,8 +493,9 @@ export default function HistoricPage() {
               <Button
                 className="bg-[#242F62] hover:bg-[#1a1d47] text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium border-0"
                 onClick={async () => {
-                  const { signOut } = await import("@/lib/azure-auth");
-                  await signOut();
+                  const { signOut } = await import("firebase/auth");
+                  const { auth } = await import("@/lib/firebase");
+                  await signOut(auth);
                   router.push("/");
                 }}
               >

@@ -3,6 +3,16 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  updateDoc,
+  arrayUnion,
+} from "firebase/firestore";
 import {
   Card,
   CardHeader,
@@ -182,8 +192,9 @@ export default function StudentHomePage() {
               <Button
                 className="bg-[#242F62] hover:bg-[#1a1d47] text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium border-0"
                 onClick={async () => {
-                  const { signOut } = await import("@/lib/azure-auth");
-                  await signOut();
+                  const { signOut } = await import("firebase/auth");
+                  const { auth } = await import("@/lib/firebase");
+                  await signOut(auth);
                   router.push("/");
                 }}
               >

@@ -2,6 +2,14 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "@/context/auth-context";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  Timestamp,
+} from "firebase/firestore";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
@@ -397,8 +405,9 @@ export default function StudentHistoricPage() {
               <Button
                 className="bg-[#242F62] hover:bg-[#1a1d47] text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium border-0"
                 onClick={async () => {
-                  const { signOut } = await import("@/lib/azure-auth");
-                  await signOut();
+                  const { signOut } = await import("firebase/auth");
+                  const { auth } = await import("@/lib/firebase");
+                  await signOut(auth);
                   router.push("/");
                 }}
               >

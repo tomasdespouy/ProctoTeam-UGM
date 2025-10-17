@@ -16,13 +16,11 @@ Preferred communication style: Simple, everyday language.
 - **Animation**: Framer Motion for smooth transitions and micro-interactions
 
 ## Authentication & Authorization
-- **Provider**: Azure AD Single Sign-On (SSO) via MSAL (Microsoft Authentication Library) for UGM institutional accounts
+- **Provider**: Azure AD Single Sign-On (SSO) via Firebase Authentication for UGM institutional accounts
 - **Tenant**: UGM Azure AD (05970e72-c674-4f1f-8033-6e35dd7f76aa)
-- **Client ID**: e9f08a61-0e07-4a60-b825-c6041cdf0505
 - **User Roles**: Role-based access control with 'student', 'instructor', and 'super-admin' roles
 - **Data Storage**: PostgreSQL (Replit) for user profiles and session data
 - **Identity Verification**: AI-powered biometric verification comparing ID cards with live facial recognition
-- **Token Management**: JWT tokens from Azure AD validated on the server using jsonwebtoken
 
 ## AI Integration
 - **Framework**: Google Genkit for AI workflow orchestration
@@ -50,6 +48,7 @@ Preferred communication style: Simple, everyday language.
   - `alerts`: Proctoring alerts generated during exams
   - `student_details`: Session completion details and timing
 - **Real-time Data**: In-memory session service for live monitoring capabilities
+- **File Storage**: Firebase Storage for exam recordings and identity verification images
 - **Session Management**: Temporary data structures for active exam sessions
 
 ## Component Structure
@@ -76,8 +75,9 @@ Preferred communication style: Simple, everyday language.
 # External Dependencies
 
 ## Core Services
-- **Azure AD**: Enterprise Single Sign-On for UGM institutional authentication via MSAL
+- **Azure AD**: Enterprise Single Sign-On for UGM institutional authentication
 - **PostgreSQL (Replit)**: High-performance relational database with zero latency
+- **Firebase**: Authentication middleware and cloud storage
 - **Google AI**: Gemini 1.5 Flash model via Genkit for AI-powered features
 - **Vercel/Deployment Platform**: Application hosting and serverless functions
 
@@ -99,9 +99,6 @@ Preferred communication style: Simple, everyday language.
 - **Recharts**: Data visualization for analytics dashboards
 - **node-postgres (pg)**: PostgreSQL client for Node.js
 - **Drizzle ORM**: Type-safe SQL toolkit for database operations
-- **@azure/msal-browser**: Microsoft Authentication Library for browser-based authentication
-- **@azure/msal-node**: Microsoft Authentication Library for server-side operations
-- **jsonwebtoken**: JWT token validation and decoding
 
 ## Browser APIs
 - **MediaDevices API**: Camera and microphone access for monitoring

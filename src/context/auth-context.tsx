@@ -1,8 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { AccountInfo } from '@azure/msal-browser';
-import { initializeMsal, getMsalInstance, acquireTokenSilent } from '@/lib/azure-auth';
+import { onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import { useRouter, usePathname } from 'next/navigation';
 
 export interface UserProfile {
@@ -16,13 +16,8 @@ export interface UserProfile {
   updated_at?: Date;
 }
 
-interface MsalUser {
-  account: AccountInfo;
-  getIdToken: () => Promise<string | null>;
-}
-
 interface AuthContextType {
-  user: MsalUser | null;
+  user: User | null;
   userProfile: UserProfile | null;
   loading: boolean;
 }
@@ -40,27 +35,18 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
-  const [user, setUser] = useState<MsalUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    const initAuth = async () => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
-        await initializeMsal();
-        const msalInstance = getMsalInstance();
-        const account = msalInstance.getActiveAccount();
-
-        if (account) {
-          const msalUser: MsalUser = {
-            account,
-            getIdToken: acquireTokenSilent,
-          };
-
-          const uid = account.localAccountId;
-          const response = await fetch(`/api/auth/get-user?uid=${uid}`);
+        if (user) {
+          // Obtener perfil de usuario desde PostgreSQL
+          const response = await fetch(`/api/auth/get-user?uid=${user.uid}`);
           
           if (response.ok) {
             const profileData = await response.json();
@@ -77,15 +63,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 updated_at: profileData.updated_at ? new Date(profileData.updated_at) : undefined,
               });
             } else {
+              // Si no existe en PostgreSQL, crear perfil básico
               const createResponse = await fetch('/api/auth/create-user', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  uid: uid,
-                  email: account.username || '',
-                  nombre: account.name || account.username?.split('@')[0] || 'Usuario',
-                  role: 'student',
-                  photo_url: null,
+                  uid: user.uid,
+                  email: user.email || '',
+                  nombre: user.displayName || user.email?.split('@')[0] || 'Usuario',
+                  role: 'student', // Rol por defecto
+                  photo_url: user.photoURL || null,
                 }),
               });
               
@@ -111,55 +98,83 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             setUserProfile(null);
           }
           
-          setUser(msalUser);
+          setUser(user);
         } else {
           setUser(null);
           setUserProfile(null);
         }
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        console.error('Auth state change error:', error);
         setUser(null);
         setUserProfile(null);
       } finally {
         setLoading(false);
       }
-    };
-
-    initAuth();
-
-    const msalInstance = getMsalInstance();
-    const callbackId = msalInstance.addEventCallback((event: any) => {
-      if (event.eventType === 'msal:loginSuccess' || event.eventType === 'msal:acquireTokenSuccess') {
-        const account = msalInstance.getActiveAccount();
-        if (account) {
-          initAuth();
-        }
-      } else if (event.eventType === 'msal:logoutSuccess') {
-        setUser(null);
-        setUserProfile(null);
-      }
     });
 
-    return () => {
-      if (callbackId) {
-        msalInstance.removeEventCallback(callbackId);
-      }
-    };
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (loading) return;
 
-    const publicPaths = ['/', '/student/login', '/instructor/login'];
-    const isPublicPath = publicPaths.includes(pathname);
+    const isAuthRoute = pathname.startsWith('/instructor') || pathname.startsWith('/student') || pathname.startsWith('/super-admin');
+    const isLoginPage = pathname.endsWith('/login');
 
-    if (!user && !isPublicPath) {
-      const loginPath = pathname.startsWith('/instructor') || pathname.startsWith('/super-admin') 
-        ? '/instructor/login' 
-        : '/student/login';
-      router.push(loginPath);
+    // CRITICAL SECURITY: Validate role matches portal access
+    if (user && userProfile && isAuthRoute && !isLoginPage) {
+      const userRole = userProfile.role;
+      
+      // Check for role mismatch and force logout if detected
+      if (pathname.startsWith('/instructor') && userRole !== 'instructor') {
+        console.warn(`SECURITY: User with role '${userRole}' attempted to access instructor portal. Forcing logout.`);
+        signOut(auth).then(() => {
+          router.push('/instructor/login');
+        });
+        return;
+      }
+      
+      if (pathname.startsWith('/student') && userRole !== 'student') {
+        console.warn(`SECURITY: User with role '${userRole}' attempted to access student portal. Forcing logout.`);
+        signOut(auth).then(() => {
+          router.push('/student/login');
+        });
+        return;
+      }
+      
+      if (pathname.startsWith('/super-admin') && userRole !== 'super-admin') {
+        console.warn(`SECURITY: User with role '${userRole}' attempted to access super-admin portal. Forcing logout.`);
+        signOut(auth).then(() => {
+          router.push('/instructor/login');
+        });
+        return;
+      }
     }
-  }, [user, pathname, loading, router]);
+
+    // Redirect unauthenticated users to appropriate login
+    if (!user && isAuthRoute && !isLoginPage) {
+        if (pathname.startsWith('/instructor')) {
+            router.push('/instructor/login');
+        } else if (pathname.startsWith('/student')) {
+            router.push('/student/login');
+        } else if (pathname.startsWith('/super-admin')) {
+            router.push('/instructor/login');
+        }
+    }
+    
+    // Redirect authenticated users away from login pages to their portals
+    if (user && userProfile && isLoginPage) {
+        const userRole = userProfile.role;
+        if (userRole === 'instructor') {
+            router.push('/instructor');
+        } else if (userRole === 'student') {
+            router.push('/student');
+        } else if (userRole === 'super-admin') {
+            router.push('/super-admin/dashboard');
+        }
+    }
+
+  }, [user, userProfile, loading, pathname, router]);
 
   return (
     <AuthContext.Provider value={{ user, userProfile, loading }}>
