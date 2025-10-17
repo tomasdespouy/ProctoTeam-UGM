@@ -299,7 +299,7 @@ export default function HistoricPage() {
             let statsCsvContent = "Estadisticas de Alertas\n";
             statsCsvContent += "Tipo de Alerta,Cantidad,Porcentaje\n";
             Object.entries(alertCounts).forEach(([desc, count]) => {
-                 const percentage = totalAlerts > 0 ? ((count / totalAlerts) * 100).toFixed(1) : 0;
+                 const percentage = totalAlerts > 0 ? (((count as number) / totalAlerts) * 100).toFixed(1) : 0;
                  statsCsvContent += `"${desc}",${count},${percentage}%\n`;
             });
             statsCsvContent += `Total de Alertas,${totalAlerts}\n\n`;
