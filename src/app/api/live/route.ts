@@ -2,8 +2,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { liveSessionService } from '@/services/live-session.service';
-import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, updateDoc, arrayUnion, Timestamp, getDoc, setDoc, getDocs } from 'firebase/firestore';
+import db from '@/lib/db';
 
 export const dynamic = 'force-dynamic'; // Asegura que la ruta no sea cacheada estáticamente
 
@@ -38,21 +37,16 @@ export async function POST(request: NextRequest) {
         // Add to in-memory service for live view
         const newAlert = liveSessionService.addAlert({ studentId: alertStudentId, studentName, description, severity, imgSrc });
         
-        // Persist to Firestore for historical report
+        // Persist to PostgreSQL for historical report
         if (payload.examId) {
-            const alertDoc = {
-                studentId: alertStudentId,
-                studentName,
-                description,
-                severity,
-                timestamp: serverTimestamp(),
-                imgSrc,
-            };
             try {
-                const examAlertsCollection = collection(db, 'examSessions', payload.examId, 'alerts');
-                await addDoc(examAlertsCollection, alertDoc);
-            } catch (firestoreError) {
-                console.error('Firestore ADD_ALERT Error:', firestoreError);
+                await db.query(
+                    `INSERT INTO alerts (exam_session_id, student_id, student_name, description, severity, img_src, created_at) 
+                     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+                    [payload.examId, alertStudentId, studentName, description, severity, imgSrc]
+                );
+            } catch (dbError) {
+                console.error('PostgreSQL ADD_ALERT Error:', dbError);
                 // No devolver error al cliente para no interrumpir la sesión en vivo
             }
         }
@@ -95,31 +89,34 @@ export async function POST(request: NextRequest) {
         };
         liveSessionService.addAlert(finishAlert);
 
-        // Block student from re-entry
+        // Block student from re-entry and persist details to PostgreSQL
         try {
-            const examDocRef = doc(db, 'examSessions', examId);
-            await updateDoc(examDocRef, {
-                blockedStudents: arrayUnion({
+            // Add to blocked students array (stored as JSON)
+            await db.query(
+                `UPDATE exam_sessions 
+                 SET blocked_students = blocked_students || $1::jsonb 
+                 WHERE id = $2`,
+                [JSON.stringify([{
                     uid: studentId,
                     reason: 'Finalizó el examen voluntariamente.',
-                    timestamp: Timestamp.now()
-                })
-            });
+                    timestamp: new Date().toISOString()
+                }]), examId]
+            );
 
             // Persist student session details for historical stats
             if (finishedStudent) {
-              const studentDetailRef = doc(db, 'examSessions', examId, 'studentDetails', studentId);
-              await setDoc(studentDetailRef, {
-                id: finishedStudent.id,
-                name: finishedStudent.name,
-                startTime: finishedStudent.startTime,
-                finishTime: finishedStudent.finishTime
-              }, { merge: true });
+              await db.query(
+                  `INSERT INTO student_details (exam_session_id, student_id, student_name, start_time, finish_time) 
+                   VALUES ($1, $2, $3, $4, $5)
+                   ON CONFLICT (exam_session_id, student_id) 
+                   DO UPDATE SET finish_time = $5`,
+                  [examId, finishedStudent.id, finishedStudent.name, finishedStudent.startTime, finishedStudent.finishTime]
+              );
             }
 
-        } catch (firestoreError: any) {
-             console.error('Firestore FINISH_STUDENT_SESSION Error:', firestoreError);
-             return NextResponse.json({ error: `Fallo al escribir el bloqueo en la base de datos: ${firestoreError.message}` }, { status: 500 });
+        } catch (dbError: any) {
+             console.error('PostgreSQL FINISH_STUDENT_SESSION Error:', dbError);
+             return NextResponse.json({ error: `Fallo al escribir en la base de datos: ${dbError.message}` }, { status: 500 });
         }
         
         return NextResponse.json({ success: true }, { status: 200 });
@@ -135,30 +132,33 @@ export async function POST(request: NextRequest) {
         // 1. Terminate live session in memory
         const finishedStudent = liveSessionService.terminateStudentSession(blockedStudentId, reason || 'Razón no especificada');
 
-        // 2. Add student to blocked list in Firestore for persistence
+        // 2. Add student to blocked list in PostgreSQL for persistence
         try {
-            const examDocRef = doc(db, 'examSessions', blockedExamId);
-            await updateDoc(examDocRef, {
-                blockedStudents: arrayUnion({
+            await db.query(
+                `UPDATE exam_sessions 
+                 SET blocked_students = blocked_students || $1::jsonb 
+                 WHERE id = $2`,
+                [JSON.stringify([{
                     uid: blockedStudentId,
                     reason: reason || 'Razón no especificada',
-                    timestamp: Timestamp.now()
-                })
-            });
+                    timestamp: new Date().toISOString()
+                }]), blockedExamId]
+            );
+
              // Persist student session details for historical stats
             if (finishedStudent) {
-              const studentDetailRef = doc(db, 'examSessions', blockedExamId, 'studentDetails', blockedStudentId);
-              await setDoc(studentDetailRef, {
-                id: finishedStudent.id,
-                name: finishedStudent.name,
-                startTime: finishedStudent.startTime,
-                finishTime: finishedStudent.finishTime
-              }, { merge: true });
+              await db.query(
+                  `INSERT INTO student_details (exam_session_id, student_id, student_name, start_time, finish_time) 
+                   VALUES ($1, $2, $3, $4, $5)
+                   ON CONFLICT (exam_session_id, student_id) 
+                   DO UPDATE SET finish_time = $5`,
+                  [blockedExamId, finishedStudent.id, finishedStudent.name, finishedStudent.startTime, finishedStudent.finishTime]
+              );
             }
 
-        } catch (firestoreError: any) {
-             console.error('Firestore BLOCK_STUDENT Error:', firestoreError);
-             return NextResponse.json({ error: `Fallo al escribir el bloqueo en la base de datos: ${firestoreError.message}` }, { status: 500 });
+        } catch (dbError: any) {
+             console.error('PostgreSQL BLOCK_STUDENT Error:', dbError);
+             return NextResponse.json({ error: `Fallo al escribir el bloqueo en la base de datos: ${dbError.message}` }, { status: 500 });
         }
         
         return NextResponse.json({ success: true, message: `Estudiante ${blockedStudentId} bloqueado.` }, { status: 200 });
@@ -171,9 +171,9 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'ID de examen es requerido para finalizar la sesión.' }, { status: 400 });
         }
 
-        const examDocRef = doc(db, 'examSessions', examId);
-        const examSnapshot = await getDoc(examDocRef);
-        if (!examSnapshot.exists()) {
+        // Check if exam exists
+        const examResult = await db.query('SELECT id FROM exam_sessions WHERE id = $1', [examId]);
+        if (examResult.rows.length === 0) {
              return NextResponse.json({ error: 'El examen no fue encontrado.' }, { status: 404 });
         }
         
@@ -181,24 +181,26 @@ export async function POST(request: NextRequest) {
 
         liveSessionService.terminateAllSessions();
         try {
-          await updateDoc(examDocRef, {
-            status: 'finished'
-          });
+          // Update exam status
+          await db.query(
+            'UPDATE exam_sessions SET status = $1 WHERE id = $2',
+            ['finished', examId]
+          );
 
            const now = Date.now();
            for (const student of studentsToPersist) {
-              const studentDetailRef = doc(db, 'examSessions', examId, 'studentDetails', student.id);
-              await setDoc(studentDetailRef, {
-                id: student.id,
-                name: student.name,
-                startTime: student.startTime,
-                finishTime: now
-              }, { merge: true });
+              await db.query(
+                  `INSERT INTO student_details (exam_session_id, student_id, student_name, start_time, finish_time) 
+                   VALUES ($1, $2, $3, $4, $5)
+                   ON CONFLICT (exam_session_id, student_id) 
+                   DO UPDATE SET finish_time = $5`,
+                  [examId, student.id, student.name, student.startTime, now]
+              );
            }
 
-        } catch (firestoreError: any) {
-          console.error('Firestore TERMINATE_ALL_SESSIONS Error:', firestoreError);
-          return NextResponse.json({ error: `Fallo al actualizar el estado del examen en la base de datos: ${firestoreError.message}` }, { status: 500 });
+        } catch (dbError: any) {
+          console.error('PostgreSQL TERMINATE_ALL_SESSIONS Error:', dbError);
+          return NextResponse.json({ error: `Fallo al actualizar el estado del examen en la base de datos: ${dbError.message}` }, { status: 500 });
         }
         
         return NextResponse.json({ success: true, message: 'Todas las sesiones han sido terminadas.' }, { status: 200 });
