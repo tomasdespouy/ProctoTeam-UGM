@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:init": "psql $DATABASE_URL -f database/schema.sql"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.8.0",
@@ -66,7 +67,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "dotenv": "^16.4.5",
-    "firebase-admin": "^12.1.1",
+    "firebase-admin": "^12.7.0",
     "genkit-cli": "^1.8.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
