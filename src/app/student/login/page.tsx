@@ -1,35 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
+import { signInWithAzurePopup, handleAzureRedirectResult } from "@/lib/azure-auth";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, User } from "lucide-react";
+import { Loader2, Building2 } from "lucide-react";
 import Image from "next/image";
 
 export default function StudentLoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password,
-      );
-      const user = userCredential.user;
+  // Verificar si venimos de un redirect de Azure
+  useEffect(() => {
+    const checkRedirect = async () => {
+      const { user, error } = await handleAzureRedirectResult();
+      if (user) {
+        await verifyAndRedirect(user);
+      } else if (error) {
+        toast({
+          variant: "destructive",
+          title: "Error de autenticación",
+          description: "No se pudo completar el inicio de sesión con SSO.",
+        });
+      }
+    };
+    checkRedirect();
+  }, []);
 
+  const verifyAndRedirect = async (user: any) => {
+    try {
       const userDocRef = doc(db, "users", user.uid);
       const userDocSnap = await getDoc(userDocRef);
 
@@ -41,23 +46,42 @@ export default function StudentLoginPage() {
           variant: "destructive",
           title: "Acceso incorrecto",
           description:
-            "Esta cuenta no es de un estudiante o tiene un rol de docente. Por favor, usa el portal del docente si corresponde.",
+            "Esta cuenta no es de un estudiante. Por favor, contacta al administrador.",
         });
       }
-    } catch (error: any) {
-      let errorMessage = "Ocurrió un error inesperado.";
-      if (
-        error.code === "auth/user-not-found" ||
-        error.code === "auth/wrong-password" ||
-        error.code === "auth/invalid-credential"
-      ) {
-        errorMessage =
-          "Credenciales incorrectas. Por favor, verifica tu correo y contraseña.";
+    } catch (error) {
+      console.error("Error verificando usuario:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo verificar tu cuenta.",
+      });
+    }
+  };
+
+  const handleSSOLogin = async () => {
+    setLoading(true);
+    try {
+      const { user, error } = await signInWithAzurePopup();
+      
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Error de autenticación",
+          description: "No se pudo conectar con el sistema SSO de la UGM.",
+        });
+        setLoading(false);
+        return;
       }
+
+      if (user) {
+        await verifyAndRedirect(user);
+      }
+    } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Error de autenticación",
-        description: errorMessage,
+        description: "Ocurrió un error al intentar iniciar sesión.",
       });
     } finally {
       setLoading(false);
@@ -102,71 +126,50 @@ export default function StudentLoginPage() {
             />
           </div>
 
-          {/* Título del formulario */}
+          {/* Título */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center">
-                <User className="w-6 h-6 text-[#242F62]" />
+                <Building2 className="w-6 h-6 text-[#242F62]" />
               </div>
               <h1 className="text-white text-xl font-bold">Iniciar Sesión</h1>
             </div>
+            <p className="text-white/80 text-sm">
+              Portal del Estudiante - Universidad Gabriela Mistral
+            </p>
           </div>
 
-          {/* Formulario */}
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div>
-              <Label htmlFor="email" className="text-white text-sm mb-2 block">
-                E-mail
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder=""
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border-0 bg-white text-gray-800 placeholder-gray-500"
-              />
-            </div>
-
-            <div>
-              <Label
-                htmlFor="password"
-                className="text-white text-sm mb-2 block"
+          {/* Botón SSO de Azure */}
+          <div className="space-y-6">
+            <div className="bg-white/10 border border-white/20 rounded-lg p-6 mb-6">
+              <p className="text-white/90 text-sm mb-4 text-center">
+                Inicia sesión con tu cuenta institucional de la UGM
+              </p>
+              <Button
+                onClick={handleSSOLogin}
+                className="w-full bg-white hover:bg-gray-100 text-[#242F62] py-4 rounded-lg font-semibold text-lg transition-colors flex items-center justify-center gap-3 shadow-lg"
+                disabled={loading}
               >
-                Contraseña
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border-0 bg-white text-gray-800"
-              />
+                {loading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Conectando con SSO...</span>
+                  </>
+                ) : (
+                  <>
+                    <Building2 className="h-5 w-5" />
+                    <span>Iniciar Sesión con UGM</span>
+                  </>
+                )}
+              </Button>
             </div>
 
-            <div className="text-left">
-              <a href="#" className="text-[#00BFFF] text-sm hover:underline">
-                ¿Olvidaste tu contraseña?
-              </a>
+            <div className="text-center">
+              <p className="text-white/60 text-xs">
+                ¿Problemas para acceder? Contacta a soporte técnico
+              </p>
             </div>
-
-            <Button
-              className="w-full bg-[#00BFFF] hover:bg-[#0099CC] text-white py-3 rounded-lg font-semibold text-lg transition-colors"
-              type="submit"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Ingresando...
-                </>
-              ) : (
-                "Ingresar a la plataforma"
-              )}
-            </Button>
-          </form>
+          </div>
         </div>
       </div>
 
