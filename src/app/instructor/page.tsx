@@ -36,8 +36,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Copy, Layers } from 'lucide-react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import Image from 'next/image';
 
 export interface FormattedAlert {
@@ -338,19 +336,27 @@ export default function InstructorDashboard() {
 
         setIsCreatingExam(true);
         try {
-            const examSessionData = {
-                title: examTitle,
-                subject,
-                section,
-                duration,
-                accessCode,
-                instructorId: user.uid,
-                students: [],
-                createdAt: serverTimestamp(),
-                status: 'pending'
-            };
+            const idToken = await user.getIdToken();
+            
+            const response = await fetch('/api/exam-sessions/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                    title: examTitle,
+                    subject,
+                    section,
+                    duration,
+                    accessCode,
+                }),
+            });
 
-            await addDoc(collection(db, "examSessions"), examSessionData);
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Error al crear la sesión');
+            }
 
             toast({
                 title: "Sala de Examen Creada",
@@ -370,7 +376,7 @@ export default function InstructorDashboard() {
             toast({
                 variant: "destructive",
                 title: "Error al crear la sala",
-                description: "No se pudo guardar la configuración del examen en la base de datos.",
+                description: error instanceof Error ? error.message : "No se pudo guardar la configuración del examen.",
             });
         } finally {
             setIsCreatingExam(false);

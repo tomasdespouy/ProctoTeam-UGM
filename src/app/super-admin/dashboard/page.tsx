@@ -3,8 +3,6 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/context/auth-context';
-import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, Timestamp, orderBy, doc, collectionGroup, getDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { DateRange } from "react-day-picker"
@@ -32,25 +30,25 @@ interface ExamSession {
   subject: string;
   section: string;
   duration: number;
-  accessCode: string;
-  createdAt: Timestamp;
-  instructorId: string;
-  instructorName?: string; // Add instructor name
+  access_code: string;
+  created_at: string;
+  instructor_id: string;
+  instructor_name?: string;
 }
 
 interface AlertData {
-    studentId: string;
-    studentName?: string;
+    student_id: string;
+    student_name?: string;
     severity: string;
     description: string;
-    timestamp: Timestamp;
+    timestamp: string;
 }
 
 interface StudentSessionData {
     id: string;
     name: string;
-    startTime: number;
-    finishTime: number;
+    start_time: number;
+    finish_time: number;
 }
 
 interface PaginationProps {
@@ -180,34 +178,25 @@ export default function SuperAdminDashboard() {
 
       setIsLoading(true);
       try {
-        const q = query(
-          collection(db, "examSessions"),
-          orderBy("createdAt", "desc")
-        );
-        const querySnapshot = await getDocs(q);
-        
-        // Fetch all instructors to avoid multiple DB calls in a loop
-        const instructorsMap = new Map<string, UserProfile>();
-        const usersSnapshot = await getDocs(query(collection(db, "users"), where("role", "==", "instructor")));
-        usersSnapshot.forEach(doc => instructorsMap.set(doc.id, doc.data() as UserProfile));
-
-        const sessions = querySnapshot.docs.map(doc => {
-            const data = doc.data();
-            const instructor = instructorsMap.get(data.instructorId);
-            return {
-                id: doc.id,
-                ...data,
-                instructorName: instructor?.nombre || 'Desconocido',
-            } as ExamSession
+        const idToken = await user.getIdToken();
+        const response = await fetch('/api/exam-sessions/all', {
+          headers: {
+            'Authorization': `Bearer ${idToken}`,
+          },
         });
-        
-        setExamSessions(sessions);
+
+        if (!response.ok) {
+          throw new Error('Error al obtener sesiones');
+        }
+
+        const data = await response.json();
+        setExamSessions(data.sessions || []);
       } catch (error) {
         console.error("Error fetching exam sessions: ", error);
         toast({
           variant: "destructive",
           title: "Error al cargar el histórico",
-          description: "No se pudieron obtener las sesiones de examen. Revisa la consola para más detalles.",
+          description: "No se pudieron obtener las sesiones de examen.",
         });
       } finally {
         setIsLoading(false);
@@ -224,14 +213,14 @@ export default function SuperAdminDashboard() {
     return examSessions.filter(session => {
         const lowerCaseFilter = filter.toLowerCase();
         const titleMatch = session.title.toLowerCase().includes(lowerCaseFilter);
-        const instructorMatch = session.instructorName?.toLowerCase().includes(lowerCaseFilter);
+        const instructorMatch = session.instructor_name?.toLowerCase().includes(lowerCaseFilter);
         const subjectMatch = session.subject?.toLowerCase().includes(lowerCaseFilter);
         const sectionMatch = session.section?.toLowerCase().includes(lowerCaseFilter);
 
         const textMatch = titleMatch || instructorMatch || subjectMatch || sectionMatch;
 
-        const createdAtDate = session.createdAt?.toDate();
-        if (!createdAtDate) return false;
+        const createdAtDate = new Date(session.created_at);
+        if (!createdAtDate || isNaN(createdAtDate.getTime())) return false;
 
         let dateMatch = true;
         if (date?.from) {
@@ -263,20 +252,31 @@ export default function SuperAdminDashboard() {
     setIsDownloading(prevState => ({ ...prevState, [session.id + type]: true }));
 
     try {
-        const alertsCollection = collection(db, 'examSessions', session.id, 'alerts');
-        const alertsSnapshot = await getDocs(query(alertsCollection, orderBy('timestamp', 'asc')));
+        if (!user) return;
+        
+        const idToken = await user.getIdToken();
+        const response = await fetch(`/api/exam-sessions/${session.id}/alerts`, {
+          headers: {
+            'Authorization': `Bearer ${idToken}`,
+          },
+        });
 
-        if (alertsSnapshot.empty) {
+        if (!response.ok) {
+            throw new Error('Error al obtener datos de la sesión');
+        }
+
+        const { alerts, studentDetails } = await response.json();
+
+        if (!alerts || alerts.length === 0) {
             toast({
                 title: "Sin Datos",
                 description: "Esta sesión de examen no tiene datos registrados para descargar.",
             });
+            setIsDownloading(prevState => ({ ...prevState, [session.id + type]: false }));
             return;
         }
 
-        const studentDetailsCollection = collection(db, 'examSessions', session.id, 'studentDetails');
-        const studentDetailsSnapshot = await getDocs(studentDetailsCollection);
-        const studentSessionData = studentDetailsSnapshot.docs.map(d => d.data() as StudentSessionData);
+        const studentSessionData = studentDetails as StudentSessionData[];
 
         let csvContent = "";
         let fileName = "";
@@ -286,18 +286,17 @@ export default function SuperAdminDashboard() {
                 ['Fecha', 'Hora', 'Estudiante', 'ID Estudiante', 'Severidad', 'Descripción']
             ];
             
-            alertsSnapshot.docs.forEach(doc => {
-                const alert = doc.data() as AlertData;
-                const timestamp = alert.timestamp?.toDate();
-                const date = timestamp ? format(timestamp, 'yyyy-MM-dd') : 'N/A';
-                const time = timestamp ? format(timestamp, 'HH:mm:ss') : 'N/A';
-                const studentName = alert.studentName || `ID ${alert.studentId.substring(0,8)}`;
+            alerts.forEach((alert: AlertData) => {
+                const timestamp = new Date(alert.timestamp);
+                const date = !isNaN(timestamp.getTime()) ? format(timestamp, 'yyyy-MM-dd') : 'N/A';
+                const time = !isNaN(timestamp.getTime()) ? format(timestamp, 'HH:mm:ss') : 'N/A';
+                const studentName = alert.student_name || `ID ${alert.student_id.substring(0,8)}`;
                 
                 csvRows.push([
                     `"${date}"`,
                     `"${time}"`,
                     `"${studentName}"`,
-                    `"${alert.studentId}"`,
+                    `"${alert.student_id}"`,
                     `"${alert.severity}"`,
                     `"${alert.description.replace(/"/g, '""')}"` // Escape double quotes
                 ]);
@@ -306,12 +305,11 @@ export default function SuperAdminDashboard() {
             csvContent = csvRows.map(e => e.join(",")).join("\n");
             fileName = `reporte_alertas_${session.title.replace(/[^a-z0-9]/gi, '_')}.csv`;
         } else { // stats
-             const alertCounts = alertsSnapshot.docs.reduce((acc: Record<string, number>, doc) => {
-                const alert = doc.data() as AlertData;
+             const alertCounts = alerts.reduce((acc: Record<string, number>, alert: AlertData) => {
                 acc[alert.description] = (acc[alert.description] || 0) + 1;
                 return acc;
             }, {});
-            const totalAlerts = alertsSnapshot.size;
+            const totalAlerts = alerts.length;
 
             let statsCsvContent = "Estadisticas de Alertas\n";
             statsCsvContent += "Tipo de Alerta,Cantidad,Porcentaje\n";
@@ -321,15 +319,15 @@ export default function SuperAdminDashboard() {
             });
             statsCsvContent += `Total de Alertas,${totalAlerts}\n\n`;
 
-            const finishedStudents = studentSessionData.filter(s => s.startTime && s.finishTime);
+            const finishedStudents = studentSessionData.filter(s => s.start_time && s.finish_time);
             if(finishedStudents.length > 0) {
-                 const durations = finishedStudents.map(s => parseFloat(((s.finishTime - s.startTime) / 60000).toFixed(1)));
+                 const durations = finishedStudents.map(s => parseFloat(((s.finish_time - s.start_time) / 60000).toFixed(1)));
                  const average = durations.reduce((sum, d) => sum + d, 0) / durations.length;
 
                 statsCsvContent += "Estadisticas de Tiempos de Finalizacion (minutos)\n";
                 statsCsvContent += "Estudiante,Duracion\n";
                 finishedStudents.forEach(item => {
-                    const duration = parseFloat(((item.finishTime - item.startTime) / 60000).toFixed(1));
+                    const duration = parseFloat(((item.finish_time - item.start_time) / 60000).toFixed(1));
                     statsCsvContent += `"${item.name}",${duration}\n`;
                 });
                 statsCsvContent += `\nPromedio,${average.toFixed(1)}\n`;
@@ -416,12 +414,12 @@ export default function SuperAdminDashboard() {
           {paginatedSessions.map((session) => (
             <TableRow key={session.id}>
               <TableCell className="font-medium">{session.title}</TableCell>
-              <TableCell className="font-medium flex items-center gap-2 pt-6"><UserCog className="h-4 w-4 text-muted-foreground"/>{session.instructorName}</TableCell>
+              <TableCell className="font-medium flex items-center gap-2 pt-6"><UserCog className="h-4 w-4 text-muted-foreground"/>{session.instructor_name || 'Desconocido'}</TableCell>
               <TableCell>{session.subject}</TableCell>
               <TableCell><Badge variant="secondary">{session.section}</Badge></TableCell>
-              <TableCell className="font-mono text-sm font-semibold"><Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">{session.accessCode}</Badge></TableCell>
+              <TableCell className="font-mono text-sm font-semibold"><Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">{session.access_code}</Badge></TableCell>
               <TableCell>
-                {session.createdAt ? format(session.createdAt.toDate(), 'PPP', { locale: es }) : 'N/A'}
+                {session.created_at ? format(new Date(session.created_at), 'PPP', { locale: es }) : 'N/A'}
               </TableCell>
               <TableCell className="text-right space-x-2">
                 <Button 
