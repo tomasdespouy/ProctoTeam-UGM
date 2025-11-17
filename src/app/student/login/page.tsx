@@ -47,6 +47,7 @@ export default function StudentLoginPage() {
 
   const handleAzureLogin = async () => {
     setIsLoading(true);
+    sessionStorage.setItem('loginRole', 'student');
     const result = await signInWithAzurePopup();
     
     if (result.error) {

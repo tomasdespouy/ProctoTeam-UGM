@@ -49,6 +49,7 @@ export default function InstructorLoginPage() {
 
   const handleAzureLogin = async () => {
     setIsLoading(true);
+    sessionStorage.setItem('loginRole', 'instructor');
     const result = await signInWithAzurePopup();
     
     if (result.error) {
