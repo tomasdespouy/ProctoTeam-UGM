@@ -19,6 +19,12 @@ Preferred communication style: Simple, everyday language.
 - **Provider**: Azure AD Single Sign-On (SSO) via MSAL (Microsoft Authentication Library) for UGM institutional accounts
 - **Tenant**: UGM Azure AD (05970e72-c674-4f1f-8033-6e35dd7f76aa)
 - **Client ID**: e9f08a61-0e07-4a60-b825-c6041cdf0505
+- **Redirect URI**: `/auth/callback` - Standard OAuth2/OIDC callback endpoint
+- **Production Domain**: `https://UGM-proctoring.replit.app`
+- **Authentication Flow**: 
+  - Users click login → MSAL popup/redirect → Azure AD authentication
+  - Azure AD redirects to `/auth/callback` with token
+  - Callback page processes token and redirects to appropriate portal (student/instructor)
 - **User Roles**: Role-based access control with 'student', 'instructor', and 'super-admin' roles
 - **Data Storage**: PostgreSQL (Replit) for user profiles and session data
 - **Identity Verification**: AI-powered biometric verification comparing ID cards with live facial recognition
