@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithAzureRedirect, handleAzureRedirectResult } from '@/lib/azure-auth';
+import { signInWithAzureRedirect } from '@/lib/azure-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, LogIn, ShieldAlert } from 'lucide-react';
@@ -18,18 +18,7 @@ export default function InstructorLoginPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  useEffect(() => {
-    const checkRedirect = async () => {
-      setIsLoading(true);
-      const result = await handleAzureRedirectResult();
-      if (result.user) {
-        console.log('Logged in via redirect');
-      }
-      setIsLoading(false);
-    };
-    
-    checkRedirect();
-  }, []);
+  // Eliminado: La lógica de redirect ahora está en /auth/callback
 
   useEffect(() => {
     if (!loading && user && userProfile) {

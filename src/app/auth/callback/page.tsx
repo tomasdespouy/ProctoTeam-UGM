@@ -31,6 +31,11 @@ function AuthCallbackContent() {
         
         if (response && response.account) {
           console.log('[Callback] Autenticación exitosa, cuenta:', response.account.username);
+          
+          // CRÍTICO: Establecer la cuenta como activa
+          instance.setActiveAccount(response.account);
+          console.log('[Callback] Cuenta activa establecida');
+          
           const userRole = sessionStorage.getItem('loginRole');
           sessionStorage.removeItem('loginRole');
           
