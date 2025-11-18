@@ -36,6 +36,15 @@ function AuthCallbackContent() {
           instance.setActiveAccount(response.account);
           console.log('[Callback] Cuenta activa establecida');
           
+          // Limpiar TODOS los estados de interacción en progreso de MSAL
+          Object.keys(sessionStorage).forEach(key => {
+            if (key.includes('interaction')) {
+              sessionStorage.removeItem(key);
+              console.log('[Callback] Removido:', key);
+            }
+          });
+          console.log('[Callback] Estados de interacción limpiados');
+          
           const userRole = sessionStorage.getItem('loginRole');
           sessionStorage.removeItem('loginRole');
           
