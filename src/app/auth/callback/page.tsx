@@ -14,11 +14,20 @@ function AuthCallbackContent() {
     const handleCallback = async () => {
       try {
         console.log('[Callback] Iniciando procesamiento de callback');
+        console.log('[Callback] URL completa:', window.location.href);
+        console.log('[Callback] Hash:', window.location.hash);
+        
         const instance = getMsalInstance();
+        console.log('[Callback] Instancia MSAL obtenida');
+        
         await instance.initialize();
+        console.log('[Callback] MSAL inicializado');
+        
         const response = await instance.handleRedirectPromise();
         
-        console.log('[Callback] Respuesta de handleRedirectPromise:', response ? 'Token recibido' : 'Sin respuesta');
+        console.log('[Callback] Respuesta completa:', response);
+        console.log('[Callback] ¿Tiene account?:', response?.account ? 'SÍ' : 'NO');
+        console.log('[Callback] ¿Tiene accessToken?:', response?.accessToken ? 'SÍ' : 'NO');
         
         if (response && response.account) {
           console.log('[Callback] Autenticación exitosa, cuenta:', response.account.username);
