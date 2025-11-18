@@ -20,6 +20,9 @@ export async function signInWithAzurePopup() {
   try {
     const instance = await initializeMsal();
     const result = await instance.loginPopup(loginRequest);
+    if (result && result.account) {
+      instance.setActiveAccount(result.account);
+    }
     return { user: result.account, accessToken: result.accessToken, idToken: result.idToken, error: null };
   } catch (error: any) {
     console.error('Error en login Azure:', error);
@@ -42,7 +45,10 @@ export async function handleAzureRedirectResult() {
   try {
     const instance = await initializeMsal();
     const result = await instance.handleRedirectPromise();
-    if (result) {
+    if (result && result.account) {
+      // IMPORTANTE: Establecer la cuenta como activa
+      instance.setActiveAccount(result.account);
+      console.log('[Azure Auth] Cuenta activa establecida:', result.account.username);
       return { user: result.account, accessToken: result.accessToken, idToken: result.idToken, error: null };
     }
     return { user: null, accessToken: null, idToken: null, error: null };
