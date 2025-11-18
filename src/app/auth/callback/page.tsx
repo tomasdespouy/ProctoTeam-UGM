@@ -13,19 +13,26 @@ function AuthCallbackContent() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
+        console.log('[Callback] Iniciando procesamiento de callback');
         const instance = getMsalInstance();
         await instance.initialize();
         const response = await instance.handleRedirectPromise();
         
-        if (response) {
+        console.log('[Callback] Respuesta de handleRedirectPromise:', response ? 'Token recibido' : 'Sin respuesta');
+        
+        if (response && response.account) {
+          console.log('[Callback] Autenticación exitosa, cuenta:', response.account.username);
           const userRole = sessionStorage.getItem('loginRole');
           sessionStorage.removeItem('loginRole');
           
           if (userRole === 'student') {
+            console.log('[Callback] Redirigiendo a portal de estudiantes');
             router.push('/student');
           } else if (userRole === 'instructor') {
+            console.log('[Callback] Redirigiendo a portal de instructores');
             router.push('/instructor');
           } else {
+            console.log('[Callback] Sin rol definido, redirigiendo a home');
             router.push('/');
           }
         } else {
@@ -33,25 +40,46 @@ function AuthCallbackContent() {
           const errorDescription = searchParams.get('error_description');
           
           if (error) {
-            console.error('Authentication error:', error, errorDescription);
+            console.error('[Callback] Error de autenticación:', error, errorDescription);
             setError(errorDescription || 'Error de autenticación');
-            setTimeout(() => router.push('/'), 3000);
+            setTimeout(() => {
+              const userRole = sessionStorage.getItem('loginRole');
+              sessionStorage.removeItem('loginRole');
+              if (userRole === 'student') {
+                router.push('/student/login');
+              } else if (userRole === 'instructor') {
+                router.push('/instructor/login');
+              } else {
+                router.push('/');
+              }
+            }, 3000);
           } else {
+            console.log('[Callback] No hay respuesta ni error, redirigiendo al login');
             const userRole = sessionStorage.getItem('loginRole');
             sessionStorage.removeItem('loginRole');
             if (userRole === 'student') {
-              router.push('/student');
+              router.push('/student/login');
             } else if (userRole === 'instructor') {
-              router.push('/instructor');
+              router.push('/instructor/login');
             } else {
               router.push('/');
             }
           }
         }
       } catch (error) {
-        console.error('Error handling redirect:', error);
+        console.error('[Callback] Error procesando redirect:', error);
         setError('Error procesando la autenticación');
-        setTimeout(() => router.push('/'), 3000);
+        setTimeout(() => {
+          const userRole = sessionStorage.getItem('loginRole');
+          sessionStorage.removeItem('loginRole');
+          if (userRole === 'student') {
+            router.push('/student/login');
+          } else if (userRole === 'instructor') {
+            router.push('/instructor/login');
+          } else {
+            router.push('/');
+          }
+        }, 3000);
       }
     };
 
