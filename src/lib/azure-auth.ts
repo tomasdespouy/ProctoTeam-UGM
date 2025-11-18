@@ -32,7 +32,17 @@ export async function signInWithAzurePopup() {
 
 export async function signInWithAzureRedirect() {
   try {
+    // CRÍTICO: Limpiar cualquier estado de interacción anterior
+    console.log('[Azure Auth] Limpiando estados de interacción previos...');
+    Object.keys(sessionStorage).forEach(key => {
+      if (key.includes('interaction')) {
+        sessionStorage.removeItem(key);
+        console.log('[Azure Auth] Removido:', key);
+      }
+    });
+    
     const instance = await initializeMsal();
+    console.log('[Azure Auth] Iniciando loginRedirect...');
     await instance.loginRedirect(loginRequest);
     return { error: null };
   } catch (error: any) {
