@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithAzurePopup, signInWithAzureRedirect, handleAzureRedirectResult } from '@/lib/azure-auth';
+import { signInWithAzureRedirect, handleAzureRedirectResult } from '@/lib/azure-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, LogIn, ShieldAlert } from 'lucide-react';
@@ -50,7 +50,7 @@ export default function InstructorLoginPage() {
   const handleAzureLogin = async () => {
     setIsLoading(true);
     sessionStorage.setItem('loginRole', 'instructor');
-    const result = await signInWithAzurePopup();
+    const result = await signInWithAzureRedirect();
     
     if (result.error) {
       console.error('Error de login:', result.error);
@@ -80,7 +80,7 @@ export default function InstructorLoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4">
           <div className="flex justify-center mb-2">
-            <PortalLogo size="lg" />
+            <PortalLogo width={64} height={64} />
           </div>
           <CardTitle className="text-2xl text-center">Portal de Docentes</CardTitle>
           <CardDescription className="text-center">
