@@ -30,6 +30,8 @@ http://localhost:5000/auth/callback
 
 ## 🔧 Pasos de Configuración en Azure Portal
 
+### ⚠️ CRÍTICO: Debe ser "Single-page application", NO "Web"
+
 1. **Ir a Azure Active Directory**
    - Portal: https://portal.azure.com
    - Navegar a: Azure Active Directory → App registrations
@@ -38,18 +40,23 @@ http://localhost:5000/auth/callback
    - Buscar por Client ID: `e9f08a61-0e07-4a60-b825-c6041cdf0505`
    - O por nombre de la aplicación
 
-3. **Configurar Authentication**
+3. **ELIMINAR configuración "Web" (si existe)**
    - En el menú lateral: **Authentication**
-   - En **Platform configurations**: Seleccionar **Single-page application (SPA)**
-   - Agregar las 3 URIs listadas arriba
+   - Si existe una plataforma tipo **"Web"**, eliminarla
+   - Hacer clic en "..." → "Remove"
 
-4. **Configurar Tokens**
+4. **AGREGAR "Single-page application"**
+   - En **Platform configurations**: hacer clic en **"+ Add a platform"**
+   - Seleccionar **"Single-page application"** (NO "Web")
+   - Agregar las URIs listadas arriba
+
+5. **Configurar Tokens**
    - En la misma página de Authentication
    - Marcar las siguientes casillas:
      - ✅ **Access tokens** (used for implicit flows)
      - ✅ **ID tokens** (used for implicit and hybrid flows)
 
-5. **Guardar cambios**
+6. **Guardar cambios**
    - Hacer clic en **Save** en la parte superior
 
 ---
