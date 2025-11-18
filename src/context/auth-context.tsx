@@ -47,10 +47,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const pathname = usePathname();
 
   useEffect(() => {
+    let callbackId: string | null = null;
+
     const initAuth = async () => {
       try {
-        await initializeMsal();
-        const msalInstance = getMsalInstance();
+        const msalInstance = await initializeMsal();
         const account = msalInstance.getActiveAccount();
 
         if (account) {
@@ -116,6 +117,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           setUser(null);
           setUserProfile(null);
         }
+
+        // Configurar callbacks DESPUÉS de inicializar
+        callbackId = msalInstance.addEventCallback((event: any) => {
+          if (event.eventType === 'msal:loginSuccess' || event.eventType === 'msal:acquireTokenSuccess') {
+            const account = msalInstance.getActiveAccount();
+            if (account) {
+              initAuth();
+            }
+          } else if (event.eventType === 'msal:logoutSuccess') {
+            setUser(null);
+            setUserProfile(null);
+          }
+        });
       } catch (error) {
         console.error('Error initializing auth:', error);
         setUser(null);
@@ -127,21 +141,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     initAuth();
 
-    const msalInstance = getMsalInstance();
-    const callbackId = msalInstance.addEventCallback((event: any) => {
-      if (event.eventType === 'msal:loginSuccess' || event.eventType === 'msal:acquireTokenSuccess') {
-        const account = msalInstance.getActiveAccount();
-        if (account) {
-          initAuth();
-        }
-      } else if (event.eventType === 'msal:logoutSuccess') {
-        setUser(null);
-        setUserProfile(null);
-      }
-    });
-
     return () => {
       if (callbackId) {
+        const msalInstance = getMsalInstance();
         msalInstance.removeEventCallback(callbackId);
       }
     };
