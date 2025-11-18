@@ -51,6 +51,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     const initAuth = async () => {
       try {
+        // NO procesar redirect aquí si estamos en la página de callback
+        if (pathname === '/auth/callback') {
+          setLoading(false);
+          return;
+        }
+
         const msalInstance = await initializeMsal();
         const account = msalInstance.getActiveAccount();
 
