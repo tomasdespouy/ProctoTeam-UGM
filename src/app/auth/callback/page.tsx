@@ -20,19 +20,13 @@ function AuthCallbackContent() {
         const instance = getMsalInstance();
         console.log('[Callback] Instancia MSAL obtenida');
         
-        // Limpiar estados de interacción ANTES de inicializar
-        console.log('[Callback] Limpiando estados de interacción previos...');
-        Object.keys(sessionStorage).forEach(key => {
-          if (key.includes('interaction') || key.includes('login') || key.includes('state')) {
-            console.log('[Callback] Removiendo:', key);
-            sessionStorage.removeItem(key);
-          }
-        });
-        
+        // NO limpiar estados aquí - MSAL los necesita para procesar el redirect
         await instance.initialize();
         console.log('[Callback] MSAL inicializado');
         
+        // PRIMERO procesar el redirect
         const response = await instance.handleRedirectPromise();
+        console.log('[Callback] handleRedirectPromise procesado');
         
         console.log('[Callback] Respuesta completa:', response);
         console.log('[Callback] ¿Tiene account?:', response?.account ? 'SÍ' : 'NO');
@@ -44,6 +38,15 @@ function AuthCallbackContent() {
           // CRÍTICO: Establecer la cuenta como activa
           instance.setActiveAccount(response.account);
           console.log('[Callback] Cuenta activa establecida');
+          
+          // AHORA sí, limpiar estados de interacción después de procesar
+          console.log('[Callback] Limpiando estados de interacción DESPUÉS de procesar...');
+          Object.keys(sessionStorage).forEach(key => {
+            if (key.includes('interaction')) {
+              sessionStorage.removeItem(key);
+              console.log('[Callback] Removido:', key);
+            }
+          });
           
           const userRole = sessionStorage.getItem('loginRole');
           sessionStorage.removeItem('loginRole');
