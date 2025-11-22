@@ -20,13 +20,18 @@ export default function HomePage() {
   };
 
   const handleSiguiente = () => {
+    console.log('[HomePage] ========== CLICK EN SIGUIENTE ==========');
+    console.log('[HomePage] selectedPortal actual:', selectedPortal);
     console.log('[HomePage] Navegando según portal:', selectedPortal);
+    
     if (selectedPortal === "student") {
       console.log('[HomePage] Navegando a /student/login');
       router.push("/student/login");
     } else if (selectedPortal === "instructor") {
       console.log('[HomePage] Navegando a /instructor/login');
       router.push("/instructor/login");
+    } else {
+      console.log('[HomePage] No hay portal seleccionado!');
     }
   };
 
@@ -130,16 +135,40 @@ export default function HomePage() {
 
       {/* Botón Siguiente */}
       <div className="text-center relative z-10 mb-8">
-        <Button 
-          onClick={handleSiguiente}
+        <button 
+          onClick={(e) => {
+            console.log('[HomePage] onClick ejecutado en button nativo!');
+            e.preventDefault();
+            handleSiguiente();
+          }}
           className={cn(
-            "bg-[#1a1d47] hover:bg-[#242f62] text-white px-8 py-3 rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300",
+            "bg-[#1a1d47] hover:bg-[#242f62] text-white px-8 py-3 rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300 inline-flex items-center justify-center",
             !selectedPortal && "opacity-50 cursor-not-allowed"
           )}
           disabled={!selectedPortal}
+          type="button"
         >
           Siguiente →
-        </Button>
+        </button>
+        
+        {/* Botón alternativo de prueba - SIEMPRE ACTIVO */}
+        <div className="mt-4">
+          <button
+            onClick={() => {
+              console.log('[HomePage] TEST BUTTON - Navegando DIRECTO a /student/login');
+              router.push('/student/login');
+            }}
+            className="bg-green-500 text-white px-4 py-2 rounded"
+            type="button"
+          >
+            TEST: Ir directo a Student Login
+          </button>
+        </div>
+        
+        {/* Debug: Mostrar estado actual */}
+        <div className="mt-2 text-sm text-gray-600">
+          Portal seleccionado: {selectedPortal || 'ninguno'}
+        </div>
       </div>
 
       {/* Footer */}
