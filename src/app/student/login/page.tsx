@@ -18,10 +18,13 @@ export default function StudentLoginPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  // Eliminado: La lógica de redirect ahora está en /auth/callback
+  console.log('[StudentLoginPage] Renderizando, loading:', loading, 'user:', user ? 'exists' : 'null', 'userProfile:', userProfile ? 'exists' : 'null');
 
   useEffect(() => {
+    console.log('[StudentLoginPage] useEffect - loading:', loading, 'user:', user ? 'exists' : 'null', 'userProfile:', userProfile ? 'exists' : 'null');
+    
     if (!loading && user && userProfile) {
+      console.log('[StudentLoginPage] Usuario autenticado, redirigiendo a /student');
       if (userProfile.role === 'student') {
         router.push('/student');
       } else {
@@ -32,7 +35,7 @@ export default function StudentLoginPage() {
         });
       }
     }
-  }, [user, userProfile, loading, router, toast]);
+  }, [user, userProfile, loading]);
 
   const handleAzureLogin = async () => {
     console.log('[Student Login] Iniciando login con Azure');

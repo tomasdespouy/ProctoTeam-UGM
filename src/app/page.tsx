@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { GraduationCap, Users, Check } from 'lucide-react';
@@ -12,15 +12,22 @@ export default function HomePage() {
   const [selectedPortal, setSelectedPortal] = useState<
     "student" | "instructor" | null
   >(null);
+  const router = useRouter();
 
   const handleCardClick = (portal: "student" | "instructor") => {
+    console.log('[HomePage] Seleccionando portal:', portal);
     setSelectedPortal(portal);
   };
 
-  const getRedirectUrl = () => {
-    if (selectedPortal === "student") return "/student/login";
-    if (selectedPortal === "instructor") return "/instructor/login";
-    return "#";
+  const handleSiguiente = () => {
+    console.log('[HomePage] Navegando según portal:', selectedPortal);
+    if (selectedPortal === "student") {
+      console.log('[HomePage] Navegando a /student/login');
+      router.push("/student/login");
+    } else if (selectedPortal === "instructor") {
+      console.log('[HomePage] Navegando a /instructor/login');
+      router.push("/instructor/login");
+    }
   };
 
   return (
@@ -124,18 +131,14 @@ export default function HomePage() {
       {/* Botón Siguiente */}
       <div className="text-center relative z-10 mb-8">
         <Button 
+          onClick={handleSiguiente}
           className={cn(
             "bg-[#1a1d47] hover:bg-[#242f62] text-white px-8 py-3 rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300",
             !selectedPortal && "opacity-50 cursor-not-allowed"
           )}
           disabled={!selectedPortal}
-          asChild={!!selectedPortal}
         >
-          {selectedPortal ? (
-            <Link href={getRedirectUrl()}>Siguiente →</Link>
-          ) : (
-            <span>Siguiente →</span>
-          )}
+          Siguiente →
         </Button>
       </div>
 

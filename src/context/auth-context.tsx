@@ -176,7 +176,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     const publicPaths = ['/', '/student/login', '/instructor/login', '/auth/callback'];
     const isPublicPath = publicPaths.includes(pathname);
-    console.log('[AuthContext] isPublicPath:', isPublicPath, 'publicPaths:', publicPaths);
+    console.log('[AuthContext] isPublicPath:', isPublicPath, 'pathnames included in publicPaths:', publicPaths);
 
     if (!user && !isPublicPath) {
       const loginPath = pathname.startsWith('/instructor') || pathname.startsWith('/super-admin') 
@@ -187,7 +187,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     } else {
       console.log('[AuthContext] Usuario existe o es ruta pública, no redirigir');
     }
-  }, [user, pathname, loading, router]);
+  }, [user, pathname, loading]);
 
   return (
     <AuthContext.Provider value={{ user, userProfile, loading }}>
