@@ -96,11 +96,17 @@ export default function StudentLoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Botón original con el componente Button */}
           <Button 
-            onClick={handleAzureLogin} 
+            onClick={(e) => {
+              console.log('[StudentLogin] Button onClick ejecutado!');
+              e.preventDefault();
+              handleAzureLogin();
+            }}
             disabled={isLoading}
             className="w-full"
             size="lg"
+            type="button"
           >
             {isLoading ? (
               <>
@@ -114,6 +120,26 @@ export default function StudentLoginPage() {
               </>
             )}
           </Button>
+          
+          {/* Botón HTML nativo de prueba - SIEMPRE VISIBLE */}
+          <button
+            onClick={() => {
+              console.log('[StudentLogin] ========== CLICK NATIVO TEST ==========');
+              console.log('[StudentLogin] isLoading actual:', isLoading);
+              console.log('[StudentLogin] Llamando handleAzureLogin directamente...');
+              handleAzureLogin();
+            }}
+            className="w-full bg-green-500 hover:bg-green-600 text-white px-4 py-3 rounded-lg font-medium"
+            type="button"
+          >
+            🧪 TEST: Botón Nativo - Login Microsoft
+          </button>
+          
+          {/* Debug info */}
+          <div className="text-xs text-center text-muted-foreground space-y-1">
+            <p>Estado actual: isLoading = {isLoading ? 'true' : 'false'}</p>
+            <p>Si no funcionan los clicks, hay un overlay bloqueando</p>
+          </div>
           
           <div className="pt-4 border-t">
             <p className="text-xs text-muted-foreground text-center">
