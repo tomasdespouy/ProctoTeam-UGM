@@ -35,16 +35,34 @@ export default function StudentLoginPage() {
   }, [user, userProfile, loading, router, toast]);
 
   const handleAzureLogin = async () => {
+    console.log('[Student Login] Iniciando login con Azure');
     setIsLoading(true);
-    sessionStorage.setItem('loginRole', 'student');
-    const result = await signInWithAzureRedirect();
-    
-    if (result.error) {
-      console.error('Error de login:', result.error);
+    try {
+      console.log('[Student Login] Guardando loginRole en sessionStorage');
+      sessionStorage.setItem('loginRole', 'student');
+      console.log('[Student Login] loginRole guardado');
+      
+      console.log('[Student Login] Llamando signInWithAzureRedirect()');
+      const result = await signInWithAzureRedirect();
+      console.log('[Student Login] Resultado de signInWithAzureRedirect:', result);
+      
+      if (result.error) {
+        console.error('[Student Login] Error de login:', result.error);
+        toast({
+          variant: "destructive",
+          title: "Error de autenticación",
+          description: "No se pudo iniciar sesión. Por favor, intenta de nuevo.",
+        });
+        setIsLoading(false);
+      } else {
+        console.log('[Student Login] Login exitoso, esperando redirect a Azure');
+      }
+    } catch (error) {
+      console.error('[Student Login] Excepción en handleAzureLogin:', error);
       toast({
         variant: "destructive",
         title: "Error de autenticación",
-        description: "No se pudo iniciar sesión. Por favor, intenta de nuevo.",
+        description: "Error inesperado. Por favor, intenta de nuevo.",
       });
       setIsLoading(false);
     }

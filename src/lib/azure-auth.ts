@@ -36,20 +36,30 @@ export async function signInWithAzureRedirect() {
     const instance = await initializeMsal();
     console.log('[Azure Auth] MSAL inicializado correctamente');
     
-    // CRÍTICO: Limpiar estados de interacción DESPUÉS de inicializar
-    console.log('[Azure Auth] Limpiando estados de interacción previos...');
-    Object.keys(sessionStorage).forEach(key => {
-      if (key.includes('interaction')) {
-        sessionStorage.removeItem(key);
-        console.log('[Azure Auth] Removido:', key);
-      }
+    // IMPORTANTE: NO limpiar los estados de interacción antes de loginRedirect
+    // MSAL necesita estos estados para procesar el callback correctamente
+    
+    console.log('[Azure Auth] loginRequest:', loginRequest);
+    console.log('[Azure Auth] Iniciando loginRedirect...');
+    console.log('[Azure Auth] Cliente ID:', 'e9f08a61-0e07-4a60-b825-c6041cdf0505');
+    console.log('[Azure Auth] Authority:', 'https://login.microsoftonline.com/05970e72-c674-4f1f-8033-6e35dd7f76aa');
+    console.log('[Azure Auth] Redirect URI:', window.location.origin + '/auth/callback');
+    
+    // Hacer el redirect - esto NO debe esperar porque redirige el navegador
+    instance.loginRedirect(loginRequest).catch((error: any) => {
+      console.error('[Azure Auth] Error en loginRedirect:', error);
+      console.error('[Azure Auth] Error details:', {
+        message: error?.message,
+        code: error?.error,
+        description: error?.error_description,
+      });
     });
     
-    console.log('[Azure Auth] Iniciando loginRedirect...');
-    await instance.loginRedirect(loginRequest);
+    // La función devuelve aquí porque el navegador será redirigido
     return { error: null };
   } catch (error: any) {
-    console.error('Error en redirect Azure:', error);
+    console.error('[Azure Auth] Error en signInWithAzureRedirect:', error);
+    console.error('[Azure Auth] Error stack:', error?.stack);
     return { error };
   }
 }

@@ -51,14 +51,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     const initAuth = async () => {
       try {
+        console.log('[AuthContext] Iniciando initAuth, pathname:', pathname);
+        
         // NO procesar redirect aquí si estamos en la página de callback
         if (pathname === '/auth/callback') {
+          console.log('[AuthContext] Estamos en /auth/callback, no procesando redirect aquí');
           setLoading(false);
           return;
         }
 
+        console.log('[AuthContext] Inicializando MSAL...');
         setLoading(true); // Asegurar que loading esté en true mientras inicializamos
         const msalInstance = await initializeMsal();
+        console.log('[AuthContext] MSAL inicializado');
         const account = msalInstance.getActiveAccount();
 
         if (account) {
@@ -157,16 +162,25 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }, [pathname]); // Re-inicializar cuando cambia el pathname
 
   useEffect(() => {
-    if (loading) return;
+    console.log('[AuthContext] Protection effect - loading:', loading, 'user:', user ? 'exists' : 'null', 'pathname:', pathname);
+    
+    if (loading) {
+      console.log('[AuthContext] Still loading, skipping protection check');
+      return;
+    }
 
     const publicPaths = ['/', '/student/login', '/instructor/login', '/auth/callback'];
     const isPublicPath = publicPaths.includes(pathname);
+    console.log('[AuthContext] isPublicPath:', isPublicPath, 'publicPaths:', publicPaths);
 
     if (!user && !isPublicPath) {
       const loginPath = pathname.startsWith('/instructor') || pathname.startsWith('/super-admin') 
         ? '/instructor/login' 
         : '/student/login';
+      console.log('[AuthContext] No user y no es ruta pública, redirigiendo a:', loginPath);
       router.push(loginPath);
+    } else {
+      console.log('[AuthContext] Usuario existe o es ruta pública, no redirigir');
     }
   }, [user, pathname, loading, router]);
 
