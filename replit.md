@@ -22,13 +22,19 @@ Preferred communication style: Simple, everyday language.
 - **Redirect URI**: `/auth/callback` - Standard OAuth2/OIDC callback endpoint
 - **Production Domain**: `https://UGM-proctoring.replit.app`
 - **Authentication Flow**: 
-  - Users click login → MSAL popup/redirect → Azure AD authentication
-  - Azure AD redirects to `/auth/callback` with token
-  - Callback page processes token and redirects to appropriate portal (student/instructor)
+  - Users click login → MSAL loginRedirect() → Azure AD authentication
+  - Azure AD redirects to `/auth/callback` with authorization code in URL hash
+  - Callback page processes redirect using handleRedirectPromise()
+  - **CRITICAL ORDER**: Must process redirect BEFORE cleaning sessionStorage states (MSAL needs correlation states)
+  - After successful auth, set active account and redirect to appropriate portal
 - **User Roles**: Role-based access control with 'student', 'instructor', and 'super-admin' roles
 - **Data Storage**: PostgreSQL (Replit) for user profiles and session data
 - **Identity Verification**: AI-powered biometric verification comparing ID cards with live facial recognition
 - **Token Management**: JWT tokens from Azure AD validated on the server using jsonwebtoken
+- **MSAL State Management**: 
+  - Clean interaction states BEFORE loginRedirect() to prevent "interaction_in_progress" errors
+  - NEVER clean states before handleRedirectPromise() or it returns null
+  - Clean states AFTER successful redirect processing in callback
 
 ## AI Integration
 - **Framework**: Google Genkit for AI workflow orchestration
