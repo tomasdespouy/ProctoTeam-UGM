@@ -10,18 +10,19 @@ export function getMsalInstance(): PublicClientApplication {
   return msalInstance;
 }
 
-export async function initializeMsal(): Promise<PublicClientApplication> {
+export async function initializeMsal(shouldCleanInteraction: boolean = false): Promise<PublicClientApplication> {
   const instance = getMsalInstance();
   
-  // CRÍTICO: Limpiar estados de interacción ANTES de inicializar
-  // Esto previene el error "interaction_in_progress"
-  console.log('[initializeMsal] Limpiando estados de interacción previos...');
-  Object.keys(sessionStorage).forEach(key => {
-    if (key.includes('interaction') || key.includes('login') || key.includes('state')) {
-      console.log('[initializeMsal] Removiendo:', key);
-      sessionStorage.removeItem(key);
-    }
-  });
+  // SOLO limpiar cuando se especifica explícitamente (ej: antes de hacer loginRedirect)
+  if (shouldCleanInteraction) {
+    console.log('[initializeMsal] Limpiando estados de interacción...');
+    Object.keys(sessionStorage).forEach(key => {
+      if (key.includes('interaction') || key.includes('login') || key.includes('state')) {
+        console.log('[initializeMsal] Removiendo:', key);
+        sessionStorage.removeItem(key);
+      }
+    });
+  }
   
   console.log('[initializeMsal] Inicializando MSAL...');
   await instance.initialize();
@@ -47,7 +48,9 @@ export async function signInWithAzurePopup() {
 export async function signInWithAzureRedirect() {
   try {
     console.log('[Azure Auth] Iniciando signInWithAzureRedirect...');
-    const instance = await initializeMsal();
+    // IMPORTANTE: Limpiar estados de interacción ANTES de hacer loginRedirect
+    // Esto previene el error "interaction_in_progress"
+    const instance = await initializeMsal(true);
     console.log('[Azure Auth] MSAL inicializado correctamente');
     
     // Ahora que MSAL está inicializado, puede hacer loginRedirect

@@ -20,6 +20,15 @@ function AuthCallbackContent() {
         const instance = getMsalInstance();
         console.log('[Callback] Instancia MSAL obtenida');
         
+        // Limpiar estados de interacción ANTES de inicializar
+        console.log('[Callback] Limpiando estados de interacción previos...');
+        Object.keys(sessionStorage).forEach(key => {
+          if (key.includes('interaction') || key.includes('login') || key.includes('state')) {
+            console.log('[Callback] Removiendo:', key);
+            sessionStorage.removeItem(key);
+          }
+        });
+        
         await instance.initialize();
         console.log('[Callback] MSAL inicializado');
         
@@ -36,17 +45,10 @@ function AuthCallbackContent() {
           instance.setActiveAccount(response.account);
           console.log('[Callback] Cuenta activa establecida');
           
-          // Limpiar TODOS los estados de interacción en progreso de MSAL
-          Object.keys(sessionStorage).forEach(key => {
-            if (key.includes('interaction')) {
-              sessionStorage.removeItem(key);
-              console.log('[Callback] Removido:', key);
-            }
-          });
-          console.log('[Callback] Estados de interacción limpiados');
-          
           const userRole = sessionStorage.getItem('loginRole');
           sessionStorage.removeItem('loginRole');
+          
+          console.log('[Callback] Redirigiendo a portal según rol:', userRole);
           
           if (userRole === 'student') {
             console.log('[Callback] Redirigiendo a portal de estudiantes');
