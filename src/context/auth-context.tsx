@@ -64,7 +64,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setLoading(true); // Asegurar que loading esté en true mientras inicializamos
         const msalInstance = await initializeMsal();
         console.log('[AuthContext] MSAL inicializado');
+        
+        // IMPORTANTE: Procesar el resultado del redirect si viene de /auth/callback
+        console.log('[AuthContext] Procesando resultado del redirect...');
+        const redirectResult = await msalInstance.handleRedirectPromise();
+        console.log('[AuthContext] Resultado del redirect:', redirectResult ? 'Existe' : 'No existe');
+        
+        if (redirectResult && redirectResult.account) {
+          console.log('[AuthContext] Redirect completado, cuenta:', redirectResult.account.username);
+          msalInstance.setActiveAccount(redirectResult.account);
+        }
+        
         const account = msalInstance.getActiveAccount();
+        console.log('[AuthContext] Cuenta activa:', account?.username || 'No hay cuenta');
 
         if (account) {
           const msalUser: MsalUser = {

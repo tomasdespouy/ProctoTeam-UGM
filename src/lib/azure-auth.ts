@@ -12,7 +12,21 @@ export function getMsalInstance(): PublicClientApplication {
 
 export async function initializeMsal(): Promise<PublicClientApplication> {
   const instance = getMsalInstance();
+  
+  // CRÍTICO: Limpiar estados de interacción ANTES de inicializar
+  // Esto previene el error "interaction_in_progress"
+  console.log('[initializeMsal] Limpiando estados de interacción previos...');
+  Object.keys(sessionStorage).forEach(key => {
+    if (key.includes('interaction') || key.includes('login') || key.includes('state')) {
+      console.log('[initializeMsal] Removiendo:', key);
+      sessionStorage.removeItem(key);
+    }
+  });
+  
+  console.log('[initializeMsal] Inicializando MSAL...');
   await instance.initialize();
+  console.log('[initializeMsal] MSAL inicializado');
+  
   return instance;
 }
 
@@ -32,27 +46,19 @@ export async function signInWithAzurePopup() {
 
 export async function signInWithAzureRedirect() {
   try {
-    console.log('[Azure Auth] Inicializando MSAL...');
+    console.log('[Azure Auth] Iniciando signInWithAzureRedirect...');
     const instance = await initializeMsal();
     console.log('[Azure Auth] MSAL inicializado correctamente');
     
-    // IMPORTANTE: NO limpiar los estados de interacción antes de loginRedirect
-    // MSAL necesita estos estados para procesar el callback correctamente
-    
+    // Ahora que MSAL está inicializado, puede hacer loginRedirect
     console.log('[Azure Auth] loginRequest:', loginRequest);
     console.log('[Azure Auth] Iniciando loginRedirect...');
-    console.log('[Azure Auth] Cliente ID:', 'e9f08a61-0e07-4a60-b825-c6041cdf0505');
-    console.log('[Azure Auth] Authority:', 'https://login.microsoftonline.com/05970e72-c674-4f1f-8033-6e35dd7f76aa');
-    console.log('[Azure Auth] Redirect URI:', window.location.origin + '/auth/callback');
     
     // Hacer el redirect - esto NO debe esperar porque redirige el navegador
     instance.loginRedirect(loginRequest).catch((error: any) => {
       console.error('[Azure Auth] Error en loginRedirect:', error);
-      console.error('[Azure Auth] Error details:', {
-        message: error?.message,
-        code: error?.error,
-        description: error?.error_description,
-      });
+      console.error('[Azure Auth] Error message:', error?.message);
+      console.error('[Azure Auth] Error code:', error?.error);
     });
     
     // La función devuelve aquí porque el navegador será redirigido
