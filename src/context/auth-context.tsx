@@ -57,6 +57,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           return;
         }
 
+        setLoading(true); // Asegurar que loading esté en true mientras inicializamos
         const msalInstance = await initializeMsal();
         const account = msalInstance.getActiveAccount();
 
@@ -153,12 +154,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         msalInstance.removeEventCallback(callbackId);
       }
     };
-  }, []);
+  }, [pathname]); // Re-inicializar cuando cambia el pathname
 
   useEffect(() => {
     if (loading) return;
 
-    const publicPaths = ['/', '/student/login', '/instructor/login'];
+    const publicPaths = ['/', '/student/login', '/instructor/login', '/auth/callback'];
     const isPublicPath = publicPaths.includes(pathname);
 
     if (!user && !isPublicPath) {
