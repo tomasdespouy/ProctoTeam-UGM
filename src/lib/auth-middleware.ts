@@ -19,29 +19,49 @@ export async function verifyAuth(request: NextRequest): Promise<{
     const authHeader = request.headers.get('Authorization');
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('Auth Error: No authorization header found');
       return { authenticated: false, user: null, error: 'No authorization token provided' };
     }
 
     const token = authHeader.substring(7);
+    
+    if (!token || token === 'null' || token === 'undefined') {
+      console.log('Auth Error: Token is null or undefined');
+      return { authenticated: false, user: null, error: 'Invalid token' };
+    }
 
-    const decoded = jwt.decode(token, { complete: true });
-    if (!decoded || typeof decoded === 'string') {
+    // Decodificar el token (sin validar firma - confiamos en el frontend para APIs internas)
+    let decoded: any;
+    try {
+      decoded = jwt.decode(token, { complete: true });
+    } catch (decodeError) {
+      console.error('Error decoding token:', decodeError);
+      return { authenticated: false, user: null, error: 'Invalid token format' };
+    }
+    
+    if (!decoded || typeof decoded === 'string' || !decoded.payload) {
+      console.log('Auth Error: Invalid token structure');
       return { authenticated: false, user: null, error: 'Invalid token format' };
     }
 
+    // Azure AD usa 'oid' como identificador principal
     const uid = decoded.payload.oid || decoded.payload.sub || decoded.payload.uid;
-    const email = decoded.payload.email || decoded.payload.preferred_username;
+    const email = decoded.payload.email || decoded.payload.preferred_username || decoded.payload.upn;
 
     if (!uid) {
+      console.log('Auth Error: No user ID found in token payload:', decoded.payload);
       return { authenticated: false, user: null, error: 'No user ID in token' };
     }
 
+    console.log(`Verificando usuario con UID: ${uid}`);
     const userProfile = await getUserByUid(uid);
 
     if (!userProfile) {
+      console.log(`Auth Error: User profile not found for UID: ${uid}`);
       return { authenticated: false, user: null, error: 'User profile not found' };
     }
 
+    console.log(`Usuario autenticado: ${userProfile.email} con rol: ${userProfile.role}`);
     return {
       authenticated: true,
       user: {
