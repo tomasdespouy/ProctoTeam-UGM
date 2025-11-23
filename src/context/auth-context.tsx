@@ -53,7 +53,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         await initializeMsal();
         const msalInstance = getMsalInstance();
 
-        // --- CORRECCIÓN CRÍTICA AQUÍ ---
         // Intentamos obtener la cuenta activa
         let account = msalInstance.getActiveAccount();
 
@@ -66,7 +65,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 account = allAccounts[0];
             }
         }
-        // -------------------------------
 
         if (account) {
           console.log("✅ Usuario detectado:", account.username);
@@ -105,7 +103,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                   uid: uid,
                   email: account.username || '',
                   nombre: account.name || account.username?.split('@')[0] || 'Usuario',
-                  role: 'student', // OJO: Aquí podrías ajustar lógica si quieres roles dinámicos
+                  role: 'student', 
                   photo_url: null,
                 }),
               });
@@ -151,11 +149,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     const msalInstance = getMsalInstance();
     const callbackId = msalInstance.addEventCallback((event: any) => {
-      // Si el login es exitoso, volvemos a ejecutar initAuth para capturar la cuenta
-      if (event.eventType === 'msal:loginSuccess' || event.eventType === 'msal:acquireTokenSuccess') {
+      // --- CORRECCIÓN DE BUCLE INFINITO ---
+      // Solo reaccionamos a LOGIN explícito, no a la obtención silenciosa de tokens
+      if (event.eventType === 'msal:loginSuccess') {
         const account = event.payload.account;
         if (account) {
-            msalInstance.setActiveAccount(account); // Asegurar que se active al recibir evento
+            msalInstance.setActiveAccount(account); 
         }
         initAuth();
       } else if (event.eventType === 'msal:logoutSuccess') {
