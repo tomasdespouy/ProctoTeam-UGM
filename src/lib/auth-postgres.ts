@@ -18,11 +18,11 @@ export async function getUserByUid(uid: string): Promise<UserProfile | null> {
       'SELECT * FROM users WHERE uid = $1',
       [uid]
     );
-    
+
     if (result.rows.length === 0) {
       return null;
     }
-    
+
     return result.rows[0] as UserProfile;
   } catch (error) {
     console.error('Error fetching user by UID:', error);
@@ -37,11 +37,11 @@ export async function getUserByEmail(email: string): Promise<UserProfile | null>
       'SELECT * FROM users WHERE email = $1',
       [email]
     );
-    
+
     if (result.rows.length === 0) {
       return null;
     }
-    
+
     return result.rows[0] as UserProfile;
   } catch (error) {
     console.error('Error fetching user by email:', error);
@@ -49,7 +49,7 @@ export async function getUserByEmail(email: string): Promise<UserProfile | null>
   }
 }
 
-// Crear o actualizar usuario (upsert)
+// Crear o actualizar usuario (upsert) con lógica de Primer Usuario = Admin
 export async function upsertUser(userData: {
   uid: string;
   email: string;
@@ -58,6 +58,19 @@ export async function upsertUser(userData: {
   photo_url?: string;
 }): Promise<UserProfile> {
   try {
+    let finalRole = userData.role;
+
+    // --- LÓGICA AUTOMÁTICA DE ADMIN ---
+    // Verificamos si la base de datos está vacía antes de insertar
+    const countResult = await query('SELECT count(*) FROM users');
+    const userCount = parseInt(countResult.rows[0].count);
+
+    if (userCount === 0) {
+      console.log(`🚀 Primer usuario detectado (${userData.email}). Asignando rol de 'super-admin' automáticamente.`);
+      finalRole = 'super-admin';
+    }
+    // ----------------------------------
+
     const result = await query(
       `INSERT INTO users (uid, email, nombre, role, photo_url, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
@@ -68,9 +81,9 @@ export async function upsertUser(userData: {
          photo_url = EXCLUDED.photo_url,
          updated_at = NOW()
        RETURNING *`,
-      [userData.uid, userData.email, userData.nombre, userData.role, userData.photo_url || null]
+      [userData.uid, userData.email, userData.nombre, finalRole, userData.photo_url || null]
     );
-    
+
     return result.rows[0] as UserProfile;
   } catch (error) {
     console.error('Error upserting user:', error);
@@ -101,7 +114,7 @@ export async function getUsersByRole(role: 'student' | 'instructor' | 'super-adm
       'SELECT * FROM users WHERE role = $1 ORDER BY created_at DESC',
       [role]
     );
-    
+
     return result.rows as UserProfile[];
   } catch (error) {
     console.error('Error fetching users by role:', error);

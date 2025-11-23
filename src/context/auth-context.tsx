@@ -49,23 +49,43 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   useEffect(() => {
     const initAuth = async () => {
       try {
+        console.log("🔐 AuthContext: Iniciando...");
         await initializeMsal();
         const msalInstance = getMsalInstance();
-        const account = msalInstance.getActiveAccount();
+
+        // --- CORRECCIÓN CRÍTICA AQUÍ ---
+        // Intentamos obtener la cuenta activa
+        let account = msalInstance.getActiveAccount();
+
+        // Si es null, buscamos si hay alguna cuenta en caché y activamos la primera
+        if (!account) {
+            const allAccounts = msalInstance.getAllAccounts();
+            if (allAccounts.length > 0) {
+                console.log("⚠️ No hay cuenta activa, pero se encontraron cuentas en caché. Activando la primera...");
+                msalInstance.setActiveAccount(allAccounts[0]);
+                account = allAccounts[0];
+            }
+        }
+        // -------------------------------
 
         if (account) {
+          console.log("✅ Usuario detectado:", account.username);
           const msalUser: MsalUser = {
             account,
             getIdToken: acquireTokenSilent,
           };
 
           const uid = account.localAccountId;
+          // Log para confirmar que vamos a llamar a la API
+          console.log(`📡 Llamando a API get-user con UID: ${uid}`);
+
           const response = await fetch(`/api/auth/get-user?uid=${uid}`);
-          
+
           if (response.ok) {
             const profileData = await response.json();
-            
+
             if (profileData) {
+              console.log("👤 Perfil encontrado en DB");
               setUserProfile({
                 id: profileData.id,
                 uid: profileData.uid,
@@ -77,6 +97,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 updated_at: profileData.updated_at ? new Date(profileData.updated_at) : undefined,
               });
             } else {
+              console.log("🆕 Usuario nuevo - Creando perfil...");
               const createResponse = await fetch('/api/auth/create-user', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -84,11 +105,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                   uid: uid,
                   email: account.username || '',
                   nombre: account.name || account.username?.split('@')[0] || 'Usuario',
-                  role: 'student',
+                  role: 'student', // OJO: Aquí podrías ajustar lógica si quieres roles dinámicos
                   photo_url: null,
                 }),
               });
-              
+
               if (createResponse.ok) {
                 const newProfile = await createResponse.json();
                 setUserProfile({
@@ -102,22 +123,23 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                   updated_at: newProfile.updated_at ? new Date(newProfile.updated_at) : undefined,
                 });
               } else {
-                console.error('Failed to create user profile');
+                console.error('❌ Falló la creación del usuario');
                 setUserProfile(null);
               }
             }
           } else {
-            console.error('Failed to fetch user profile');
+            console.error('❌ Error API get-user:', response.status);
             setUserProfile(null);
           }
-          
+
           setUser(msalUser);
         } else {
+          console.log("⚪ No hay usuario logueado.");
           setUser(null);
           setUserProfile(null);
         }
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        console.error('💥 Error fatal en initAuth:', error);
         setUser(null);
         setUserProfile(null);
       } finally {
@@ -129,11 +151,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     const msalInstance = getMsalInstance();
     const callbackId = msalInstance.addEventCallback((event: any) => {
+      // Si el login es exitoso, volvemos a ejecutar initAuth para capturar la cuenta
       if (event.eventType === 'msal:loginSuccess' || event.eventType === 'msal:acquireTokenSuccess') {
-        const account = msalInstance.getActiveAccount();
+        const account = event.payload.account;
         if (account) {
-          initAuth();
+            msalInstance.setActiveAccount(account); // Asegurar que se active al recibir evento
         }
+        initAuth();
       } else if (event.eventType === 'msal:logoutSuccess') {
         setUser(null);
         setUserProfile(null);
@@ -150,7 +174,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   useEffect(() => {
     if (loading) return;
 
-    const publicPaths = ['/', '/student/login', '/instructor/login'];
+    const publicPaths = ['/', '/student/login', '/instructor/login', '/auth/callback'];
     const isPublicPath = publicPaths.includes(pathname);
 
     if (!user && !isPublicPath) {
