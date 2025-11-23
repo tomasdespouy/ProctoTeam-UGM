@@ -10,24 +10,9 @@ export function getMsalInstance(): PublicClientApplication {
   return msalInstance;
 }
 
-export async function initializeMsal(shouldCleanInteraction: boolean = false): Promise<PublicClientApplication> {
+export async function initializeMsal(): Promise<PublicClientApplication> {
   const instance = getMsalInstance();
-  
-  // SOLO limpiar cuando se especifica explícitamente (ej: antes de hacer loginRedirect)
-  if (shouldCleanInteraction) {
-    console.log('[initializeMsal] Limpiando estados de interacción...');
-    Object.keys(sessionStorage).forEach(key => {
-      if (key.includes('interaction') || key.includes('login') || key.includes('state')) {
-        console.log('[initializeMsal] Removiendo:', key);
-        sessionStorage.removeItem(key);
-      }
-    });
-  }
-  
-  console.log('[initializeMsal] Inicializando MSAL...');
   await instance.initialize();
-  console.log('[initializeMsal] MSAL inicializado');
-  
   return instance;
 }
 
@@ -35,9 +20,6 @@ export async function signInWithAzurePopup() {
   try {
     const instance = await initializeMsal();
     const result = await instance.loginPopup(loginRequest);
-    if (result && result.account) {
-      instance.setActiveAccount(result.account);
-    }
     return { user: result.account, accessToken: result.accessToken, idToken: result.idToken, error: null };
   } catch (error: any) {
     console.error('Error en login Azure:', error);
@@ -47,28 +29,11 @@ export async function signInWithAzurePopup() {
 
 export async function signInWithAzureRedirect() {
   try {
-    console.log('[Azure Auth] Iniciando signInWithAzureRedirect...');
-    // IMPORTANTE: Limpiar estados de interacción ANTES de hacer loginRedirect
-    // Esto previene el error "interaction_in_progress"
-    const instance = await initializeMsal(true);
-    console.log('[Azure Auth] MSAL inicializado correctamente');
-    
-    // Ahora que MSAL está inicializado, puede hacer loginRedirect
-    console.log('[Azure Auth] loginRequest:', loginRequest);
-    console.log('[Azure Auth] Iniciando loginRedirect...');
-    
-    // Hacer el redirect - esto NO debe esperar porque redirige el navegador
-    instance.loginRedirect(loginRequest).catch((error: any) => {
-      console.error('[Azure Auth] Error en loginRedirect:', error);
-      console.error('[Azure Auth] Error message:', error?.message);
-      console.error('[Azure Auth] Error code:', error?.error);
-    });
-    
-    // La función devuelve aquí porque el navegador será redirigido
+    const instance = await initializeMsal();
+    await instance.loginRedirect(loginRequest);
     return { error: null };
   } catch (error: any) {
-    console.error('[Azure Auth] Error en signInWithAzureRedirect:', error);
-    console.error('[Azure Auth] Error stack:', error?.stack);
+    console.error('Error en redirect Azure:', error);
     return { error };
   }
 }
@@ -77,10 +42,7 @@ export async function handleAzureRedirectResult() {
   try {
     const instance = await initializeMsal();
     const result = await instance.handleRedirectPromise();
-    if (result && result.account) {
-      // IMPORTANTE: Establecer la cuenta como activa
-      instance.setActiveAccount(result.account);
-      console.log('[Azure Auth] Cuenta activa establecida:', result.account.username);
+    if (result) {
       return { user: result.account, accessToken: result.accessToken, idToken: result.idToken, error: null };
     }
     return { user: null, accessToken: null, idToken: null, error: null };

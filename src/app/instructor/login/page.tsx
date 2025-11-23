@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithAzureRedirect } from '@/lib/azure-auth';
+import { signInWithAzurePopup, signInWithAzureRedirect, handleAzureRedirectResult } from '@/lib/azure-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, LogIn, ShieldAlert } from 'lucide-react';
@@ -18,7 +18,18 @@ export default function InstructorLoginPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  // Eliminado: La lógica de redirect ahora está en /auth/callback
+  useEffect(() => {
+    const checkRedirect = async () => {
+      setIsLoading(true);
+      const result = await handleAzureRedirectResult();
+      if (result.user) {
+        console.log('Logged in via redirect');
+      }
+      setIsLoading(false);
+    };
+    
+    checkRedirect();
+  }, []);
 
   useEffect(() => {
     if (!loading && user && userProfile) {
@@ -39,7 +50,7 @@ export default function InstructorLoginPage() {
   const handleAzureLogin = async () => {
     setIsLoading(true);
     sessionStorage.setItem('loginRole', 'instructor');
-    const result = await signInWithAzureRedirect();
+    const result = await signInWithAzurePopup();
     
     if (result.error) {
       console.error('Error de login:', result.error);
@@ -69,7 +80,7 @@ export default function InstructorLoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4">
           <div className="flex justify-center mb-2">
-            <PortalLogo width={64} height={64} />
+            <PortalLogo size="lg" />
           </div>
           <CardTitle className="text-2xl text-center">Portal de Docentes</CardTitle>
           <CardDescription className="text-center">

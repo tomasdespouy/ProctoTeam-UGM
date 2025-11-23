@@ -7,15 +7,7 @@ const getRedirectUri = (): string => {
   if (typeof window === 'undefined') {
     return 'http://localhost:5000/auth/callback';
   }
-  
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return `${protocol}//${hostname}:5000/auth/callback`;
-  }
-  
-  return `${protocol}//${hostname}/auth/callback`;
+  return `${window.location.origin}/auth/callback`;
 };
 
 const REDIRECT_URI = getRedirectUri();
@@ -25,11 +17,7 @@ export const msalConfig: Configuration = {
     clientId: AZURE_CLIENT_ID,
     authority: `https://login.microsoftonline.com/${AZURE_TENANT_ID}`,
     redirectUri: REDIRECT_URI,
-    postLogoutRedirectUri: typeof window !== 'undefined' 
-      ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-          ? `${window.location.protocol}//${window.location.hostname}:5000`
-          : `${window.location.protocol}//${window.location.hostname}`)
-      : 'http://localhost:5000',
+    postLogoutRedirectUri: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000',
   },
   cache: {
     cacheLocation: 'sessionStorage',

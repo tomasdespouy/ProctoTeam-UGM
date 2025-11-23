@@ -13,7 +13,6 @@ export function GlobalNavigationHandler() {
   useEffect(() => {
     // This effect handles the initial page load.
     // We might not need it if the initial state is false, but it's good for safety.
-    console.log('[GlobalNavigationHandler] Hiding loader on mount');
     hideLoader();
   }, [hideLoader]);
   

@@ -47,29 +47,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const pathname = usePathname();
 
   useEffect(() => {
-    let callbackId: string | null = null;
-
     const initAuth = async () => {
       try {
-        console.log('[AuthContext] Iniciando initAuth, pathname:', pathname);
-        
-        // NO procesar redirect aquí si estamos en la página de callback
-        if (pathname === '/auth/callback') {
-          console.log('[AuthContext] Estamos en /auth/callback, no procesando redirect aquí');
-          setLoading(false);
-          return;
-        }
-
-        console.log('[AuthContext] Inicializando MSAL...');
-        setLoading(true); // Asegurar que loading esté en true mientras inicializamos
-        // NO limpiar estados aquí - solo inicializar MSAL
-        const msalInstance = await initializeMsal(false);
-        console.log('[AuthContext] MSAL inicializado');
-        
-        // IMPORTANTE: Solo obtener la cuenta activa (ya fue procesada en /auth/callback)
-        // NO llamar a handleRedirectPromise() aquí - eso ya pasó en callback
+        await initializeMsal();
+        const msalInstance = getMsalInstance();
         const account = msalInstance.getActiveAccount();
-        console.log('[AuthContext] Cuenta activa:', account?.username || 'No hay cuenta');
 
         if (account) {
           const msalUser: MsalUser = {
@@ -134,19 +116,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           setUser(null);
           setUserProfile(null);
         }
-
-        // Configurar callbacks DESPUÉS de inicializar
-        callbackId = msalInstance.addEventCallback((event: any) => {
-          if (event.eventType === 'msal:loginSuccess' || event.eventType === 'msal:acquireTokenSuccess') {
-            const account = msalInstance.getActiveAccount();
-            if (account) {
-              initAuth();
-            }
-          } else if (event.eventType === 'msal:logoutSuccess') {
-            setUser(null);
-            setUserProfile(null);
-          }
-        });
       } catch (error) {
         console.error('Error initializing auth:', error);
         setUser(null);
@@ -158,36 +127,39 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     initAuth();
 
+    const msalInstance = getMsalInstance();
+    const callbackId = msalInstance.addEventCallback((event: any) => {
+      if (event.eventType === 'msal:loginSuccess' || event.eventType === 'msal:acquireTokenSuccess') {
+        const account = msalInstance.getActiveAccount();
+        if (account) {
+          initAuth();
+        }
+      } else if (event.eventType === 'msal:logoutSuccess') {
+        setUser(null);
+        setUserProfile(null);
+      }
+    });
+
     return () => {
       if (callbackId) {
-        const msalInstance = getMsalInstance();
         msalInstance.removeEventCallback(callbackId);
       }
     };
-  }, [pathname]); // Re-inicializar cuando cambia el pathname
+  }, []);
 
   useEffect(() => {
-    console.log('[AuthContext] Protection effect - loading:', loading, 'user:', user ? 'exists' : 'null', 'pathname:', pathname);
-    
-    if (loading) {
-      console.log('[AuthContext] Still loading, skipping protection check');
-      return;
-    }
+    if (loading) return;
 
-    const publicPaths = ['/', '/student/login', '/instructor/login', '/auth/callback'];
+    const publicPaths = ['/', '/student/login', '/instructor/login'];
     const isPublicPath = publicPaths.includes(pathname);
-    console.log('[AuthContext] isPublicPath:', isPublicPath, 'pathnames included in publicPaths:', publicPaths);
 
     if (!user && !isPublicPath) {
       const loginPath = pathname.startsWith('/instructor') || pathname.startsWith('/super-admin') 
         ? '/instructor/login' 
         : '/student/login';
-      console.log('[AuthContext] No user y no es ruta pública, redirigiendo a:', loginPath);
       router.push(loginPath);
-    } else {
-      console.log('[AuthContext] Usuario existe o es ruta pública, no redirigir');
     }
-  }, [user, pathname, loading]);
+  }, [user, pathname, loading, router]);
 
   return (
     <AuthContext.Provider value={{ user, userProfile, loading }}>

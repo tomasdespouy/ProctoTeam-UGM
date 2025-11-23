@@ -1,11 +1,11 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getMsalInstance } from '@/lib/azure-auth';
 import { Loader2 } from 'lucide-react';
 
-function AuthCallbackContent() {
+export default function AuthCallbackPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
@@ -13,54 +13,19 @@ function AuthCallbackContent() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        console.log('[Callback] Iniciando procesamiento de callback');
-        console.log('[Callback] URL completa:', window.location.href);
-        console.log('[Callback] Hash:', window.location.hash);
-        
         const instance = getMsalInstance();
-        console.log('[Callback] Instancia MSAL obtenida');
-        
-        // NO limpiar estados aquí - MSAL los necesita para procesar el redirect
         await instance.initialize();
-        console.log('[Callback] MSAL inicializado');
-        
-        // PRIMERO procesar el redirect
         const response = await instance.handleRedirectPromise();
-        console.log('[Callback] handleRedirectPromise procesado');
         
-        console.log('[Callback] Respuesta completa:', response);
-        console.log('[Callback] ¿Tiene account?:', response?.account ? 'SÍ' : 'NO');
-        console.log('[Callback] ¿Tiene accessToken?:', response?.accessToken ? 'SÍ' : 'NO');
-        
-        if (response && response.account) {
-          console.log('[Callback] Autenticación exitosa, cuenta:', response.account.username);
-          
-          // CRÍTICO: Establecer la cuenta como activa
-          instance.setActiveAccount(response.account);
-          console.log('[Callback] Cuenta activa establecida');
-          
-          // AHORA sí, limpiar estados de interacción después de procesar
-          console.log('[Callback] Limpiando estados de interacción DESPUÉS de procesar...');
-          Object.keys(sessionStorage).forEach(key => {
-            if (key.includes('interaction')) {
-              sessionStorage.removeItem(key);
-              console.log('[Callback] Removido:', key);
-            }
-          });
-          
+        if (response) {
           const userRole = sessionStorage.getItem('loginRole');
           sessionStorage.removeItem('loginRole');
           
-          console.log('[Callback] Redirigiendo a portal según rol:', userRole);
-          
           if (userRole === 'student') {
-            console.log('[Callback] Redirigiendo a portal de estudiantes');
             router.push('/student');
           } else if (userRole === 'instructor') {
-            console.log('[Callback] Redirigiendo a portal de instructores');
             router.push('/instructor');
           } else {
-            console.log('[Callback] Sin rol definido, redirigiendo a home');
             router.push('/');
           }
         } else {
@@ -68,46 +33,25 @@ function AuthCallbackContent() {
           const errorDescription = searchParams.get('error_description');
           
           if (error) {
-            console.error('[Callback] Error de autenticación:', error, errorDescription);
+            console.error('Authentication error:', error, errorDescription);
             setError(errorDescription || 'Error de autenticación');
-            setTimeout(() => {
-              const userRole = sessionStorage.getItem('loginRole');
-              sessionStorage.removeItem('loginRole');
-              if (userRole === 'student') {
-                router.push('/student/login');
-              } else if (userRole === 'instructor') {
-                router.push('/instructor/login');
-              } else {
-                router.push('/');
-              }
-            }, 3000);
+            setTimeout(() => router.push('/'), 3000);
           } else {
-            console.log('[Callback] No hay respuesta ni error, redirigiendo al login');
             const userRole = sessionStorage.getItem('loginRole');
             sessionStorage.removeItem('loginRole');
             if (userRole === 'student') {
-              router.push('/student/login');
+              router.push('/student');
             } else if (userRole === 'instructor') {
-              router.push('/instructor/login');
+              router.push('/instructor');
             } else {
               router.push('/');
             }
           }
         }
       } catch (error) {
-        console.error('[Callback] Error procesando redirect:', error);
+        console.error('Error handling redirect:', error);
         setError('Error procesando la autenticación');
-        setTimeout(() => {
-          const userRole = sessionStorage.getItem('loginRole');
-          sessionStorage.removeItem('loginRole');
-          if (userRole === 'student') {
-            router.push('/student/login');
-          } else if (userRole === 'instructor') {
-            router.push('/instructor/login');
-          } else {
-            router.push('/');
-          }
-        }, 3000);
+        setTimeout(() => router.push('/'), 3000);
       }
     };
 
@@ -142,27 +86,5 @@ function AuthCallbackContent() {
         </div>
       </div>
     </div>
-  );
-}
-
-export default function AuthCallbackPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#00d4ff] via-[#0099cc] to-[#006699]">
-        <div className="bg-white p-8 rounded-lg shadow-lg">
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="w-12 h-12 animate-spin text-[#00d4ff]" />
-            <div className="text-center">
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">
-                Procesando autenticación
-              </h2>
-              <p className="text-gray-600">Por favor espera...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    }>
-      <AuthCallbackContent />
-    </Suspense>
   );
 }

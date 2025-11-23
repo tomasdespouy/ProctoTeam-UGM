@@ -43,7 +43,6 @@ import { UserNav } from "@/components/instructor/user-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PortalLogo } from "@/components/portal-logo";
 import Image from "next/image";
-import { useEffect } from "react";
 
 export default function StudentHomePage() {
   const { user, userProfile, loading } = useAuth();
@@ -55,14 +54,17 @@ export default function StudentHomePage() {
 
   const handleJoinExam = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !userProfile || !accessCode.trim()) return;
+    if (!user || !accessCode.trim()) return;
 
     setIsLoading(true);
     try {
-      // Buscar la sesión de examen con el código
-      const response = await fetch(`/api/exam-sessions/by-code/${accessCode.trim().toUpperCase()}`);
-      
-      if (!response.ok) {
+      const q = query(
+        collection(db, "examSessions"),
+        where("accessCode", "==", accessCode.trim().toUpperCase()),
+      );
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
         toast({
           variant: "destructive",
           title: "Código no válido",
@@ -73,8 +75,9 @@ export default function StudentHomePage() {
         return;
       }
 
-      const examData = await response.json();
-      const examId = examData.id;
+      const examDoc = querySnapshot.docs[0];
+      const examData = examDoc.data();
+      const examId = examDoc.id;
 
       if (examData.status === "finished") {
         toast({
@@ -90,7 +93,7 @@ export default function StudentHomePage() {
 
       if (
         examData.blockedStudents &&
-        examData.blockedStudents.find((s: any) => s.uid === userProfile.uid)
+        examData.blockedStudents.find((s: any) => s.uid === user.uid)
       ) {
         toast({
           variant: "destructive",
@@ -103,16 +106,10 @@ export default function StudentHomePage() {
         return;
       }
 
-      // Unirse a la sesión
-      const joinResponse = await fetch(`/api/exam-sessions/${examId}/join`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentUid: userProfile.uid }),
+      const examDocRef = doc(db, "examSessions", examId);
+      await updateDoc(examDocRef, {
+        students: arrayUnion(user.uid),
       });
-
-      if (!joinResponse.ok) {
-        throw new Error("Failed to join exam session");
-      }
 
       toast({
         title: "¡Éxito!",
