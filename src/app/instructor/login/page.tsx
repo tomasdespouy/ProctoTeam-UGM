@@ -47,21 +47,31 @@ export default function InstructorLoginPage() {
     }
   }, [user, userProfile, loading, router, toast]);
 
-  const handleAzureLogin = async () => {
-    setIsLoading(true);
-    sessionStorage.setItem('loginRole', 'instructor');
-    const result = await signInWithAzurePopup();
-    
-    if (result.error) {
-      console.error('Error de login:', result.error);
-      toast({
-        variant: "destructive",
-        title: "Error de autenticación",
-        description: "No se pudo iniciar sesión. Por favor, intenta de nuevo.",
-      });
-      setIsLoading(false);
-    }
-  };
+  const handleAzureLogin = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault(); 
+
+        console.log("Botón presionado - Iniciando proceso de login..."); // Log de depuración
+
+        setIsLoading(true);
+        sessionStorage.setItem('loginRole', 'instructor');
+
+        try {
+            const result = await signInWithAzurePopup();
+
+            if (result.error) {
+                console.error('Error capturado en el componente:', result.error);
+                toast({
+                    variant: "destructive",
+                    title: "Error de autenticación",
+                    description: "No se pudo iniciar sesión: " + result.error.message, // Mostrar mensaje real
+                });
+            }
+        } catch (err) {
+            console.error("Error inesperado:", err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
   if (loading) {
     return (
@@ -89,10 +99,11 @@ export default function InstructorLoginPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Button 
-            onClick={handleAzureLogin} 
-            disabled={isLoading}
-            className="w-full"
-            size="lg"
+              onClick={handleAzureLogin} // Asegúrate que llame a la función
+              type="button"              // IMPORTANTE: Forzar que no sea 'submit'
+              disabled={isLoading}
+              className="w-full"
+              size="lg"
           >
             {isLoading ? (
               <>

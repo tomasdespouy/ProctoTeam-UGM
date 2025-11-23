@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getMsalInstance } from '@/lib/azure-auth';
 import { Loader2 } from 'lucide-react';
 
-export default function AuthCallbackPage() {
+// 1. Componente INTERNO: Maneja la lógica que usa useSearchParams
+function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
@@ -16,11 +17,11 @@ export default function AuthCallbackPage() {
         const instance = getMsalInstance();
         await instance.initialize();
         const response = await instance.handleRedirectPromise();
-        
+
         if (response) {
           const userRole = sessionStorage.getItem('loginRole');
           sessionStorage.removeItem('loginRole');
-          
+
           if (userRole === 'student') {
             router.push('/student');
           } else if (userRole === 'instructor') {
@@ -29,14 +30,15 @@ export default function AuthCallbackPage() {
             router.push('/');
           }
         } else {
-          const error = searchParams.get('error');
+          const errorParam = searchParams.get('error');
           const errorDescription = searchParams.get('error_description');
-          
-          if (error) {
-            console.error('Authentication error:', error, errorDescription);
+
+          if (errorParam) {
+            console.error('Authentication error:', errorParam, errorDescription);
             setError(errorDescription || 'Error de autenticación');
             setTimeout(() => router.push('/'), 3000);
           } else {
+            // Caso defensivo: si no hay respuesta ni error, redirigir según rol guardado
             const userRole = sessionStorage.getItem('loginRole');
             sessionStorage.removeItem('loginRole');
             if (userRole === 'student') {
@@ -86,5 +88,20 @@ export default function AuthCallbackPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// 2. Componente PRINCIPAL: Envuelve el contenido en Suspense
+export default function AuthCallbackPage() {
+  return (
+    <Suspense 
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#00d4ff] via-[#0099cc] to-[#006699]">
+          <Loader2 className="w-12 h-12 animate-spin text-white" />
+        </div>
+      }
+    >
+      <AuthCallbackContent />
+    </Suspense>
   );
 }

@@ -45,19 +45,26 @@ export default function StudentLoginPage() {
     }
   }, [user, userProfile, loading, router, toast]);
 
-  const handleAzureLogin = async () => {
+  const handleAzureLogin = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault(); // Detiene el refresco
     setIsLoading(true);
     sessionStorage.setItem('loginRole', 'student');
-    const result = await signInWithAzurePopup();
-    
-    if (result.error) {
-      console.error('Error de login:', result.error);
-      toast({
-        variant: "destructive",
-        title: "Error de autenticación",
-        description: "No se pudo iniciar sesión. Por favor, intenta de nuevo.",
-      });
-      setIsLoading(false);
+
+    try {
+      const result = await signInWithAzurePopup();
+
+      if (result.error) {
+        console.error('Error de login:', result.error);
+        toast({
+          variant: "destructive",
+          title: "Error de autenticación",
+          description: "No se pudo iniciar sesión. Por favor, intenta de nuevo.",
+        });
+      }
+    } catch (error) {
+       console.error("Error inesperado", error);
+    } finally {
+       setIsLoading(false);
     }
   };
 
@@ -88,6 +95,7 @@ export default function StudentLoginPage() {
         <CardContent className="space-y-4">
           <Button 
             onClick={handleAzureLogin} 
+            type="button"  // <--- ¡IMPORTANTE! Agrega esto
             disabled={isLoading}
             className="w-full"
             size="lg"
