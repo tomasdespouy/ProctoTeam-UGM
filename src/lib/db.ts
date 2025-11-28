@@ -1,37 +1,41 @@
 import { Pool } from 'pg';
 
-// Crear pool de conexiones a PostgreSQL
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: false, // Replit PostgreSQL no necesita SSL
-  max: 20, // Máximo de conexiones
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Función helper para ejecutar queries
-export async function query(text: string, params?: any[]) {
-  const start = Date.now();
-  try {
-    const res = await pool.query(text, params);
-    const duration = Date.now() - start;
-    console.log('Executed query', { text, duration, rows: res.rowCount });
-    return res;
-  } catch (error) {
-    console.error('Database query error:', error);
-    throw error;
-  }
+// Declaración global para evitar múltiples instancias en Hot Reload (Next.js)
+declare global {
+  var pool: Pool | undefined;
 }
 
-// Función para obtener un cliente del pool (para transacciones)
-export async function getClient() {
-  const client = await pool.connect();
-  return client;
+let pool: Pool;
+
+if (!global.pool) {
+  global.pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: false, // Correcto para Replit interno
+    max: 10,    // Limitamos conexiones para no saturar
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
 }
 
-// Cerrar pool (para cleanup)
-export async function end() {
-  await pool.end();
-}
+pool = global.pool;
 
-export default pool;
+// Wrapper tipado para consultas
+export const db = {
+  query: async (text: string, params?: any[]) => {
+    const start = Date.now();
+    try {
+      const res = await pool.query(text, params);
+      // Log solo si es lento (>500ms) para no ensuciar la consola
+      const duration = Date.now() - start;
+      if (duration > 500) {
+        console.warn(`Slow query (${duration}ms):`, text);
+      }
+      return res;
+    } catch (error) {
+      console.error('Database query error:', error);
+      throw error;
+    }
+  },
+  // Exponemos el pool por si necesitamos transacciones complejas
+  pool
+};

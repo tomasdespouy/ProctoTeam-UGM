@@ -1,218 +1,182 @@
+import { db } from '@/lib/db';
 
-// Este servicio almacena los datos de la sesión en vivo en la memoria del servidor.
-// No es persistente, pero es ideal para un prototipo funcional.
+/**
+ * SERVICIO LIVE SESSION (PERSISTENTE)
+ * * Este servicio reemplaza la memoria RAM por PostgreSQL.
+ * Gestiona el estado de los alumnos, alertas y mensajes en tiempo real.
+ */
 
+// Tipos adaptados a la base de datos
 export interface Alert {
   id: string;
   studentId: string;
-  studentName: string;
   description: string;
   severity: 'critical' | 'warning' | 'info';
-  timestamp: number;
+  timestamp: Date;
+  evidenceUrl?: string;
 }
 
 export interface StudentSession {
-  id: string;
-  examId: string;
-  subject: string;
-  section: string;
+  id: string; // ID de participación
+  studentId: string;
   name: string;
-  email: string;
-  status: 'active' | 'alert' | 'finished';
-  lastAlert: string;
-  lastSeen: number; // timestamp
-  imgSrc: string; // La fuente de video del estudiante
+  email?: string;
+  status: 'joined' | 'in-progress' | 'submitted' | 'blocked';
+  lastSnapshot?: string; // Base64 o URL de la imagen
+  lastSeen: Date;
   alerts: Alert[];
-  messages: string[];
-  progress: number;
-  startTime?: number; // timestamp
-  finishTime?: number; // timestamp
+  unreadMessages: number; // Conteo de mensajes sin leer
 }
 
-// Almacén en memoria
-const liveStudents = new Map<string, StudentSession>();
-const finishedStudents = new Map<string, StudentSession>();
-
-
-// Funciones del servicio
 export const liveSessionService = {
-  addOrUpdateStudent: (studentData: { id: string; name: string; email: string; imgSrc: string; examId: string; subject: string; section: string; }) => {
-    const now = Date.now();
-    let student = liveStudents.get(studentData.id);
 
-    if (student) {
-      // Actualizar estudiante existente
-      student.lastSeen = now;
-      student.status = 'active'; // Restablecer el estado al registrarse de nuevo
-      student.imgSrc = studentData.imgSrc;
-      student.examId = studentData.examId;
-      student.subject = studentData.subject;
-      student.section = studentData.section;
-    } else {
-      // Crear nuevo estudiante
-      student = {
-        ...studentData,
-        status: 'active',
-        lastAlert: 'Ninguna',
-        lastSeen: now,
-        alerts: [],
-        messages: [],
-        progress: 0,
-        startTime: now,
-      };
+  /**
+   * Registra la entrada de un estudiante al examen (Join/Rejoin)
+   */
+  joinSession: async (data: { examId: string; studentId: string; name: string; email?: string }) => {
+    // Usamos UPSERT: Si ya existe, actualizamos su estado a 'in-progress' y su última conexión
+    const query = `
+      INSERT INTO exam_participations (exam_session_id, student_id, student_name, status, started_at, last_snapshot)
+      VALUES ($1, $2, $3, 'in-progress', NOW(), NULL)
+      ON CONFLICT (exam_session_id, student_id) 
+      DO UPDATE SET 
+        status = CASE WHEN exam_participations.status = 'blocked' THEN 'blocked' ELSE 'in-progress' END,
+        student_name = $3
+      RETURNING *;
+    `;
+    const res = await db.query(query, [data.examId, data.studentId, data.name]);
+    return res.rows[0];
+  },
+
+  /**
+   * Reporta una alerta de comportamiento sospechoso
+   */
+  reportAlert: async (data: { examId: string; studentId: string; description: string; severity: string; evidenceUrl?: string }) => {
+    // 1. Guardar la alerta
+    const res = await db.query(
+      `INSERT INTO alerts (exam_session_id, student_id, description, severity, evidence_url, timestamp)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       RETURNING *`,
+      [data.examId, data.studentId, data.description, data.severity, data.evidenceUrl || null]
+    );
+
+    // 2. (Opcional) Si la severidad es crítica, podríamos cambiar el estado del alumno aquí
+    // pero por ahora solo registramos.
+
+    return res.rows[0];
+  },
+
+  /**
+   * Actualiza el "latido" y la foto del estudiante
+   * Se debe llamar periódicamente (ej. cada 10-30s)
+   */
+  heartbeat: async (examId: string, studentId: string, snapshot?: string) => {
+    // Solo actualizamos si el alumno no ha finalizado
+    const query = `
+      UPDATE exam_participations 
+      SET last_snapshot = COALESCE($3, last_snapshot)
+      WHERE exam_session_id = $1 AND student_id = $2 AND status IN ('joined', 'in-progress')
+    `;
+    await db.query(query, [examId, studentId, snapshot]);
+  },
+
+  /**
+   * Envía un mensaje del instructor al estudiante
+   */
+  sendMessage: async (examId: string, studentId: string, message: string) => {
+    await db.query(
+      `INSERT INTO messages (exam_session_id, student_id, message) VALUES ($1, $2, $3)`,
+      [examId, studentId, message]
+    );
+  },
+
+  /**
+   * Obtiene y marca como leídos los mensajes para un estudiante
+   */
+  getMyMessages: async (examId: string, studentId: string) => {
+    // Transacción implícita: Leer y luego marcar
+    // 1. Obtener mensajes no leídos
+    const res = await db.query(
+      `SELECT message, created_at FROM messages 
+       WHERE exam_session_id = $1 AND student_id = $2 AND is_read = FALSE
+       ORDER BY created_at ASC`,
+      [examId, studentId]
+    );
+
+    // 2. Marcarlos como leídos (si hubo alguno)
+    if (res.rowCount && res.rowCount > 0) {
+      await db.query(
+        `UPDATE messages SET is_read = TRUE 
+         WHERE exam_session_id = $1 AND student_id = $2 AND is_read = FALSE`,
+        [examId, studentId]
+      );
     }
-    
-    liveStudents.set(student.id, student);
-    console.log(`Estudiante añadido/actualizado: ${student.name} para examen ${student.examId}`);
-    return student;
+
+    return res.rows.map(r => r.message);
   },
 
-  addAlert: (alertData: { studentId: string; studentName: string; description: string; severity: 'critical' | 'warning' | 'info'; imgSrc: string }) => {
-    const student = liveStudents.get(alertData.studentId);
-    const now = Date.now();
-
-    const processAlert = (studentToAlert: StudentSession) => {
-        const newAlert: Alert = {
-            id: `alert-${now}`,
-            timestamp: now,
-            ...alertData
-        };
-        studentToAlert.alerts.unshift(newAlert);
-
-        if (studentToAlert.status !== 'finished') {
-            studentToAlert.status = 'alert';
-            
-            // Set a timer to revert the status back to 'active' after 10 seconds
-            setTimeout(() => {
-                const currentStudent = liveStudents.get(studentToAlert.id);
-                // Only revert if the student exists, is still in 'alert' status, 
-                // and the last alert is the one that triggered this timer.
-                if (currentStudent && currentStudent.status === 'alert' && currentStudent.alerts[0]?.id === newAlert.id) {
-                    currentStudent.status = 'active';
-                    liveStudents.set(currentStudent.id, currentStudent);
-                    console.log(`Estudiante ${currentStudent.name} volvió al estado 'activo'.`);
-                }
-            }, 10000); // 10 seconds
-        }
-
-        studentToAlert.lastAlert = `${alertData.description}`;
-        studentToAlert.lastSeen = now;
-        studentToAlert.imgSrc = alertData.imgSrc;
-        
-        console.log(`Alerta añadida para el estudiante: ${studentToAlert.name} - ${alertData.description}`);
-        return newAlert;
-    };
-
-    if (student) {
-        const newAlert = processAlert(student);
-        liveStudents.set(student.id, student);
-        return newAlert;
-    }
-
-    const finishedStudent = finishedStudents.get(alertData.studentId);
-    if (finishedStudent) {
-        const newAlert = processAlert(finishedStudent);
-        finishedStudents.set(finishedStudent.id, finishedStudent);
-        return newAlert;
-    }
-    
-    return null;
-  },
-  
-  updateStudentImage: (studentId: string, imgSrc: string) => {
-    const student = liveStudents.get(studentId);
-    if(student) {
-      student.imgSrc = imgSrc;
-      student.lastSeen = Date.now();
-      liveStudents.set(studentId, student);
-    }
+  /**
+   * Finaliza el examen (Submit)
+   */
+  finishExam: async (examId: string, studentId: string) => {
+    await db.query(
+      `UPDATE exam_participations 
+       SET status = 'submitted', finished_at = NOW() 
+       WHERE exam_session_id = $1 AND student_id = $2`,
+      [examId, studentId]
+    );
   },
 
-  addMessageToStudent: (studentId: string, message: string) => {
-    const student = liveStudents.get(studentId);
-    if (student) {
-      if (!student.messages) {
-        student.messages = [];
-      }
-      student.messages.push(message);
-      liveStudents.set(studentId, student);
-      console.log(`Mensaje añadido para el estudiante ${studentId}: ${message}`);
-    }
-  },
-  
-  addMessageToAllStudents: (message: string) => {
-    console.log(`Enviando mensaje masivo a ${liveStudents.size} estudiantes.`);
-    liveStudents.forEach(student => {
-        if (!student.messages) {
-            student.messages = [];
-        }
-        student.messages.push(message);
-        liveStudents.set(student.id, student);
-    });
-  },
+  /**
+   * OBTIENE EL ESTADO COMPLETO DEL EXAMEN (Para el Dashboard del Profesor)
+   * Devuelve: Lista de alumnos, sus estados, últimas alertas y mensajes pendientes.
+   */
+  getExamDashboardState: async (examId: string): Promise<StudentSession[]> => {
+    const query = `
+      SELECT 
+        ep.id,
+        ep.student_id as "studentId",
+        ep.student_name as name,
+        u.email,
+        ep.status,
+        ep.last_snapshot as "lastSnapshot",
+        -- Usamos started_at o finished_at como proxy de "visto por última vez" si no tenemos columna heartbeat dedicada
+        COALESCE(ep.finished_at, ep.started_at) as "lastSeen",
 
-  getAndClearStudentMessages: (studentId: string): string[] => {
-    const student = liveStudents.get(studentId);
-    if (student && student.messages && student.messages.length > 0) {
-      const messagesToReturn = [...student.messages];
-      student.messages = [];
-      liveStudents.set(studentId, student);
-      return messagesToReturn;
-    }
-    return [];
-  },
+        -- Subquery para contar mensajes sin leer del alumno (feedback para el profesor)
+        (SELECT COUNT(*)::int FROM messages m WHERE m.student_id = ep.student_id AND m.exam_session_id = ep.exam_session_id AND m.is_read = FALSE) as "unreadMessages",
 
-  terminateStudentSession: (studentId: string, reason: string = 'Sesión finalizada por el supervisor.') => {
-    const student = liveStudents.get(studentId);
-    if (student) {
-      student.status = 'finished';
-      student.finishTime = Date.now();
-      student.lastAlert = reason;
-      finishedStudents.set(studentId, student);
-      liveStudents.delete(studentId);
-      console.log(`Sesión finalizada para el estudiante ${studentId}. Razón: ${reason}`);
-      return student;
-    }
-    return null;
-  },
+        -- Agregamos las últimas 5 alertas como JSON
+        COALESCE(
+          (
+            SELECT json_agg(json_build_object(
+              'id', a.id,
+              'description', a.description,
+              'severity', a.severity,
+              'timestamp', a.timestamp
+            ) ORDER BY a.timestamp DESC)
+            FROM (
+              SELECT * FROM alerts 
+              WHERE exam_session_id = ep.exam_session_id AND student_id = ep.student_id 
+              LIMIT 5
+            ) a
+          ), 
+          '[]'
+        ) as alerts
 
-  terminateAllSessions: () => {
-    const now = Date.now();
-    liveStudents.forEach(student => {
-        student.status = 'finished';
-        student.finishTime = now;
-        student.lastAlert = 'Sesión finalizada por el supervisor.';
-        finishedStudents.set(student.id, student);
-    });
-    liveStudents.clear();
-    // Clear finished students as well to reset the dashboard completely
-    finishedStudents.clear();
-    console.log('Todas las sesiones de monitoreo activas y finalizadas han sido limpiadas.');
-  },
-  
-  getAllActiveStudents: (): StudentSession[] => {
-    return Array.from(liveStudents.values());
-  },
+      FROM exam_participations ep
+      LEFT JOIN users u ON ep.student_id = u.uid
+      WHERE ep.exam_session_id = $1
+      ORDER BY ep.student_name ASC
+    `;
 
-  getStudentById: (studentId: string): StudentSession | undefined => {
-    return liveStudents.get(studentId);
-  },
+    const result = await db.query(query, [examId]);
 
-  getFinishedStudentById: (studentId: string): StudentSession | undefined => {
-    return finishedStudents.get(studentId);
-  },
-
-  getStudents: (): StudentSession[] => {
-    const allStudents = [...liveStudents.values(), ...finishedStudents.values()];
-    return allStudents.sort((a, b) => (a?.name || '').localeCompare(b?.name || ''));
-  },
-
-  getAllAlerts: (): Alert[] => {
-    let allAlerts: Alert[] = [];
-    [...liveStudents.values(), ...finishedStudents.values()].forEach(student => {
-      allAlerts = [...allAlerts, ...student.alerts];
-    });
-    // Ordenar por más reciente
-    return allAlerts.sort((a, b) => b.timestamp - a.timestamp);
+    // Mapeo final
+    return result.rows.map(row => ({
+      ...row,
+      alerts: row.alerts,
+      lastSeen: new Date(row.lastSeen) // Asegurar objeto Date
+    }));
   }
 };
