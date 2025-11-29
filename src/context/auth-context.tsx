@@ -49,97 +49,81 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        console.log("🔐 AuthContext: Iniciando...");
         await initializeMsal();
         const msalInstance = getMsalInstance();
-
-        // Intentamos obtener la cuenta activa
         let account = msalInstance.getActiveAccount();
 
-        // Si es null, buscamos si hay alguna cuenta en caché y activamos la primera
         if (!account) {
             const allAccounts = msalInstance.getAllAccounts();
             if (allAccounts.length > 0) {
-                console.log("⚠️ No hay cuenta activa, pero se encontraron cuentas en caché. Activando la primera...");
                 msalInstance.setActiveAccount(allAccounts[0]);
                 account = allAccounts[0];
             }
         }
 
         if (account) {
-          console.log("✅ Usuario detectado:", account.username);
-          const msalUser: MsalUser = {
-            account,
-            getIdToken: acquireTokenSilent,
+          // Función reutilizable para obtener el ID Token
+          const getIdTokenFn = async (): Promise<string | null> => {
+            try {
+              const response = await msalInstance.acquireTokenSilent({
+                account: account,
+                scopes: ["User.Read", "openid", "profile", "email"]
+              });
+              return response.idToken; // Usamos idToken, no accessToken
+            } catch (err) {
+              console.warn("No se pudo obtener token silencioso", err);
+              return null;
+            }
           };
 
-          const uid = account.localAccountId;
-          // Log para confirmar que vamos a llamar a la API
-          console.log(`📡 Llamando a API get-user con UID: ${uid}`);
+          // Obtener token inicial para sincronizar usuario
+          const token = await getIdTokenFn();
 
-          const response = await fetch(`/api/auth/get-user?uid=${uid}`);
+          const msalUser: MsalUser = {
+            account,
+            getIdToken: getIdTokenFn, // Función que obtiene token fresco cada vez
+          };
 
-          if (response.ok) {
-            const profileData = await response.json();
+          // 2. Llamar al Backend (PostgreSQL) para sincronizar usuario
+          if (token) {
+              try {
+                  const response = await fetch('/api/auth/get-user', {
+                      method: 'GET',
+                      headers: {
+                          'Authorization': `Bearer ${token}`
+                      }
+                  });
 
-            if (profileData) {
-              console.log("👤 Perfil encontrado en DB");
-              setUserProfile({
-                id: profileData.id,
-                uid: profileData.uid,
-                nombre: profileData.nombre,
-                correo: profileData.email,
-                role: profileData.role,
-                photoURL: profileData.photo_url,
-                created_at: profileData.created_at ? new Date(profileData.created_at) : undefined,
-                updated_at: profileData.updated_at ? new Date(profileData.updated_at) : undefined,
-              });
-            } else {
-              console.log("🆕 Usuario nuevo - Creando perfil...");
-              const createResponse = await fetch('/api/auth/create-user', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  uid: uid,
-                  email: account.username || '',
-                  nombre: account.name || account.username?.split('@')[0] || 'Usuario',
-                  role: 'student', 
-                  photo_url: null,
-                }),
-              });
-
-              if (createResponse.ok) {
-                const newProfile = await createResponse.json();
-                setUserProfile({
-                  id: newProfile.id,
-                  uid: newProfile.uid,
-                  nombre: newProfile.nombre,
-                  correo: newProfile.email,
-                  role: newProfile.role,
-                  photoURL: newProfile.photo_url,
-                  created_at: newProfile.created_at ? new Date(newProfile.created_at) : undefined,
-                  updated_at: newProfile.updated_at ? new Date(newProfile.updated_at) : undefined,
-                });
-              } else {
-                console.error('❌ Falló la creación del usuario');
-                setUserProfile(null);
+                  if (response.ok) {
+                      const data = await response.json();
+                      if (data.user) {
+                          console.log("✅ Usuario sincronizado con Postgres:", data.user.role);
+                          setUserProfile({
+                              id: data.user.id,
+                              uid: data.user.uid,
+                              nombre: data.user.nombre,
+                              correo: data.user.email,
+                              role: data.user.role,
+                              photoURL: data.user.photo_url,
+                              created_at: data.user.created_at,
+                              updated_at: data.user.updated_at
+                          });
+                      }
+                  } else {
+                      console.error("Error al sincronizar con backend:", response.status);
+                  }
+              } catch (backendError) {
+                  console.error("Error de conexión con API:", backendError);
               }
-            }
-          } else {
-            console.error('❌ Error API get-user:', response.status);
-            setUserProfile(null);
           }
 
           setUser(msalUser);
         } else {
-          console.log("⚪ No hay usuario logueado.");
           setUser(null);
           setUserProfile(null);
         }
       } catch (error) {
-        console.error('💥 Error fatal en initAuth:', error);
-        setUser(null);
-        setUserProfile(null);
+        console.error('Error en initAuth:', error);
       } finally {
         setLoading(false);
       }
@@ -148,15 +132,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     initAuth();
 
     const msalInstance = getMsalInstance();
+    // Listener para cuando el login popup termina exitosamente
     const callbackId = msalInstance.addEventCallback((event: any) => {
-      // --- CORRECCIÓN DE BUCLE INFINITO ---
-      // Solo reaccionamos a LOGIN explícito, no a la obtención silenciosa de tokens
       if (event.eventType === 'msal:loginSuccess') {
         const account = event.payload.account;
-        if (account) {
-            msalInstance.setActiveAccount(account); 
-        }
-        initAuth();
+        msalInstance.setActiveAccount(account);
+        initAuth(); // Recargar perfil
       } else if (event.eventType === 'msal:logoutSuccess') {
         setUser(null);
         setUserProfile(null);
@@ -164,23 +145,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     });
 
     return () => {
-      if (callbackId) {
-        msalInstance.removeEventCallback(callbackId);
-      }
+      if (callbackId) msalInstance.removeEventCallback(callbackId);
     };
   }, []);
 
+  // Protección de rutas
   useEffect(() => {
     if (loading) return;
-
     const publicPaths = ['/', '/student/login', '/instructor/login', '/auth/callback'];
-    const isPublicPath = publicPaths.includes(pathname);
 
-    if (!user && !isPublicPath) {
-      const loginPath = pathname.startsWith('/instructor') || pathname.startsWith('/super-admin') 
-        ? '/instructor/login' 
-        : '/student/login';
-      router.push(loginPath);
+    // Permitir acceso si es ruta pública o si el usuario está logueado
+    if (!user && !publicPaths.includes(pathname)) {
+       // Redirección inteligente
+       if (pathname.includes('instructor')) router.push('/instructor/login');
+       else router.push('/student/login');
     }
   }, [user, pathname, loading, router]);
 

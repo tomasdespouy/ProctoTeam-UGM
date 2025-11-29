@@ -28,20 +28,12 @@ import {
   KeyRound,
   History,
   Calendar,
-  Bell,
   LogOut,
   Settings,
-  Clock,
-  BookOpen,
-  GraduationCap,
   HelpCircle,
-  Sun,
-  Moon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { UserNav } from "@/components/instructor/user-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { PortalLogo } from "@/components/portal-logo";
 import Image from "next/image";
 
 export default function StudentHomePage() {
@@ -58,75 +50,43 @@ export default function StudentHomePage() {
 
     setIsLoading(true);
     try {
-      const q = query(
-        collection(db, "examSessions"),
-        where("accessCode", "==", accessCode.trim().toUpperCase()),
-      );
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        toast({
-          variant: "destructive",
-          title: "Código no válido",
-          description:
-            "No se encontró ninguna sesión de examen con ese código. Por favor, verifícalo.",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      const examDoc = querySnapshot.docs[0];
-      const examData = examDoc.data();
-      const examId = examDoc.id;
-
-      if (examData.status === "finished") {
-        toast({
-          variant: "destructive",
-          title: "Sesión Finalizada",
-          description:
-            "Esta sesión de examen ya ha sido finalizada por el instructor.",
-          duration: 9000,
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      if (
-        examData.blockedStudents &&
-        examData.blockedStudents.find((s: any) => s.uid === user.uid)
-      ) {
-        toast({
-          variant: "destructive",
-          title: "Acceso Denegado",
-          description:
-            "Tu acceso a esta sesión de examen ha sido bloqueado previamente.",
-          duration: 9000,
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      const examDocRef = doc(db, "examSessions", examId);
-      await updateDoc(examDocRef, {
-        students: arrayUnion(user.uid),
+      // CONEXIÓN CON EL NUEVO BACKEND (PostgreSQL)
+      const response = await fetch('/api/exam-sessions/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // El token de autorización se maneja via cookie o header si usas el middleware.
+          // Si tu auth-middleware espera el token en el header Authorization:
+          'Authorization': `Bearer ${await user.getIdToken()}`
+        },
+        body: JSON.stringify({ accessCode: accessCode.trim().toUpperCase() }),
       });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al unirse al examen');
+      }
 
       toast({
         title: "¡Éxito!",
-        description: "Uniéndote a la sesión de examen...",
+        description: `Uniéndote a: ${data.title || 'Examen'}`,
       });
 
       setIsModalOpen(false);
       setAccessCode("");
-      router.push(`/student/exam/${examId}`);
-    } catch (error) {
+
+      // Redirigir a la sala de examen con el ID real de la base de datos
+      router.push(`/student/exam/${data.examId}`);
+
+    } catch (error: any) {
       console.error("Error joining exam session: ", error);
       toast({
         variant: "destructive",
-        title: "Error",
-        description:
-          "Ocurrió un problema al unirse a la sesión. Inténtalo de nuevo.",
+        title: "No se pudo ingresar",
+        description: error.message || "Verifica el código e inténtalo de nuevo.",
       });
+    } finally {
       setIsLoading(false);
     }
   };
@@ -169,16 +129,10 @@ export default function StudentHomePage() {
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Switch de tema */}
               <ThemeToggle />
-
-              {/* Nombre del usuario */}
               <span className="text-white text-sm font-medium">
-                {userProfile?.nombre || "juanito"}
+                {userProfile?.nombre || user?.email}
               </span>
-
-
-              {/* Botón de cerrar sesión */}
               <Button
                 className="bg-[#242F62] hover:bg-[#1a1d47] text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium border-0"
                 onClick={async () => {
@@ -278,7 +232,7 @@ export default function StudentHomePage() {
         </div>
       </div>
 
-      {/* Welcome Banner - Reducido a la mitad */}
+      {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-[#00d4ff] via-[#00b8e6] to-[#0099cc] relative overflow-hidden py-3">
         <div className="container mx-auto px-6">
           <div className="grid lg:grid-cols-2 gap-4 items-center">

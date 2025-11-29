@@ -10,7 +10,6 @@ import { useAuth } from '@/context/auth-context';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { PortalLogo } from '@/components/portal-logo';
 import { useToast } from "@/hooks/use-toast";
-import Image from 'next/image';
 
 export default function InstructorLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -18,60 +17,66 @@ export default function InstructorLoginPage() {
   const router = useRouter();
   const { toast } = useToast();
 
+  // 1. Lógica de Redirección Automática por Rol
   useEffect(() => {
-    const checkRedirect = async () => {
-      setIsLoading(true);
-      const result = await handleAzureRedirectResult();
-      if (result.user) {
-        console.log('Logged in via redirect');
-      }
-      setIsLoading(false);
-    };
-    
-    checkRedirect();
-  }, []);
-
-  useEffect(() => {
+    // Solo actuamos si ya terminó de cargar y tenemos perfil
     if (!loading && user && userProfile) {
-      if (userProfile.role === 'instructor') {
-        router.push('/instructor');
-      } else if (userProfile.role === 'super-admin') {
+      console.log("Usuario detectado con rol:", userProfile.role);
+
+      if (userProfile.role === 'super-admin') {
+        // 🚀 Si es Super Admin -> Va a la Torre de Control
         router.push('/super-admin/dashboard');
+      } else if (userProfile.role === 'instructor') {
+        // 👨‍🏫 Si es Instructor -> Va a su panel normal
+        router.push('/instructor');
       } else {
+        // 🚫 Si es Estudiante colado -> Error y pa' fuera
         toast({
           variant: "destructive",
-          title: "Acceso denegado",
-          description: "No tienes permisos de instructor. Por favor, contacta al administrador.",
+          title: "Acceso Restringido",
+          description: "Esta cuenta es de estudiante. Por favor ingresa por el Portal de Estudiante.",
         });
+        // Opcional: router.push('/student');
       }
     }
   }, [user, userProfile, loading, router, toast]);
 
+  // 2. Verificar redirecciones de Microsoft (Móviles/Fallback)
+  useEffect(() => {
+    const checkRedirect = async () => {
+      if (!user) {
+          await handleAzureRedirectResult();
+      }
+    };
+    checkRedirect();
+  }, [user]);
+
   const handleAzureLogin = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault(); 
+    if (isLoading) return;
 
-        console.log("Botón presionado - Iniciando proceso de login..."); // Log de depuración
+    setIsLoading(true);
+    // Guardamos la intención de login para saber dónde volver si se refresca
+    sessionStorage.setItem('loginRole', 'instructor');
 
-        setIsLoading(true);
-        sessionStorage.setItem('loginRole', 'instructor');
-
-        try {
-            const result = await signInWithAzurePopup();
-
-            if (result.error) {
-                console.error('Error capturado en el componente:', result.error);
-                toast({
-                    variant: "destructive",
-                    title: "Error de autenticación",
-                    description: "No se pudo iniciar sesión: " + result.error.message, // Mostrar mensaje real
-                });
-            }
-        } catch (err) {
-            console.error("Error inesperado:", err);
-        } finally {
-            setIsLoading(false);
+    try {
+        const result = await signInWithAzurePopup();
+        if (result.error) {
+            console.warn('Popup falló, intentando redirección...');
+            await signInWithAzureRedirect();
         }
-    };
+        // No necesitamos hacer router.push aquí, el useEffect de arriba lo hará
+        // automáticamente apenas detecte el cambio de usuario.
+    } catch (err) {
+        console.error("Error en login:", err);
+        toast({
+            variant: "destructive",
+            title: "Error de conexión",
+            description: "No se pudo conectar con Microsoft.",
+        });
+        setIsLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -86,42 +91,45 @@ export default function InstructorLoginPage() {
       <div className="absolute top-4 right-4">
         <ThemeToggle />
       </div>
-      
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-4">
-          <div className="flex justify-center mb-2">
+
+      <Card className="w-full max-w-md shadow-xl border-0 bg-card/95 backdrop-blur">
+        <CardHeader className="space-y-4 text-center">
+          <div className="flex justify-center mb-2 transform hover:scale-105 transition-transform">
             <PortalLogo size="lg" />
           </div>
-          <CardTitle className="text-2xl text-center">Portal de Docentes</CardTitle>
-          <CardDescription className="text-center">
-            Inicia sesión con tu cuenta institucional UGM
-          </CardDescription>
+          <div className="space-y-2">
+            <CardTitle className="text-2xl font-bold">Portal Docente</CardTitle>
+            <CardDescription>
+                Acceso unificado para Instructores y Administradores
+            </CardDescription>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           <Button 
-              onClick={handleAzureLogin} // Asegúrate que llame a la función
-              type="button"              // IMPORTANTE: Forzar que no sea 'submit'
+              onClick={handleAzureLogin}
+              type="button"
               disabled={isLoading}
-              className="w-full"
+              className="w-full h-12 text-md font-medium shadow-md transition-all hover:translate-y-[-2px]"
               size="lg"
           >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Iniciando sesión...
+                Verificando credenciales...
               </>
             ) : (
               <>
                 <LogIn className="mr-2 h-5 w-5" />
-                Ingresar con Microsoft
+                Ingresar con cuenta UGM
               </>
             )}
           </Button>
-          
-          <div className="pt-4 border-t">
-            <p className="text-xs text-muted-foreground text-center">
-              Solo usuarios con permisos de docente o administrador pueden acceder a este portal
-            </p>
+
+          <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground mt-4">
+             <ShieldAlert className="h-5 w-5 text-primary shrink-0" />
+             <p>
+               El sistema detectará automáticamente tu nivel de privilegios (Docente o Super Admin) una vez inicies sesión.
+             </p>
           </div>
         </CardContent>
       </Card>

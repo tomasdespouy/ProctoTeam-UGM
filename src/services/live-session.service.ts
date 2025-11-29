@@ -128,6 +128,25 @@ export const liveSessionService = {
   },
 
   /**
+   * Fuerza el cierre de un examen y marca a todos los participantes como finalizados
+   */
+  forceCloseExam: async (examId: string) => {
+    // 1. Marcar todos los estudiantes como 'submitted'
+    await db.query(
+      `UPDATE exam_participations 
+       SET status = 'submitted', finished_at = NOW() 
+       WHERE exam_session_id = $1 AND status IN ('joined', 'in-progress')`,
+      [examId]
+    );
+
+    // 2. Marcar el examen como finalizado
+    await db.query(
+      `UPDATE exam_sessions SET status = 'finished', updated_at = NOW() WHERE id = $1`,
+      [examId]
+    );
+  },
+
+  /**
    * OBTIENE EL ESTADO COMPLETO DEL EXAMEN (Para el Dashboard del Profesor)
    * Devuelve: Lista de alumnos, sus estados, últimas alertas y mensajes pendientes.
    */

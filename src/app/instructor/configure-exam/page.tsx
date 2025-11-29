@@ -1,222 +1,204 @@
-
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/auth-context';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { UserNav } from '@/components/instructor/user-nav';
+import { ArrowLeft, Loader2, Copy, Save } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Layers, Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/auth-context';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { PortalLogo } from '@/components/portal-logo';
-
+import { UserNav } from '@/components/instructor/user-nav';
 
 export default function ConfigureExamPage() {
-  const [examTitle, setExamTitle] = useState('');
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
   const [section, setSection] = useState('');
-  const [duration, setDuration] = useState<number | ''>(60);
+  const [duration, setDuration] = useState<number>(60);
   const [accessCode, setAccessCode] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
-  const router = useRouter();
-  const { user, userProfile } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const generateAccessCode = useCallback((length = 6) => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    for (let i = 0; i < length; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  }, []);
-  
-  // This useEffect will run only on the client, after hydration, avoiding the mismatch.
+  // Generar código al cargar la página
   useEffect(() => {
-    setAccessCode(generateAccessCode());
-  }, [generateAccessCode]);
-
-
-  const handleCopyCode = useCallback(() => {
-    if (!accessCode) return;
-    navigator.clipboard.writeText(accessCode).then(() => {
-      toast({
-        title: "Copiado",
-        description: "El código de acceso ha sido copiado al portapapeles.",
-      });
-    });
-  }, [accessCode, toast]);
+    const generateCode = () => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let result = '';
+      for (let i = 0; i < 6; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+      return result;
+    };
+    setAccessCode(generateCode());
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || userProfile?.role !== 'instructor') {
-        toast({
-            variant: 'destructive',
-            title: 'Acción no permitida',
-            description: 'Solo los instructores pueden crear salas de examen.',
-        });
-        return;
-    }
-    
-    if (duration === '' || isNaN(duration) || duration < 10 || duration > 240) {
-        toast({
-            variant: "destructive",
-            title: "Duración inválida",
-            description: "La duración debe ser un número entre 10 y 240 minutos.",
-        });
-        return;
-    }
+    if (!user) return;
 
-    setIsLoading(true);
+    setIsSubmitting(true);
 
     try {
-        const idToken = await user.getIdToken();
-        
-        const response = await fetch('/api/exam-sessions/create', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}`,
-            },
-            body: JSON.stringify({
-                title: examTitle,
-                subject,
-                section,
-                duration,
-                accessCode,
-            }),
-        });
+      const idToken = await user.getIdToken();
+      // Conectamos con el endpoint de creación
+      const response = await fetch('/api/exam-sessions/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          title,
+          subject,
+          section,
+          duration,
+          accessCode,
+        }),
+      });
 
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Error al crear la sesión');
-        }
+      if (!response.ok) {
+        throw new Error('Error al crear la sesión de examen');
+      }
 
-        toast({
-            title: "Sala de Examen Creada",
-            description: `La sala para "${examTitle}" está lista. Redirigiendo al panel...`,
-        });
-        
-        router.push('/instructor');
+      const data = await response.json();
+
+      toast({
+        title: "Examen Creado",
+        description: "La sala ha sido configurada correctamente.",
+      });
+
+      // Redirigir al dashboard principal para empezar a monitorear
+      router.push('/instructor');
 
     } catch (error) {
-        console.error("Error creating exam session: ", error);
-        toast({
-            variant: "destructive",
-            title: "Error al crear la sala",
-            description: error instanceof Error ? error.message : "No se pudo guardar la configuración del examen.",
-        });
-        setIsLoading(false);
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo guardar la configuración. Intenta nuevamente.",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
+  if (loading) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>;
+  }
+
   return (
-    <div className="flex flex-col min-h-screen bg-secondary">
-      <header className="bg-primary text-primary-foreground border-b p-4 flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" className="p-0 h-auto w-auto" onClick={() => router.push('/instructor')}>
-            <PortalLogo />
-            <span className="sr-only">Ir a Inicio</span>
-          </Button>
-          <div>
-            <h1 className="text-2xl font-headline font-bold">Configurar Examen</h1>
-            <p className="text-sm text-primary-foreground/80">Crea una nueva sala de monitoreo para un examen.</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <UserNav />
+    <div className="min-h-screen bg-muted/40">
+      {/* Header Simple */}
+      <header style={{ backgroundColor: "#161F45" }} className="border-b border-white/20 p-4 sticky top-0 z-10">
+        <div className="container mx-auto flex justify-between items-center">
+            <div className="flex items-center gap-4">
+                <Button variant="ghost" className="text-white hover:bg-white/10" onClick={() => router.back()}>
+                    <ArrowLeft className="h-4 w-4 mr-2"/> Volver
+                </Button>
+                <h1 className="text-xl font-bold text-white">Configurar Nuevo Examen</h1>
+            </div>
+            <div className="flex items-center gap-4">
+                <ThemeToggle />
+                <UserNav />
+            </div>
         </div>
       </header>
-      <main className="p-4 md:p-6 lg:p-8 flex-1 flex justify-center items-start">
-        <Card className="w-full max-w-2xl shadow-lg">
-            <form onSubmit={handleSubmit}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 dark:text-white">
-                    <Layers className="h-6 w-6 text-primary" />
-                    Nueva Sala de Monitoreo
-                </CardTitle>
-                <CardDescription className="dark:text-gray-300">
-                  Define los detalles del examen para generar una sala de monitoreo única para tus estudiantes.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
+
+      <main className="container mx-auto py-10 px-4 max-w-2xl">
+        <Card className="shadow-lg border-t-4 border-t-[#00d4ff]">
+          <CardHeader>
+            <CardTitle>Detalles de la Sesión</CardTitle>
+            <CardDescription>
+              Configura los parámetros básicos para el examen. El código de acceso se genera automáticamente pero puedes regenerarlo recargando la página.
+            </CardDescription>
+          </CardHeader>
+          <form onSubmit={handleSubmit}>
+            <CardContent className="space-y-6">
+
+              <div className="space-y-2">
+                <Label htmlFor="title">Título del Examen</Label>
+                <Input 
+                  id="title" 
+                  placeholder="Ej: Evaluación Solemne 1" 
+                  value={title} 
+                  onChange={(e) => setTitle(e.target.value)} 
+                  required 
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="exam-title" className="text-foreground dark:text-white">Título del Examen</Label>
-                  <Input
-                    id="exam-title"
-                    value={examTitle}
-                    onChange={(e) => setExamTitle(e.target.value)}
-                    placeholder="Ej: Fundamentos de Programación - Parcial 1"
-                    required
+                  <Label htmlFor="subject">Asignatura</Label>
+                  <Input 
+                    id="subject" 
+                    placeholder="Ej: Cálculo I" 
+                    value={subject} 
+                    onChange={(e) => setSubject(e.target.value)} 
+                    required 
                   />
                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="subject" className="text-foreground dark:text-white">Nombre de la Asignatura</Label>
-                      <Input
-                        id="subject"
-                        value={subject}
-                        onChange={(e) => setSubject(e.target.value)}
-                        placeholder="Ej: Programación Avanzada"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="section" className="text-foreground dark:text-white">Sección</Label>
-                      <Input
-                        id="section"
-                        value={section}
-                        onChange={(e) => setSection(e.target.value)}
-                        placeholder="Ej: PROG401-001D"
-                        required
-                      />
-                    </div>
-                </div>
                 <div className="space-y-2">
-                  <Label htmlFor="duration" className="text-foreground dark:text-white">Duración (en minutos)</Label>
-                  <Input
-                    id="duration"
-                    type="number"
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
-                    required
-                    min="10"
-                    max="240"
+                  <Label htmlFor="section">Sección / Grupo</Label>
+                  <Input 
+                    id="section" 
+                    placeholder="Ej: 004D" 
+                    value={section} 
+                    onChange={(e) => setSection(e.target.value)} 
+                    required 
                   />
                 </div>
-                 <div className="space-y-2">
-                  <Label htmlFor="access-code" className="text-foreground dark:text-white">Código de Acceso para Estudiantes</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="access-code"
-                      value={accessCode}
-                      readOnly
-                      className="font-mono text-lg bg-muted"
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="duration">Duración (minutos)</Label>
+                  <Input 
+                    id="duration" 
+                    type="number" 
+                    min="1" 
+                    value={duration} 
+                    onChange={(e) => setDuration(Number(e.target.value))} 
+                    required 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Código de Acceso</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                        value={accessCode} 
+                        readOnly 
+                        className="font-mono text-center text-lg tracking-widest bg-muted font-bold text-primary" 
                     />
-                    <Button type="button" variant="ghost" size="icon" onClick={handleCopyCode} aria-label="Copiar código">
-                      <Copy className="h-4 w-4" />
+                    <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={() => {
+                            navigator.clipboard.writeText(accessCode);
+                            toast({ description: "Código copiado al portapapeles" });
+                        }}
+                    >
+                        <Copy className="h-4 w-4" />
                     </Button>
                   </div>
-                   <p className="text-xs text-muted-foreground dark:text-gray-300">
-                    Los estudiantes usarán este código para unirse a la sesión de monitoreo correcta.
-                  </p>
+                  <p className="text-xs text-muted-foreground">Comparte este código con tus alumnos.</p>
                 </div>
-              </CardContent>
-              <CardFooter>
-                <Button type="submit" disabled={isLoading || !examTitle || !subject || !section || !duration || !user || userProfile?.role !== 'instructor'}>
-                  {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creando sala...</> : 'Crear Sala de Examen'}
-                </Button>
-              </CardFooter>
-            </form>
+              </div>
+
+            </CardContent>
+            <CardFooter className="flex justify-end gap-2 bg-muted/20 p-6">
+              <Button type="button" variant="ghost" onClick={() => router.back()}>Cancelar</Button>
+              <Button type="submit" disabled={isSubmitting} className="bg-[#00d4ff] text-[#161F45] hover:bg-[#00b8e6] font-bold">
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Crear Sesión
+              </Button>
+            </CardFooter>
+          </form>
         </Card>
       </main>
     </div>
   );
 }
-
-    

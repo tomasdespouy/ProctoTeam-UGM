@@ -1,29 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserByUid } from '@/lib/auth-postgres';
+import jwt from 'jsonwebtoken';
+import { upsertUser } from '@/lib/auth-postgres'; // Asegúrate que importe upsertUser
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const uid = searchParams.get('uid');
+    // 1. Obtener token del Header
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Token missing' }, { status: 401 });
+    }
+
+    const token = authHeader.split(' ')[1];
+    // Evitar procesar tokens nulos o indefinidos que a veces envía el frontend
+    if (!token || token === 'null' || token === 'undefined') {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+
+    // 2. Decodificar Token (Sin verificar firma, confiamos en Azure)
+    const decoded: any = jwt.decode(token);
+
+    if (!decoded) {
+      return NextResponse.json({ error: 'Token decoding failed' }, { status: 401 });
+    }
+
+    // 3. Extraer datos (Azure AD usa 'oid', otros 'sub')
+    const uid = decoded.oid || decoded.sub || decoded.uid;
+    const email = decoded.email || decoded.preferred_username || decoded.upn;
+    // Intentar obtener nombre, o usar parte del email
+    const name = decoded.name || (email ? email.split('@')[0] : 'Usuario');
 
     if (!uid) {
-      return NextResponse.json(
-        { error: 'UID is required' },
-        { status: 400 }
-      );
+        return NextResponse.json({ error: 'Token missing UID' }, { status: 400 });
     }
 
-    const user = await getUserByUid(uid);
-    
-    if (!user) {
-      return NextResponse.json(null, { status: 200 });
-    }
+    // 4. MAGIA: Upsert (Crea el usuario si no existe, o lo actualiza)
+    // Esto evita el error 401 para usuarios nuevos y asigna admin al primero
+    const user = await upsertUser({
+      uid,
+      email,
+      nombre: name,
+      role: 'student' // El upsertUser lo cambiará a 'super-admin' si es el primero
+    });
 
-    return NextResponse.json(user, { status: 200 });
-  } catch (error) {
-    console.error('Error fetching user:', error);
+    return NextResponse.json({ user });
+
+  } catch (error: any) {
+    console.error('API get-user Error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal Server Error', details: error.message }, 
       { status: 500 }
     );
   }
