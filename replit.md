@@ -114,3 +114,18 @@ Preferred communication style: Simple, everyday language.
 - **Notifications API**: Browser notifications for alerts and messages
 - **Visibility API**: Tab focus and window state monitoring
 - **Audio Context**: Audio level monitoring for conversation detection
+
+# Recent Changes (Nov 29, 2025)
+
+## Authentication Fixes
+- **Auth Context**: Now uses `idToken` instead of `accessToken` for API authentication
+- **Token Refresh**: `getIdToken()` function now obtains fresh tokens on each call via `acquireTokenSilent`
+- **Super-Admin Dashboard**: Fixed 401 errors by adding Authorization headers to API calls
+
+## Live Session Service
+- **Force Close Exam**: Added `forceCloseExam` method to properly terminate exams and mark all participants as submitted
+- **Database Schema**: Uses `exam_participations` table for student session tracking
+
+## Performance Optimizations
+- **Proctoring Panel**: Image snapshots optimized to 320px width with 0.4 JPEG quality (~5KB per image)
+- **Update Frequency**: Snapshots sent every 5 seconds to minimize bandwidth
