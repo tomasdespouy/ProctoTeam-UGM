@@ -1,54 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getExamSessionsByInstructor } from '@/lib/exam-session-postgres';
+import { db } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    // Verificar autenticación
+    // 1. Obtener usuario autenticado
     const user = await getAuthenticatedUser(request);
-    
-    // Solo instructores y super-admins pueden ver sesiones
+
+    // 2. Verificar Rol
     if (user.role !== 'instructor' && user.role !== 'super-admin') {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+        return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const instructorId = searchParams.get('instructorId');
+    // 3. Buscar sesiones donde este usuario es el instructor
+    // Nota: Usamos user.uid directamente, más seguro que leer query params
+    const query = `
+      SELECT 
+        id,
+        title,
+        subject,
+        section,
+        duration,
+        access_code,
+        status,
+        created_at,
+        (SELECT COUNT(*) FROM exam_participations ep WHERE ep.exam_session_id = es.id) as student_count
+      FROM exam_sessions es
+      WHERE instructor_id = $1
+      ORDER BY created_at DESC
+    `;
 
-    if (!instructorId) {
-      return NextResponse.json(
-        { error: 'Instructor ID is required' },
-        { status: 400 }
-      );
-    }
+    const result = await db.query(query, [user.uid]);
 
-    // Si es instructor, solo puede ver sus propias sesiones
-    if (user.role === 'instructor' && user.uid !== instructorId) {
-      return NextResponse.json(
-        { error: 'Can only view your own sessions' },
-        { status: 403 }
-      );
-    }
+    return NextResponse.json({ sessions: result.rows });
 
-    const sessions = await getExamSessionsByInstructor(instructorId);
-    
-    return NextResponse.json(sessions, { status: 200 });
   } catch (error: any) {
-    console.error('Error fetching exam sessions:', error);
-    
+    console.error('Error fetching instructor sessions:', error);
+
     if (error.message === 'Authentication required') {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
+        return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
-    
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }
