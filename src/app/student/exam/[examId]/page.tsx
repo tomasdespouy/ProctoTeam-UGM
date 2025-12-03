@@ -1,7 +1,6 @@
-
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { ExamHeader } from '@/components/student/exam-header';
@@ -27,7 +26,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { DocumentTitleHandler } from '@/components/student/document-title-handler';
 
-
 export type ExamStep = 'requirements' | 'monitoring' | 'finished';
 
 interface ExamData {
@@ -35,18 +33,16 @@ interface ExamData {
     subject: string;
     section: string;
     duration: number;
-    accessCode: string;
-    instructorId: string;
-    createdAt: Timestamp;
     status: 'pending' | 'active' | 'finished';
-    blockedStudents?: { uid: string; reason: string; timestamp: Timestamp }[];
 }
 
 export default function StudentExamLivePage() {
   const { user, userProfile, loading } = useAuth();
   const params = useParams();
   const router = useRouter();
-  const examId = params.examId as string;
+  // Aseguramos que examId sea string
+  const examId = Array.isArray(params.examId) ? params.examId[0] : params.examId;
+
   const [step, setStep] = useState<ExamStep>('requirements');
   const [examData, setExamData] = useState<ExamData | null>(null);
   const { toast } = useToast();
@@ -62,55 +58,47 @@ export default function StudentExamLivePage() {
     }
   }, []);
 
+  // CARGA DE DATOS Y POLLING (Reemplaza a Firebase onSnapshot)
   useEffect(() => {
     if (!examId || !user) return;
-    
-    const docRef = doc(db, 'examSessions', examId);
-    
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-        if(docSnap.exists()){
-            const data = docSnap.data() as ExamData;
-            setExamData(data);
-            
-            if (isTerminated) return;
 
-            const blockedInfo = data.blockedStudents?.find(s => s.uid === user.uid);
-            
-            if (blockedInfo) {
-                setBlockReason(blockedInfo.reason || 'Razón desconocida.');
-                setIsTerminated(true);
-                setStep('finished');
-                return;
+    const fetchExamStatus = async () => {
+        try {
+            const response = await fetch(`/api/exam-sessions/${examId}`);
+            if (!response.ok) {
+                if (response.status === 404) throw new Error("Examen no encontrado");
+                throw new Error("Error de conexión");
             }
 
-            if(data.status === 'finished') {
-                setBlockReason('La sesión de examen ha sido finalizada por el instructor.');
-                setIsTerminated(true);
-                setStep('finished');
-                return;
-            }
+            const data = await response.json();
+            setExamData(data.exam);
 
-        } else {
-            console.error("No such document!");
-            toast({
-                variant: "destructive",
-                title: "Examen no encontrado",
-                description: "No se pudo encontrar la sesión del examen. Serás redirigido."
-            });
-            router.push('/student');
+            // Verificar si el estudiante está bloqueado o el examen terminó
+            if (!isTerminated) {
+                if (data.studentStatus === 'blocked') {
+                    setBlockReason('Has sido bloqueado por el instructor.');
+                    setIsTerminated(true);
+                    setStep('finished');
+                } else if (data.exam.status === 'finished') {
+                    setBlockReason('La sesión de examen ha sido finalizada por el instructor.');
+                    setIsTerminated(true);
+                    setStep('finished');
+                }
+            }
+        } catch (error) {
+            console.error("Error polling exam data:", error);
         }
-    }, (error) => {
-        console.error("Error listening to exam data:", error);
-        toast({
-            variant: "destructive",
-            title: "Error de Conexión",
-            description: "Se perdió la conexión con el servidor del examen."
-        });
-    });
+    };
 
-    return () => unsubscribe();
-  }, [examId, user, router, toast, isTerminated]);
-  
+    // Carga inicial
+    fetchExamStatus();
+
+    // Polling cada 10 segundos para ver si el examen sigue activo
+    const interval = setInterval(fetchExamStatus, 10000);
+
+    return () => clearInterval(interval);
+  }, [examId, user, isTerminated]);
+
   const handleAcceptRequirements = () => {
     setStep('monitoring');
   };
@@ -123,27 +111,22 @@ export default function StudentExamLivePage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                action: 'FINISH_STUDENT_SESSION',
+                action: 'finish', // Normalizado minúsculas
                 payload: { 
                     studentId: user.uid,
                     examId: examId,
-                    studentName: userProfile?.nombre || 'Estudiante'
                 }
             })
         });
         toast({
             title: 'Examen Finalizado',
-            description: 'Tu sesión de monitoreo ha terminado. Gracias por tu participación.',
+            description: 'Tu sesión de monitoreo ha terminado.',
         });
         setIsTerminated(true);
         setStep('finished');
     } catch (error) {
         console.error("Error finishing exam:", error);
-        toast({
-            variant: "destructive",
-            title: "Error al Finalizar",
-            description: "No se pudo comunicar el fin del examen. Por favor, intenta de nuevo.",
-        });
+        toast({ variant: "destructive", title: "Error", description: "Intenta de nuevo." });
     } finally {
         setIsFinishing(false);
     }
@@ -163,51 +146,26 @@ export default function StudentExamLivePage() {
   }
 
   if (step === 'finished') {
-     if (blockReason) {
-        return (
-            <div className="flex flex-col min-h-screen bg-secondary items-center justify-center p-4">
-              <Card className="shadow-lg border-destructive max-w-lg">
-                <CardHeader>
-                    <CardTitle className="font-headline text-destructive flex items-center gap-2">
-                        <XCircle /> Sesión Finalizada
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="text-center space-y-4 pt-6">
-                    <Alert variant="destructive">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle>Tu sesión de monitoreo ha terminado.</AlertTitle>
-                        <AlertDescription>
-                            Razón: {blockReason}
-                        </AlertDescription>
-                    </Alert>
-                    <Button onClick={() => window.location.href = '/student'} className="w-full mt-4">
-                        <LogOut className="mr-2 h-4 w-4" />
-                        Volver al portal del estudiante
-                    </Button>
-                </CardContent>
-            </Card>
-          </div>
-        );
-     }
-    return (
+     // Pantalla de finalización (Bloqueado o Terminado OK)
+     return (
         <div className="flex flex-col min-h-screen bg-secondary items-center justify-center p-4">
-             <Card className="shadow-lg border-green-500 max-w-lg">
+             <Card className={`shadow-lg max-w-lg border-t-4 ${blockReason ? 'border-red-500' : 'border-green-500'}`}>
                 <CardHeader>
-                    <CardTitle className="font-headline text-green-600 flex items-center gap-2">
-                        <CheckCircle /> ¡Examen Finalizado!
+                    <CardTitle className={`font-headline flex items-center gap-2 ${blockReason ? 'text-red-600' : 'text-green-600'}`}>
+                        {blockReason ? <XCircle /> : <CheckCircle />} 
+                        {blockReason ? 'Sesión Interrumpida' : 'Examen Finalizado'}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="text-center space-y-4 pt-6">
-                    <Alert variant="default" className="border-green-500">
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        <AlertTitle>Sesión de monitoreo terminada</AlertTitle>
+                    <Alert variant={blockReason ? "destructive" : "default"}>
+                        {blockReason ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle className="h-4 w-4" />}
+                        <AlertTitle>{blockReason ? 'Acceso Revocado' : '¡Todo listo!'}</AlertTitle>
                         <AlertDescription>
-                           Has finalizado el examen exitosamente. Ya puedes cerrar esta ventana.
+                           {blockReason || 'Has finalizado el monitoreo exitosamente. Ya puedes cerrar esta ventana.'}
                         </AlertDescription>
                     </Alert>
                     <Button onClick={() => window.location.href = '/student'} className="w-full mt-4">
-                        <LogOut className="mr-2 h-4 w-4" />
-                        Volver al Portal del Estudiante
+                        <LogOut className="mr-2 h-4 w-4" /> Volver al Portal
                     </Button>
                 </CardContent>
             </Card>
@@ -215,9 +173,7 @@ export default function StudentExamLivePage() {
     );
   }
 
-  if (!user || !userProfile) {
-    return null; // AuthProvider handles redirect
-  }
+  if (!user || !userProfile) return null;
 
   return (
     <div className="flex flex-col min-h-screen bg-secondary">
@@ -226,66 +182,64 @@ export default function StudentExamLivePage() {
         isOpen={step === 'requirements'} 
         onAcceptRequirements={handleAcceptRequirements} 
       />
-      
+
       <ExamHeader examStarted={examStarted} examData={examData} />
-      
+
       <main className="flex-grow flex items-center justify-center mt-16 mb-10 px-4">
         {step === 'monitoring' ? (
             <div className="w-full flex-grow flex items-center justify-center">
-                <Card className="w-full max-w-2xl text-center shadow-lg">
-                    <CardHeader>
-                        <CardTitle className="text-2xl font-headline text-primary flex items-center justify-center gap-2">
-                            <CheckCircle className="h-8 w-8" />
-                            Monitoreo Activado
+                <Card className="w-full max-w-2xl text-center shadow-lg border-0">
+                    <CardHeader className="bg-[#161F45] text-white rounded-t-lg py-6">
+                        <CardTitle className="text-2xl font-bold flex items-center justify-center gap-2">
+                            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_#ef4444]"></div>
+                            Monitoreo Activo
                         </CardTitle>
-                        <CardDescription>
-                            Tu sesión de monitoreo ha comenzado. Ahora puedes abrir tu examen.
+                        <CardDescription className="text-blue-200">
+                            La cámara y el micrófono están transmitiendo al supervisor.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                        <Alert>
-                            <AlertTriangle className="h-4 w-4" />
-                            <AlertTitle>¡Instrucciones Importantes!</AlertTitle>
-                            <AlertDescription>
-                                <ol className="list-decimal list-inside space-y-2 text-left">
-                                    <li className="font-semibold">
-                                        Activa el modo de pantalla completa. Presiona la tecla <code className="font-mono p-1 bg-muted rounded">{fullscreenKey}</code>.
-                                    </li>
-                                    <li>Haz clic en el botón de abajo para abrir Blackboard en una <strong>nueva pestaña</strong>.</li>
-                                    <li>Completa tu examen en esa nueva pestaña.</li>
-                                    <li className="font-bold text-destructive">No cierres esta pestaña de monitoreo.</li>
-                                    <li>El cambiar a otras pestañas o aplicaciones generará una alerta.</li>
-                                </ol>
-                            </AlertDescription>
-                        </Alert>
+                    <CardContent className="space-y-6 pt-8">
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left text-sm text-yellow-800">
+                            <p className="font-bold flex items-center gap-2 mb-2"><AlertTriangle className="h-4 w-4"/> Reglas de Oro:</p>
+                            <ul className="list-disc list-inside space-y-1 ml-1">
+                                <li>Mantén la pantalla completa (<code className="bg-yellow-100 px-1 rounded">{fullscreenKey}</code>).</li>
+                                <li>No cambies de pestaña ni minimices el navegador.</li>
+                                <li>Mantente siempre frente a la cámara.</li>
+                            </ul>
+                        </div>
+
+                        <div className="space-y-3">
+                            <Button 
+                                className="w-full h-12 text-lg bg-[#00d4ff] hover:bg-[#00b8e6] text-[#161F45] font-bold"
+                                onClick={() => window.open('https://ugm.blackboard.com/?new_loc=%2Fultra%2Fcourse', '_blank')}
+                            >
+                                <ExternalLink className="mr-2 h-5 w-5" />
+                                Ir a Blackboard (Nueva Pestaña)
+                            </Button>
+                            <p className="text-xs text-muted-foreground">
+                                * Se abrirá en una nueva pestaña. No cierres esta ventana de monitoreo.
+                            </p>
+                        </div>
                     </CardContent>
-                    <CardFooter className="flex-col gap-4">
-                        <Button 
-                            className="w-full"
-                            onClick={() => window.open('https://ugm.blackboard.com/?new_loc=%2Fultra%2Fcourse', '_blank')}
-                        >
-                            <ExternalLink className="mr-2 h-4 w-4" />
-                            Abrir Plataforma de Examen en Nueva Pestaña
-                        </Button>
+                    <CardFooter className="bg-gray-50 rounded-b-lg border-t p-6">
                          <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button className="w-full bg-green-600 hover:bg-green-700" disabled={isFinishing}>
+                                <Button variant="destructive" className="w-full" disabled={isFinishing}>
                                     {isFinishing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                                    He Terminado, Finalizar Monitoreo
+                                    Terminé mi examen
                                 </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
-                                    <AlertDialogTitle>¿Estás seguro de que quieres finalizar?</AlertDialogTitle>
+                                    <AlertDialogTitle>¿Confirmas que has terminado?</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                        Esta acción terminará tu sesión de monitoreo y no podrás volver a unirte. Asegúrate de haber enviado tu examen en la otra pestaña antes de confirmar.
+                                        Esto finalizará la sesión de vigilancia. Asegúrate de haber enviado tus respuestas en Blackboard primero.
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                    <AlertDialogAction onClick={handleFinishExam} disabled={isFinishing} className="bg-green-600 hover:bg-green-700">
-                                         {isFinishing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                        Sí, he terminado
+                                    <AlertDialogAction onClick={handleFinishExam} className="bg-red-600 hover:bg-red-700">
+                                        Sí, finalizar sesión
                                     </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
@@ -294,16 +248,9 @@ export default function StudentExamLivePage() {
                 </Card>
             </div>
         ) : (
-            <div className="w-full max-w-4xl mx-auto p-4">
-                <Card className="shadow-lg animate-pulse">
-                    <CardHeader>
-                        <Skeleton className="h-8 w-3/4" />
-                        <Skeleton className="h-4 w-1/2" />
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <Skeleton className="h-[calc(100vh-300px)] w-full rounded-lg" />
-                    </CardContent>
-                </Card>
+            <div className="w-full max-w-4xl mx-auto p-4 text-center">
+                <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4"/>
+                <p className="text-muted-foreground">Preparando entorno seguro...</p>
             </div>
         )}
       </main>
