@@ -4,7 +4,7 @@ import db from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { examId: string } }
+  { params }: { params: Promise<{ examId: string }> }
 ) {
   try {
     const authResult = await verifyAuth(request);
@@ -12,7 +12,8 @@ export async function GET(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const examId = params.examId;
+    // Next.js 15: params debe ser awaited
+    const { examId } = await params;
 
     // Get alerts for the session
     const alertsResult = await db.query(

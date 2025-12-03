@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { ExamHeader } from '@/components/student/exam-header';
@@ -39,8 +39,7 @@ interface ExamData {
 export default function StudentExamLivePage() {
   const { user, userProfile, loading } = useAuth();
   const params = useParams();
-  const router = useRouter();
-  // Aseguramos que examId sea string
+  // Aseguramos que examId sea string y manejamos posibles arrays
   const examId = Array.isArray(params.examId) ? params.examId[0] : params.examId;
 
   const [step, setStep] = useState<ExamStep>('requirements');
@@ -58,22 +57,37 @@ export default function StudentExamLivePage() {
     }
   }, []);
 
-  // CARGA DE DATOS Y POLLING (Reemplaza a Firebase onSnapshot)
+  // --- CARGA DE DATOS Y POLLING (CORREGIDO) ---
   useEffect(() => {
+    // Esperar a que tengamos el ID y el usuario autenticado
     if (!examId || !user) return;
 
     const fetchExamStatus = async () => {
         try {
-            const response = await fetch(`/api/exam-sessions/${examId}`);
+            // 1. OBTENER TOKEN DE SEGURIDAD (CRÍTICO)
+            const token = await user.getIdToken();
+            if (!token) {
+                console.warn("No se pudo obtener el token de autenticación");
+                return;
+            }
+
+            // 2. HACER PETICIÓN CON HEADERS
+            const response = await fetch(`/api/exam-sessions/${examId}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}` // ✅ Llave maestra
+                }
+            });
+
             if (!response.ok) {
-                if (response.status === 404) throw new Error("Examen no encontrado");
-                throw new Error("Error de conexión");
+                if (response.status === 404) throw new Error("Examen no encontrado o acceso no autorizado.");
+                if (response.status === 401) throw new Error("Tu sesión ha expirado. Por favor recarga.");
+                throw new Error("Error de conexión con el servidor.");
             }
 
             const data = await response.json();
             setExamData(data.exam);
 
-            // Verificar si el estudiante está bloqueado o el examen terminó
+            // 3. VERIFICAR ESTADO DEL ESTUDIANTE
             if (!isTerminated) {
                 if (data.studentStatus === 'blocked') {
                     setBlockReason('Has sido bloqueado por el instructor.');
@@ -85,19 +99,27 @@ export default function StudentExamLivePage() {
                     setStep('finished');
                 }
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error polling exam data:", error);
+            // Solo mostramos toast si es un error fatal, no por fallos de red momentáneos
+            if (error.message.includes('no encontrado') || error.message.includes('bloqueado')) {
+                 toast({ 
+                     variant: "destructive", 
+                     title: "Error de Acceso", 
+                     description: error.message 
+                 });
+            }
         }
     };
 
     // Carga inicial
     fetchExamStatus();
 
-    // Polling cada 10 segundos para ver si el examen sigue activo
-    const interval = setInterval(fetchExamStatus, 10000);
+    // Polling cada 5 segundos para mantener sincronía
+    const interval = setInterval(fetchExamStatus, 5000);
 
     return () => clearInterval(interval);
-  }, [examId, user, isTerminated]);
+  }, [examId, user, isTerminated, toast]);
 
   const handleAcceptRequirements = () => {
     setStep('monitoring');
@@ -111,7 +133,7 @@ export default function StudentExamLivePage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                action: 'finish', // Normalizado minúsculas
+                action: 'finish', 
                 payload: { 
                     studentId: user.uid,
                     examId: examId,
@@ -146,7 +168,6 @@ export default function StudentExamLivePage() {
   }
 
   if (step === 'finished') {
-     // Pantalla de finalización (Bloqueado o Terminado OK)
      return (
         <div className="flex flex-col min-h-screen bg-secondary items-center justify-center p-4">
              <Card className={`shadow-lg max-w-lg border-t-4 ${blockReason ? 'border-red-500' : 'border-green-500'}`}>

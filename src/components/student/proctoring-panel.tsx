@@ -4,12 +4,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle, Loader2, Phone } from 'lucide-react';
+import { AlertTriangle, Loader2, Phone, Eye, EyeOff } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast"
 import type { ExamStep } from '@/app/student/exam/[examId]/page';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 interface ProctoringPanelProps {
   step: ExamStep;
@@ -32,9 +32,10 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   const audioContextRef = useRef<AudioContext | null>(null);
   const modelRef = useRef<any | null>(null);
 
+  const setupInitiated = useRef(false);
+
   const [isMonitoringActive, setIsMonitoringActive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSetupInProgress, setIsSetupInProgress] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('Iniciando sistema de monitoreo...');
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState('default');
@@ -42,6 +43,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   const [monitoringStartTime, setMonitoringStartTime] = useState<number | null>(null);
   const [helpMessage, setHelpMessage] = useState('');
   const [isImmune, setIsImmune] = useState(false);
+  const [showPreview, setShowPreview] = useState(true); // Nuevo: Controlar visibilidad del espejo
   const immunityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const lastAlertTimestamp = useRef<{[key: string]: number}>({});
@@ -63,9 +65,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     }
 
     const stopStream = (stream: MediaStream | null) => {
-        stream?.getTracks().forEach(track => {
-            track.stop();
-        });
+        stream?.getTracks().forEach(track => track.stop());
     };
 
     if (videoRef.current?.srcObject) {
@@ -77,6 +77,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         screenVideoRef.current.srcObject = null;
     }
     setIsMonitoringActive(false);
+    setupInitiated.current = false;
   }, []);
 
   useEffect(() => {
@@ -102,77 +103,100 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     };
   }, [step, cleanupStreams]);
 
-  // Sonidos (Omitidos para brevedad, se mantienen igual si estaban definidos o vacíos)
-  const playAlertSound = useCallback(() => {}, []); 
-  const playNotificationSound = useCallback(() => {}, []);
-
-  // --- OPTIMIZACIÓN DE IMAGEN ---
+  // --- OPTIMIZACIÓN DE IMAGEN RESILIENTE ---
   const takeSnapshot = useCallback((): string | null => {
-    // Reducimos a 320px. Esto baja el peso de ~100KB a ~5KB.
-    // Suficiente para que el profesor vea que el alumno está ahí.
     const MAX_WIDTH = 320; 
-
     const canvas = document.createElement('canvas');
     const cameraVideo = videoRef.current;
     const screenVideo = screenVideoRef.current;
 
-    if (!screenVideo || screenVideo.readyState < 2 || !cameraVideo || cameraVideo.readyState < 2) return null;
+    // LOG DE DEPURACIÓN: Estado de los videos
+    if (!cameraVideo || !screenVideo) {
+      console.warn('[takeSnapshot] Refs no disponibles:', { cameraVideo: !!cameraVideo, screenVideo: !!screenVideo });
+      return null;
+    }
+    
+    console.log('[takeSnapshot] Estado videos:', {
+      cameraReadyState: cameraVideo.readyState,
+      cameraWidth: cameraVideo.videoWidth,
+      screenReadyState: screenVideo.readyState,
+      screenWidth: screenVideo.videoWidth,
+    });
 
-    const screenAspectRatio = screenVideo.videoWidth / screenVideo.videoHeight;
-    canvas.width = Math.min(screenVideo.videoWidth, MAX_WIDTH);
-    canvas.height = canvas.width / screenAspectRatio;
+    // Verificamos individualmente si están listos
+    const screenReady = screenVideo.readyState >= 2 && screenVideo.videoWidth > 0;
+    const cameraReady = cameraVideo.readyState >= 2 && cameraVideo.videoWidth > 0;
+
+    // Si NINGUNO está listo, no podemos enviar nada
+    if (!screenReady && !cameraReady) {
+      console.warn('[takeSnapshot] Ningún video listo para captura');
+      return null;
+    }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // Optimización de renderizado
     ctx.imageSmoothingEnabled = false; 
 
-    // 1. Dibujar pantalla (Fondo)
-    ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+    // Configurar dimensiones basadas en la pantalla o fallback a 4:3
+    let width = 320;
+    let height = 240;
 
-    // 2. Dibujar cámara (Picture-in-Picture)
-    const cameraAspectRatio = cameraVideo.videoWidth / cameraVideo.videoHeight;
-    const pipWidth = canvas.width / 4; // 25% del ancho
-    const pipHeight = pipWidth / cameraAspectRatio;
-    const pipX = canvas.width - pipWidth - 5;
-    const pipY = canvas.height - pipHeight - 5;
+    if (screenReady && screenVideo) {
+        const screenAspectRatio = screenVideo.videoWidth / screenVideo.videoHeight;
+        width = Math.min(screenVideo.videoWidth, MAX_WIDTH);
+        height = width / screenAspectRatio;
+    }
 
-    // Borde visual para separar cámara de pantalla
-    ctx.strokeStyle = '#ef4444'; // Red-500
-    ctx.lineWidth = 2;
-    ctx.strokeRect(pipX, pipY, pipWidth, pipHeight);
+    canvas.width = width;
+    canvas.height = height;
 
-    ctx.drawImage(cameraVideo, pipX, pipY, pipWidth, pipHeight);
+    // 1. Dibujar Fondo (Pantalla o Negro si falló)
+    if (screenReady && screenVideo) {
+        ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+    } else {
+        // Fallback visual si la pantalla falló pero la cámara no
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px sans-serif';
+        ctx.fillText("Esperando pantalla...", 10, 20);
+    }
 
-    // Calidad 0.4 (JPEG) es el balance perfecto entre visibilidad y velocidad de red
+    // 2. Dibujar PIP (Cámara)
+    if (cameraReady && cameraVideo) {
+        const cameraAspectRatio = cameraVideo.videoWidth / cameraVideo.videoHeight;
+        const pipWidth = canvas.width / 4; 
+        const pipHeight = pipWidth / cameraAspectRatio;
+        const pipX = canvas.width - pipWidth - 5;
+        const pipY = canvas.height - pipHeight - 5;
+
+        ctx.strokeStyle = '#ef4444'; 
+        ctx.lineWidth = 2;
+        ctx.strokeRect(pipX, pipY, pipWidth, pipHeight);
+        ctx.drawImage(cameraVideo, pipX, pipY, pipWidth, pipHeight);
+    }
+
     return canvas.toDataURL('image/jpeg', 0.4);
   }, []);
 
+  // ... (Resto de funciones: terminateSession, events, etc. se mantienen igual)
   const terminateSessionAndBlock = useCallback(async (reason: string, eventType: string, severity: 'critical' | 'warning' = 'critical') => {
     if (isTerminated || !user) return;
     const imgSrc = takeSnapshot();
-
     await fetch('/api/live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             action: 'alert',
-            payload: {
-                examId, studentId: user.uid, studentName: userProfile?.nombre,
-                description: eventType, severity, evidenceUrl: imgSrc || ''
-            },
+            payload: { examId, studentId: user.uid, studentName: userProfile?.nombre, description: eventType, severity, evidenceUrl: imgSrc || '' },
         }),
     }).catch(console.error);
-
     try {
       await fetch('/api/live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            action: 'finish', 
-            payload: { studentId: user.uid, examId, reason } 
-        }),
+        body: JSON.stringify({ action: 'finish', payload: { studentId: user.uid, examId, reason } }),
       });
     } catch (error) { console.error(error); }
     onTerminate(reason);
@@ -181,9 +205,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   const handleProctoringEvent = useCallback(async (event: {eventType: string, eventDetails: string, severity?: 'critical' | 'warning' | 'info'}) => {
     if (!user || !userProfile || isTerminated || step !== 'monitoring') return;
     const now = Date.now();
-
-    if (monitoringStartTime && (now - monitoringStartTime < 60000)) return; // Grace period
-
+    if (monitoringStartTime && (now - monitoringStartTime < 60000)) return; 
     const COOLDOWN = event.severity === 'critical' ? 0 : 10000;
     if (now - (lastAlertTimestamp.current[event.eventType] || 0) < COOLDOWN) return;
     lastAlertTimestamp.current[event.eventType] = now;
@@ -194,21 +216,13 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         grantImmunity();
         toast({ variant: 'destructive', title: '¡Falta Grave Detectada!', description: `${event.eventType}`, duration: 10000 });
     }
-
     const imgSrc = takeSnapshot();
     await fetch('/api/live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'alert',
-          payload: {
-            examId, // ID IMPORTANTE
-            studentId: user.uid,
-            studentName: userProfile.nombre,
-            description: event.eventType,
-            severity: event.severity || 'warning',
-            evidenceUrl: imgSrc || '',
-          },
+          payload: { examId, studentId: user.uid, studentName: userProfile.nombre, description: event.eventType, severity: event.severity || 'warning', evidenceUrl: imgSrc || '' },
         }),
     }).catch(error => console.error("Error al enviar alerta:", error));
   }, [user, userProfile, takeSnapshot, examId, isTerminated, step, monitoringStartTime, criticalAlertCount, toast, setCriticalAlertCount, grantImmunity]);
@@ -222,6 +236,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     setTimeout(() => setIsRequestingHelp(false), 15000);
   }, [user, userProfile, isRequestingHelp, helpMessage, handleProctoringEvent, toast]);
 
+  // IA y Audio (Simplificados para brevedad, mantener lógica original)
   const detectPersons = useCallback(async () => {
     if (!modelRef.current || !videoRef.current || videoRef.current.readyState < 2 || isTerminated) return;
     try {
@@ -235,26 +250,19 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   const loadMLModelAndStartDetection = useCallback(async () => {
     if (isTerminated) return;
     const loadWithRetry = async (importFn: () => Promise<any>, retries = 2) => {
-      for (let i = 0; i < retries; i++) {
-        try { return await importFn(); } catch (e) { await new Promise(r => setTimeout(r, 1000)); }
-      }
+      for (let i = 0; i < retries; i++) { try { return await importFn(); } catch (e) { await new Promise(r => setTimeout(r, 1000)); } }
       throw new Error("Failed to load model");
     };
-
     try {
         setLoadingMessage('Cargando IA...');
-        const [tf, cocoSsd] = await Promise.all([
-            loadWithRetry(() => import('@tensorflow/tfjs')),
-            loadWithRetry(() => import('@tensorflow-models/coco-ssd'))
-        ]);
+        const [tf, cocoSsd] = await Promise.all([ loadWithRetry(() => import('@tensorflow/tfjs')), loadWithRetry(() => import('@tensorflow-models/coco-ssd')) ]);
         await tf.setBackend('webgl');
         modelRef.current = await cocoSsd.load();
         if (personDetectionIntervalId.current) clearInterval(personDetectionIntervalId.current);
         personDetectionIntervalId.current = setInterval(detectPersons, 7000);
     } catch (error: any) {
-        console.warn("IA no disponible (Red/Firewall):", error);
-        toast({ title: 'Aviso', description: 'Monitoreo básico activo (IA desactivada por red).', duration: 5000 });
-        // No bloqueamos el examen, permitimos continuar sin IA local
+        console.warn("IA no disponible:", error);
+        toast({ title: 'Aviso', description: 'Monitoreo básico activo.', duration: 5000 });
     }
   }, [detectPersons, toast, isTerminated]);
 
@@ -267,11 +275,9 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         const source = audioContext.createMediaStreamSource(stream);
         const processor = audioContext.createScriptProcessor(2048, 1, 1);
         audioAnalysisNode.current = processor;
-
         let speakingCount = 0;
         const SPEAKING_THRESHOLD = 0.04;
         const CONSECUTIVE_SAMPLES = 3;
-
         processor.onaudioprocess = (e) => {
             if (isTerminated) return;
             const input = e.inputBuffer.getChannelData(0);
@@ -292,10 +298,8 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   }, [handleProctoringEvent, isTerminated]);
 
   const setupMedia = useCallback(async () => {
-    setIsSetupInProgress(true);
     setIsLoading(true);
     setMediaError(null);
-
     const waitForVideoReady = (videoElement: HTMLVideoElement): Promise<void> => {
         return new Promise((resolve) => {
             if (videoElement.readyState >= 2) return resolve();
@@ -303,135 +307,147 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
             setTimeout(() => resolve(), 5000); 
         });
     };
-
     try {
         setLoadingMessage('Solicitando permisos...');
-        if (!videoRef.current || !screenVideoRef.current) throw new Error("DOM Error");
-
         const [camStream, screenStream] = await Promise.all([
             navigator.mediaDevices.getUserMedia({ video: true, audio: true }),
             navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
         ]);
-
-        if (isTerminated) {
+        if (!videoRef.current || !screenVideoRef.current || isTerminated) {
+            console.warn("Component unmounted/terminated. Clean up.");
             camStream.getTracks().forEach(t => t.stop());
             screenStream.getTracks().forEach(t => t.stop());
             return;
         }
-
         videoRef.current.srcObject = camStream;
         screenVideoRef.current.srcObject = screenStream;
-
         screenStream.getVideoTracks()[0].onended = async () => {
              await terminateSessionAndBlock('Has detenido la compartición de pantalla.', 'Compartir pantalla detenido');
         };
-
         await Promise.all([ waitForVideoReady(videoRef.current), waitForVideoReady(screenVideoRef.current) ]);
-        await videoRef.current.play();
-        await screenVideoRef.current.play();
-
+        if (videoRef.current && screenVideoRef.current) {
+            await videoRef.current.play();
+            await screenVideoRef.current.play();
+        }
         initializeAudioAnalysis(camStream);
-
-        // Carga no bloqueante de la IA
         loadMLModelAndStartDetection();
-
         setIsMonitoringActive(true);
         setMonitoringStartTime(Date.now()); 
-
     } catch (err: any) {
         console.error('Error setupMedia:', err);
         let errorMessage = `Error: ${err.message}`;
         if (err.name === 'NotAllowedError') errorMessage = 'Permiso denegado. Revisa tu navegador.';
         setMediaError(errorMessage);
+        setupInitiated.current = false; 
         onTerminate(errorMessage); 
-    } finally {
-        setIsLoading(false);
-        setIsSetupInProgress(false);
-    }
+    } finally { setIsLoading(false); }
   }, [terminateSessionAndBlock, initializeAudioAnalysis, loadMLModelAndStartDetection, onTerminate, isTerminated]);
 
   useEffect(() => {
-    if (step === 'monitoring' && !isMonitoringActive && !isSetupInProgress && !mediaError && !isTerminated) {
+    if (step === 'monitoring' && !isMonitoringActive && !setupInitiated.current && !mediaError && !isTerminated) {
+        setupInitiated.current = true; 
         setupMedia();
     }
-  }, [step, isMonitoringActive, mediaError, setupMedia, isTerminated, isSetupInProgress]);
+  }, [step, isMonitoringActive, mediaError, setupMedia, isTerminated]);
 
+  // --- HEARTBEAT ---
   useEffect(() => {
     if (step !== 'monitoring' || !isMonitoringActive || !user || !userProfile || isTerminated) return;
-
     setTimeout(async () => {
-        await fetch('/api/live', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'join', 
-                payload: { examId, studentId: user.uid, name: userProfile.nombre, email: user.email }
-            }),
-        });
+        await fetch('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'join', payload: { examId, studentId: user.uid, name: userProfile.nombre, email: user.email } }) });
     }, 1000);
-
     const imageUpdateInterval = setInterval(async () => {
+        // Intentar tomar foto (ahora devuelve algo aunque sea incompleto)
         const imgSrc = takeSnapshot();
-        if (imgSrc && user && !isTerminated) {
+        if (user && !isTerminated) {
             try {
                 const res = await fetch('/api/live', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        action: 'heartbeat', 
-                        payload: { 
-                            examId, // ✅ AHORA SÍ ENVIAMOS EL ID
-                            studentId: user.uid, 
-                            snapshot: imgSrc 
-                        } 
-                    }),
+                    body: JSON.stringify({ action: 'heartbeat', payload: { examId, studentId: user.uid, snapshot: imgSrc } }),
                 });
-
                 if (res.ok) {
                     const data = await res.json();
                     if (data.data?.messages?.length > 0) {
-                        data.data.messages.forEach((msg: string) => {
-                            grantImmunity();
-                            toast({ title: 'Mensaje del Supervisor', description: msg });
-                        });
+                        data.data.messages.forEach((msg: string) => { grantImmunity(); toast({ title: 'Mensaje del Supervisor', description: msg }); });
                     }
                 }
             } catch (error) { console.warn("Heartbeat skip", error); }
         }
     }, 5000);
-
     return () => clearInterval(imageUpdateInterval);
   }, [step, isMonitoringActive, user, userProfile, takeSnapshot, toast, examId, isTerminated, grantImmunity]);
 
   useEffect(() => {
     if (step !== 'monitoring' || !isMonitoringActive || isTerminated) return;
-    const handleVisibility = () => {
-      if (document.hidden && !isImmune) handleProctoringEvent({ eventType: 'Cambio de pestaña', eventDetails: 'Minimizó o cambió ventana', severity: 'critical' });
-    };
+    const handleVisibility = () => { if (document.hidden && !isImmune) handleProctoringEvent({ eventType: 'Cambio de pestaña', eventDetails: 'Minimizó o cambió ventana', severity: 'critical' }); };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [step, isMonitoringActive, handleProctoringEvent, isTerminated, isImmune]);
 
-  const hiddenStyle = { position: 'absolute' as 'absolute', top: '-9999px', left: '-9999px', width: '1px', height: '1px', opacity: 0 };
+  // --- UI RENDER (Espejo Visible) ---
+  // IMPORTANTE: Usamos CSS para ocultar, NO desmontamos del DOM para mantener streams activos
+  const videoStyle = { width: '100%', height: '100%', objectFit: 'cover' as 'cover' };
+  const cameraVideoStyle = { 
+    width: '100%', 
+    height: '100%', 
+    objectFit: 'cover' as 'cover',
+    transform: 'scaleX(-1)' // Efecto espejo natural para la cámara
+  };
 
-  if (isLoading && step === 'monitoring') return (
-    <div className="fixed inset-0 bg-background/80 flex flex-col items-center justify-center z-50">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground">{loadingMessage}</p>
-    </div>
-  );
-
-  if (mediaError) return (
-     <div className="fixed inset-0 bg-background/80 flex items-center justify-center z-50 p-4">
-        <Card className="border-destructive max-w-lg"><CardHeader><CardTitle className="text-destructive">Error de Monitoreo</CardTitle></CardHeader><CardContent><p>{mediaError}</p><Button onClick={() => window.location.reload()} className="w-full mt-4">Reintentar</Button></CardContent></Card>
-    </div>
-  );
+  if (isLoading && step === 'monitoring') return <div className="fixed inset-0 bg-background/80 flex flex-col items-center justify-center z-50"><Loader2 className="h-12 w-12 animate-spin text-primary mb-4" /><p className="text-muted-foreground">{loadingMessage}</p></div>;
+  if (mediaError) return <div className="fixed inset-0 bg-background/80 flex items-center justify-center z-50 p-4"><Card className="border-destructive max-w-lg"><CardHeader><CardTitle className="text-destructive">Error de Monitoreo</CardTitle></CardHeader><CardContent><p>{mediaError}</p><Button onClick={() => window.location.reload()} className="w-full mt-4">Reintentar</Button></CardContent></Card></div>;
 
   return (
     <>
-      <video ref={videoRef} id="camera-video" style={hiddenStyle} autoPlay muted playsInline />
-      <video ref={screenVideoRef} id="screen-video" style={hiddenStyle} autoPlay muted playsInline />
-       {isMonitoringActive && !isTerminated && (
+      {/* Contenedor del Espejo - SIEMPRE en DOM, ocultamos con CSS */}
+      <div style={{ position: 'fixed', bottom: '20px', right: '20px', width: '280px', zIndex: 50 }} className="bg-black/90 border border-white/20 rounded-lg shadow-2xl overflow-hidden backdrop-blur-sm transition-all">
+
+          {/* Cabecera del Espejo */}
+          <div className="flex justify-between items-center p-2 bg-[#161F45] text-white text-xs">
+              <span className="flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"/> Grabando</span>
+              <button onClick={() => setShowPreview(!showPreview)} className="hover:text-blue-300">
+                  {showPreview ? <Eye size={14} /> : <EyeOff size={14} />}
+              </button>
+          </div>
+
+          {/* 
+            VIDEOS DEL ESPEJO - CRÍTICO: 
+            - Altura FIJA (h-40) SIEMPRE para mantener streams activos
+            - Solo usamos opacity-0 y pointer-events-none para ocultar visualmente
+            - NUNCA h-0 porque puede interrumpir los streams de video
+          */}
+          <div 
+            className={`relative h-40 transition-opacity duration-300 ${
+              showPreview 
+                ? 'opacity-100' 
+                : 'opacity-0 pointer-events-none'
+            }`}
+          >
+              {/* Pantalla (Fondo) */}
+              <video 
+                ref={screenVideoRef} 
+                autoPlay 
+                muted 
+                playsInline 
+                style={videoStyle} 
+                className="absolute inset-0 bg-gray-900" 
+              />
+
+              {/* Cámara (PIP con efecto espejo) */}
+              <div className="absolute bottom-2 right-2 w-1/4 aspect-video border-2 border-red-500 shadow-lg bg-black overflow-hidden">
+                  <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    muted 
+                    playsInline 
+                    style={cameraVideoStyle} 
+                  />
+              </div>
+          </div>
+      </div>
+
+      {isMonitoringActive && !isTerminated && (
         <div className="fixed bottom-16 left-4 z-50">
             <Dialog>
                 <DialogTrigger asChild><Button variant="destructive" className="shadow-lg"><Phone className="mr-2 h-4 w-4" />Ayuda</Button></DialogTrigger>

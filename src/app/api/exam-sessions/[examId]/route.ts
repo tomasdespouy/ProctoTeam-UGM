@@ -6,47 +6,42 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { examId: string } }
+  { params }: { params: Promise<{ examId: string }> }
 ) {
   try {
+    // 1. Autenticación estricta
     const user = await getAuthenticatedUser(request);
-    const { examId } = params;
+    // Next.js 15: params debe ser awaited
+    const { examId } = await params;
 
     if (!examId) {
-      return NextResponse.json({ error: 'Exam ID required' }, { status: 400 });
+      return NextResponse.json({ error: 'ID de examen requerido' }, { status: 400 });
     }
 
-    // Determinar si el identificador es un UUID válido o un código de acceso
+    // 2. Detección de Tipo de ID (UUID vs Código Corto)
+    // Regex para UUID v4 estándar
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId);
 
-    // Consultamos el examen por ID (UUID) o por código de acceso
-    const query = isUUID
-      ? `
-        SELECT 
-          es.id,
-          es.title,
-          es.subject,
-          es.section,
-          es.duration,
-          es.status as exam_status,
-          ep.status as student_status
-        FROM exam_sessions es
-        LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
-        WHERE es.id = $1
-      `
-      : `
-        SELECT 
-          es.id,
-          es.title,
-          es.subject,
-          es.section,
-          es.duration,
-          es.status as exam_status,
-          ep.status as student_status
-        FROM exam_sessions es
-        LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
-        WHERE es.access_code = $1
-      `;
+    let query = '';
+
+    // 3. Construcción de Query Segura
+    // Si es UUID buscamos por ID, si no, buscamos por access_code. 
+    // Esto evita el error de Postgres "invalid input syntax for type uuid"
+    if (isUUID) {
+        query = `
+          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status, ep.status as student_status
+          FROM exam_sessions es
+          LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
+          WHERE es.id = $1
+        `;
+    } else {
+        query = `
+          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status, ep.status as student_status
+          FROM exam_sessions es
+          LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
+          WHERE es.access_code = $1
+        `;
+    }
 
     const result = await db.query(query, [examId, user.uid]);
 
@@ -58,17 +53,21 @@ export async function GET(
 
     return NextResponse.json({
       exam: {
+        id: data.id, // Devolvemos el ID real por si el frontend lo necesita
         title: data.title,
         subject: data.subject,
         section: data.section,
         duration: data.duration,
         status: data.exam_status,
       },
-      studentStatus: data.student_status // 'joined', 'in-progress', 'blocked', 'submitted'
+      studentStatus: data.student_status
     });
 
   } catch (error: any) {
-    console.error('Error fetching exam details:', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+    console.error('API Error fetching exam:', error);
+    if (error.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Sesión expirada' }, { status: 401 });
+    }
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }
