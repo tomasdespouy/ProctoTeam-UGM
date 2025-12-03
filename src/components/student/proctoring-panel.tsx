@@ -3,11 +3,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle, Loader2, Phone, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Phone, Eye, EyeOff } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast"
 import type { ExamStep } from '@/app/student/exam/[examId]/page';
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
@@ -27,10 +26,12 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   const { user, userProfile } = useAuth();
   const { toast } = useToast();
 
+  // Refs de Video y Lógica
   const videoRef = useRef<HTMLVideoElement>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const modelRef = useRef<any | null>(null);
+  const isMounted = useRef(false); // NUEVO: Para controlar ciclo de vida seguro
 
   const setupInitiated = useRef(false);
 
@@ -38,17 +39,24 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('Iniciando sistema de monitoreo...');
   const [mediaError, setMediaError] = useState<string | null>(null);
-  const [notificationPermission, setNotificationPermission] = useState('default');
   const [isRequestingHelp, setIsRequestingHelp] = useState(false);
   const [monitoringStartTime, setMonitoringStartTime] = useState<number | null>(null);
   const [helpMessage, setHelpMessage] = useState('');
   const [isImmune, setIsImmune] = useState(false);
-  const [showPreview, setShowPreview] = useState(true); // Nuevo: Controlar visibilidad del espejo
+  const [showPreview, setShowPreview] = useState(true);
   const immunityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const lastAlertTimestamp = useRef<{[key: string]: number}>({});
   const personDetectionIntervalId = useRef<NodeJS.Timeout | null>(null);
   const audioAnalysisNode = useRef<ScriptProcessorNode | null>(null);
+
+  // --- CONTROL DE MONTAJE ---
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   const cleanupStreams = useCallback(() => {
     if (personDetectionIntervalId.current) {
@@ -76,7 +84,10 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         stopStream(screenVideoRef.current.srcObject as MediaStream);
         screenVideoRef.current.srcObject = null;
     }
-    setIsMonitoringActive(false);
+    // Solo reseteamos estado si el componente sigue montado
+    if (isMounted.current) {
+        setIsMonitoringActive(false);
+    }
     setupInitiated.current = false;
   }, []);
 
@@ -94,8 +105,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
 
   useEffect(() => {
     if (step === 'monitoring' && 'Notification' in window) {
-        if (Notification.permission !== 'denied') Notification.requestPermission().then(setNotificationPermission);
-        else setNotificationPermission(Notification.permission);
+        if (Notification.permission !== 'denied') Notification.requestPermission();
     }
     return () => {
        cleanupStreams();
@@ -103,46 +113,30 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     };
   }, [step, cleanupStreams]);
 
-  // --- OPTIMIZACIÓN DE IMAGEN RESILIENTE ---
+  // --- TAKE SNAPSHOT ---
   const takeSnapshot = useCallback((): string | null => {
     const MAX_WIDTH = 320; 
     const canvas = document.createElement('canvas');
     const cameraVideo = videoRef.current;
     const screenVideo = screenVideoRef.current;
 
-    // LOG DE DEPURACIÓN: Estado de los videos
-    if (!cameraVideo || !screenVideo) {
-      console.warn('[takeSnapshot] Refs no disponibles:', { cameraVideo: !!cameraVideo, screenVideo: !!screenVideo });
-      return null;
-    }
-    
-    console.log('[takeSnapshot] Estado videos:', {
-      cameraReadyState: cameraVideo.readyState,
-      cameraWidth: cameraVideo.videoWidth,
-      screenReadyState: screenVideo.readyState,
-      screenWidth: screenVideo.videoWidth,
-    });
+    if (!cameraVideo || !screenVideo) return null;
 
-    // Verificamos individualmente si están listos
+    // Verificación simplificada para evitar logs excesivos
     const screenReady = screenVideo.readyState >= 2 && screenVideo.videoWidth > 0;
     const cameraReady = cameraVideo.readyState >= 2 && cameraVideo.videoWidth > 0;
 
-    // Si NINGUNO está listo, no podemos enviar nada
-    if (!screenReady && !cameraReady) {
-      console.warn('[takeSnapshot] Ningún video listo para captura');
-      return null;
-    }
+    if (!screenReady && !cameraReady) return null;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
     ctx.imageSmoothingEnabled = false; 
 
-    // Configurar dimensiones basadas en la pantalla o fallback a 4:3
     let width = 320;
     let height = 240;
 
-    if (screenReady && screenVideo) {
+    if (screenReady) {
         const screenAspectRatio = screenVideo.videoWidth / screenVideo.videoHeight;
         width = Math.min(screenVideo.videoWidth, MAX_WIDTH);
         height = width / screenAspectRatio;
@@ -151,20 +145,14 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     canvas.width = width;
     canvas.height = height;
 
-    // 1. Dibujar Fondo (Pantalla o Negro si falló)
-    if (screenReady && screenVideo) {
+    if (screenReady) {
         ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
     } else {
-        // Fallback visual si la pantalla falló pero la cámara no
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '10px sans-serif';
-        ctx.fillText("Esperando pantalla...", 10, 20);
     }
 
-    // 2. Dibujar PIP (Cámara)
-    if (cameraReady && cameraVideo) {
+    if (cameraReady) {
         const cameraAspectRatio = cameraVideo.videoWidth / cameraVideo.videoHeight;
         const pipWidth = canvas.width / 4; 
         const pipHeight = pipWidth / cameraAspectRatio;
@@ -180,11 +168,13 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     return canvas.toDataURL('image/jpeg', 0.4);
   }, []);
 
-  // ... (Resto de funciones: terminateSession, events, etc. se mantienen igual)
+  // --- API HANDLERS ---
   const terminateSessionAndBlock = useCallback(async (reason: string, eventType: string, severity: 'critical' | 'warning' = 'critical') => {
     if (isTerminated || !user) return;
     const imgSrc = takeSnapshot();
-    await fetch('/api/live', {
+
+    // Fire and forget alerts to avoid blocking UI
+    fetch('/api/live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -192,6 +182,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
             payload: { examId, studentId: user.uid, studentName: userProfile?.nombre, description: eventType, severity, evidenceUrl: imgSrc || '' },
         }),
     }).catch(console.error);
+
     try {
       await fetch('/api/live', {
         method: 'POST',
@@ -205,7 +196,9 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   const handleProctoringEvent = useCallback(async (event: {eventType: string, eventDetails: string, severity?: 'critical' | 'warning' | 'info'}) => {
     if (!user || !userProfile || isTerminated || step !== 'monitoring') return;
     const now = Date.now();
+    // Cooldown inicial de 60s
     if (monitoringStartTime && (now - monitoringStartTime < 60000)) return; 
+
     const COOLDOWN = event.severity === 'critical' ? 0 : 10000;
     if (now - (lastAlertTimestamp.current[event.eventType] || 0) < COOLDOWN) return;
     lastAlertTimestamp.current[event.eventType] = now;
@@ -236,7 +229,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     setTimeout(() => setIsRequestingHelp(false), 15000);
   }, [user, userProfile, isRequestingHelp, helpMessage, handleProctoringEvent, toast]);
 
-  // IA y Audio (Simplificados para brevedad, mantener lógica original)
+  // --- IA HELPERS ---
   const detectPersons = useCallback(async () => {
     if (!modelRef.current || !videoRef.current || videoRef.current.readyState < 2 || isTerminated) return;
     try {
@@ -249,12 +242,13 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
 
   const loadMLModelAndStartDetection = useCallback(async () => {
     if (isTerminated) return;
+    // Función auxiliar para retry seguro
     const loadWithRetry = async (importFn: () => Promise<any>, retries = 2) => {
       for (let i = 0; i < retries; i++) { try { return await importFn(); } catch (e) { await new Promise(r => setTimeout(r, 1000)); } }
       throw new Error("Failed to load model");
     };
     try {
-        setLoadingMessage('Cargando IA...');
+        setLoadingMessage('Configurando IA...');
         const [tf, cocoSsd] = await Promise.all([ loadWithRetry(() => import('@tensorflow/tfjs')), loadWithRetry(() => import('@tensorflow-models/coco-ssd')) ]);
         await tf.setBackend('webgl');
         modelRef.current = await cocoSsd.load();
@@ -297,9 +291,11 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     } catch (e) { console.warn("Audio analysis failed", e); }
   }, [handleProctoringEvent, isTerminated]);
 
+  // --- SETUP PRINCIPAL ---
   const setupMedia = useCallback(async () => {
     setIsLoading(true);
     setMediaError(null);
+
     const waitForVideoReady = (videoElement: HTMLVideoElement): Promise<void> => {
         return new Promise((resolve) => {
             if (videoElement.readyState >= 2) return resolve();
@@ -307,40 +303,58 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
             setTimeout(() => resolve(), 5000); 
         });
     };
+
     try {
         setLoadingMessage('Solicitando permisos...');
         const [camStream, screenStream] = await Promise.all([
             navigator.mediaDevices.getUserMedia({ video: true, audio: true }),
             navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
         ]);
-        if (!videoRef.current || !screenVideoRef.current || isTerminated) {
-            console.warn("Component unmounted/terminated. Clean up.");
+
+        // VERIFICACIÓN CORREGIDA: Usamos isMounted y verificamos refs
+        if (!isMounted.current || isTerminated) {
+            console.log("Setup interrumpido: componente desmontado o terminado.");
             camStream.getTracks().forEach(t => t.stop());
             screenStream.getTracks().forEach(t => t.stop());
             return;
         }
+
+        // Si por alguna razón extraña los refs son null (no deberían serlo con el arreglo del render), lanzamos error controlado
+        if (!videoRef.current || !screenVideoRef.current) {
+            throw new Error("Error interno: Elementos de video no inicializados.");
+        }
+
         videoRef.current.srcObject = camStream;
         screenVideoRef.current.srcObject = screenStream;
+
         screenStream.getVideoTracks()[0].onended = async () => {
              await terminateSessionAndBlock('Has detenido la compartición de pantalla.', 'Compartir pantalla detenido');
         };
+
         await Promise.all([ waitForVideoReady(videoRef.current), waitForVideoReady(screenVideoRef.current) ]);
+
         if (videoRef.current && screenVideoRef.current) {
             await videoRef.current.play();
             await screenVideoRef.current.play();
         }
+
         initializeAudioAnalysis(camStream);
-        loadMLModelAndStartDetection();
+
+        // Cargamos IA en segundo plano para no bloquear tanto
+        loadMLModelAndStartDetection(); 
+
         setIsMonitoringActive(true);
         setMonitoringStartTime(Date.now()); 
     } catch (err: any) {
         console.error('Error setupMedia:', err);
         let errorMessage = `Error: ${err.message}`;
-        if (err.name === 'NotAllowedError') errorMessage = 'Permiso denegado. Revisa tu navegador.';
+        if (err.name === 'NotAllowedError') errorMessage = 'Permiso denegado. Debes permitir cámara y pantalla.';
         setMediaError(errorMessage);
         setupInitiated.current = false; 
         onTerminate(errorMessage); 
-    } finally { setIsLoading(false); }
+    } finally { 
+        if (isMounted.current) setIsLoading(false); 
+    }
   }, [terminateSessionAndBlock, initializeAudioAnalysis, loadMLModelAndStartDetection, onTerminate, isTerminated]);
 
   useEffect(() => {
@@ -353,13 +367,13 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   // --- HEARTBEAT ---
   useEffect(() => {
     if (step !== 'monitoring' || !isMonitoringActive || !user || !userProfile || isTerminated) return;
-    setTimeout(async () => {
-        await fetch('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'join', payload: { examId, studentId: user.uid, name: userProfile.nombre, email: user.email } }) });
-    }, 1000);
+
+    // Heartbeat inicial
+    fetch('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'join', payload: { examId, studentId: user.uid, name: userProfile.nombre, email: user.email } }) }).catch(console.error);
+
     const imageUpdateInterval = setInterval(async () => {
-        // Intentar tomar foto (ahora devuelve algo aunque sea incompleto)
         const imgSrc = takeSnapshot();
-        if (user && !isTerminated) {
+        if (user && !isTerminated && imgSrc) { // Solo si hay imagen válida
             try {
                 const res = await fetch('/api/live', {
                     method: 'POST',
@@ -385,25 +399,25 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [step, isMonitoringActive, handleProctoringEvent, isTerminated, isImmune]);
 
-  // --- UI RENDER (Espejo Visible) ---
-  // IMPORTANTE: Usamos CSS para ocultar, NO desmontamos del DOM para mantener streams activos
-  const videoStyle = { width: '100%', height: '100%', objectFit: 'cover' as 'cover' };
-  const cameraVideoStyle = { 
-    width: '100%', 
-    height: '100%', 
-    objectFit: 'cover' as 'cover',
-    transform: 'scaleX(-1)' // Efecto espejo natural para la cámara
-  };
-
-  if (isLoading && step === 'monitoring') return <div className="fixed inset-0 bg-background/80 flex flex-col items-center justify-center z-50"><Loader2 className="h-12 w-12 animate-spin text-primary mb-4" /><p className="text-muted-foreground">{loadingMessage}</p></div>;
+  // --- RENDERIZADO CORREGIDO ---
+  // Si hay error fatal, mostramos tarjeta y nada más
   if (mediaError) return <div className="fixed inset-0 bg-background/80 flex items-center justify-center z-50 p-4"><Card className="border-destructive max-w-lg"><CardHeader><CardTitle className="text-destructive">Error de Monitoreo</CardTitle></CardHeader><CardContent><p>{mediaError}</p><Button onClick={() => window.location.reload()} className="w-full mt-4">Reintentar</Button></CardContent></Card></div>;
+
+  const videoStyle = { width: '100%', height: '100%', objectFit: 'cover' as 'cover' };
+  const cameraVideoStyle = { width: '100%', height: '100%', objectFit: 'cover' as 'cover', transform: 'scaleX(-1)' };
 
   return (
     <>
-      {/* Contenedor del Espejo - SIEMPRE en DOM, ocultamos con CSS */}
-      <div style={{ position: 'fixed', bottom: '20px', right: '20px', width: '280px', zIndex: 50 }} className="bg-black/90 border border-white/20 rounded-lg shadow-2xl overflow-hidden backdrop-blur-sm transition-all">
+      {/* OVERLAY DE CARGA (Para no desmontar los videos debajo) */}
+      {isLoading && step === 'monitoring' && (
+        <div className="fixed inset-0 bg-background/90 flex flex-col items-center justify-center z-[60]">
+            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+            <p className="text-muted-foreground">{loadingMessage}</p>
+        </div>
+      )}
 
-          {/* Cabecera del Espejo */}
+      {/* ESPEJO FLOTANTE (Siempre renderizado, controlado por opacidad/CSS) */}
+      <div style={{ position: 'fixed', bottom: '20px', right: '20px', width: '280px', zIndex: 50 }} className="bg-black/90 border border-white/20 rounded-lg shadow-2xl overflow-hidden backdrop-blur-sm transition-all">
           <div className="flex justify-between items-center p-2 bg-[#161F45] text-white text-xs">
               <span className="flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"/> Grabando</span>
               <button onClick={() => setShowPreview(!showPreview)} className="hover:text-blue-300">
@@ -411,20 +425,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
               </button>
           </div>
 
-          {/* 
-            VIDEOS DEL ESPEJO - CRÍTICO: 
-            - Altura FIJA (h-40) SIEMPRE para mantener streams activos
-            - Solo usamos opacity-0 y pointer-events-none para ocultar visualmente
-            - NUNCA h-0 porque puede interrumpir los streams de video
-          */}
-          <div 
-            className={`relative h-40 transition-opacity duration-300 ${
-              showPreview 
-                ? 'opacity-100' 
-                : 'opacity-0 pointer-events-none'
-            }`}
-          >
-              {/* Pantalla (Fondo) */}
+          <div className={`relative h-40 transition-opacity duration-300 ${showPreview ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
               <video 
                 ref={screenVideoRef} 
                 autoPlay 
@@ -433,8 +434,6 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
                 style={videoStyle} 
                 className="absolute inset-0 bg-gray-900" 
               />
-
-              {/* Cámara (PIP con efecto espejo) */}
               <div className="absolute bottom-2 right-2 w-1/4 aspect-video border-2 border-red-500 shadow-lg bg-black overflow-hidden">
                   <video 
                     ref={videoRef} 

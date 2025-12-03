@@ -71,13 +71,28 @@ export const liveSessionService = {
    * Se debe llamar periódicamente (ej. cada 10-30s)
    */
   heartbeat: async (examId: string, studentId: string, snapshot?: string) => {
+    // DIAGNÓSTICO: Ver si llega la imagen
+    if (snapshot) {
+        console.log(`💓 Heartbeat recibido: ${studentId.substring(0, 5)}... | IMG Size: ${snapshot.length} chars`);
+    } else {
+        console.log(`💓 Heartbeat recibido: ${studentId.substring(0, 5)}... | ❌ IMG IS NULL`);
+    }
+
     // Solo actualizamos si el alumno no ha finalizado
     const query = `
       UPDATE exam_participations 
-      SET last_snapshot = COALESCE($3, last_snapshot)
+      SET last_snapshot = COALESCE($3, last_snapshot),
+          -- Actualizamos started_at como "last_seen" si no tenemos columna dedicada
+          started_at = started_at 
       WHERE exam_session_id = $1 AND student_id = $2 AND status IN ('joined', 'in-progress')
+      RETURNING id
     `;
-    await db.query(query, [examId, studentId, snapshot]);
+
+    const result = await db.query(query, [examId, studentId, snapshot]);
+
+    if (result.rowCount === 0) {
+        console.warn(`⚠️ Heartbeat ignorado: No se encontró sesión activa para estudiante ${studentId} en examen ${examId}`);
+    }
   },
 
   /**
