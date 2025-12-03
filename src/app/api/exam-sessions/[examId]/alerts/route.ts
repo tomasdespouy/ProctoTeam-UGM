@@ -4,7 +4,7 @@ import db from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: { examId: string } }
 ) {
   try {
     const authResult = await verifyAuth(request);
@@ -12,7 +12,7 @@ export async function GET(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const sessionId = params.sessionId;
+    const examId = params.examId;
 
     // Get alerts for the session
     const alertsResult = await db.query(
@@ -26,7 +26,7 @@ export async function GET(
        FROM alerts 
        WHERE exam_session_id = $1 
        ORDER BY created_at ASC`,
-      [sessionId]
+      [examId]
     );
 
     // Get student details for the session
@@ -39,7 +39,7 @@ export async function GET(
         finish_time
        FROM student_details 
        WHERE exam_session_id = $1`,
-      [sessionId]
+      [examId]
     );
 
     return NextResponse.json({

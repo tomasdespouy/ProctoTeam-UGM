@@ -16,19 +16,37 @@ export async function GET(
       return NextResponse.json({ error: 'Exam ID required' }, { status: 400 });
     }
 
-    // Consultamos el examen y el estado específico del estudiante en ese examen
-    const query = `
-      SELECT 
-        es.title,
-        es.subject,
-        es.section,
-        es.duration,
-        es.status as exam_status,
-        ep.status as student_status
-      FROM exam_sessions es
-      LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
-      WHERE es.id = $1
-    `;
+    // Determinar si el identificador es un UUID válido o un código de acceso
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId);
+
+    // Consultamos el examen por ID (UUID) o por código de acceso
+    const query = isUUID
+      ? `
+        SELECT 
+          es.id,
+          es.title,
+          es.subject,
+          es.section,
+          es.duration,
+          es.status as exam_status,
+          ep.status as student_status
+        FROM exam_sessions es
+        LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
+        WHERE es.id = $1
+      `
+      : `
+        SELECT 
+          es.id,
+          es.title,
+          es.subject,
+          es.section,
+          es.duration,
+          es.status as exam_status,
+          ep.status as student_status
+        FROM exam_sessions es
+        LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
+        WHERE es.access_code = $1
+      `;
 
     const result = await db.query(query, [examId, user.uid]);
 

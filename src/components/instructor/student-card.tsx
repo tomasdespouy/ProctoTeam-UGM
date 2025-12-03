@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { ZoomIn, MessageSquare, XCircle, CheckCircle, AlertTriangle, Power, Loader2, Bell } from 'lucide-react';
+import { ZoomIn, MessageSquare, XCircle, CheckCircle, AlertTriangle, Power, Loader2, Bell, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   AlertDialog,
@@ -45,6 +45,7 @@ const statusConfig = {
 
 export function StudentCard({ student }: StudentCardProps) {
     const { name, id, status, lastAlert, imgSrc, alerts } = student;
+    const hasValidImage = typeof imgSrc === 'string' && imgSrc.trim().length > 0;
     const currentStatus = statusConfig[status as keyof typeof statusConfig];
     const { toast } = useToast();
     const [message, setMessage] = useState('');
@@ -161,7 +162,14 @@ export function StudentCard({ student }: StudentCardProps) {
             </CardHeader>
             <CardContent className="flex-grow space-y-3">
                 <div className="aspect-[4/3] w-full rounded-md overflow-hidden bg-muted">
-                    <Image src={imgSrc} alt={`Pantalla de ${name}`} width={1280} height={960} className="w-full h-full object-cover" data-ai-hint="student screen" />
+                    {hasValidImage ? (
+                        <Image src={imgSrc} alt={`Pantalla de ${name}`} width={1280} height={960} className="w-full h-full object-cover" data-ai-hint="student screen" />
+                    ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                            <User className="h-12 w-12 mb-2" />
+                            <span className="text-xs font-medium">Esperando video...</span>
+                        </div>
+                    )}
                 </div>
             </CardContent>
             <CardFooter className="pt-3 border-t">
@@ -187,14 +195,21 @@ export function StudentCard({ student }: StudentCardProps) {
                                 </DialogHeader>
                                 <div className="p-4 pt-0">
                                     <div className="relative aspect-video w-full rounded-md overflow-hidden bg-muted border">
-                                        <Image 
-                                            src={imgSrc} 
-                                            alt={`Pantalla de ${name}`} 
-                                            fill
-                                            sizes="(max-width: 1024px) 100vw, 80vw"
-                                            className="object-contain" 
-                                            data-ai-hint="student screen"
-                                        />
+                                        {hasValidImage ? (
+                                            <Image 
+                                                src={imgSrc} 
+                                                alt={`Pantalla de ${name}`} 
+                                                fill
+                                                sizes="(max-width: 1024px) 100vw, 80vw"
+                                                className="object-contain" 
+                                                data-ai-hint="student screen"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex flex-col items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                                                <User className="h-16 w-16 mb-3" />
+                                                <span className="text-sm font-medium">Esperando video...</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </DialogContent>
