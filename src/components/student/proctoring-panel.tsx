@@ -1,14 +1,58 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useAuth } from '@/context/auth-context';
+import { useAuth, UserProfile } from '@/context/auth-context';
+import { AccountInfo } from '@azure/msal-browser';
 import { Button } from '@/components/ui/button';
 import { Loader2, Phone, Eye, EyeOff } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast"
 import type { ExamStep } from '@/app/student/exam/[examId]/page';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * UTILIDAD: Extracción robusta de Student ID
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Esta función intenta extraer el ID del estudiante de múltiples fuentes:
+ * 1. userProfile.uid (fuente principal - viene de PostgreSQL)
+ * 2. userProfile.id (fallback)
+ * 3. account.localAccountId (Azure AD)
+ * 4. account.homeAccountId (Azure AD - formato largo)
+ * 
+ * @returns string | null - El ID del estudiante o null si no se encuentra
+ */
+function getStudentId(
+  userProfile: UserProfile | null, 
+  account: AccountInfo | null
+): string | null {
+  // 1. Fuente principal: userProfile.uid (desde PostgreSQL)
+  if (userProfile?.uid && typeof userProfile.uid === 'string') {
+    return userProfile.uid;
+  }
+  
+  // 2. Fallback: userProfile.id
+  if (userProfile?.id && typeof userProfile.id === 'string') {
+    return userProfile.id;
+  }
+  
+  // 3. Fallback: Azure AD localAccountId (oid claim)
+  if (account?.localAccountId && typeof account.localAccountId === 'string') {
+    return account.localAccountId;
+  }
+  
+  // 4. Último recurso: Azure AD homeAccountId (formato: oid.tenantId)
+  if (account?.homeAccountId && typeof account.homeAccountId === 'string') {
+    // homeAccountId tiene formato "oid.tenantId", extraemos solo el oid
+    const oid = account.homeAccountId.split('.')[0];
+    if (oid) return oid;
+  }
+  
+  console.warn('⚠️ [getStudentId] No se pudo extraer ID del estudiante de ninguna fuente');
+  return null;
+}
 
 interface ProctoringPanelProps {
   step: ExamStep;
@@ -48,6 +92,15 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
 
   const lastAlertTimestamp = useRef<{[key: string]: number}>({});
   const personDetectionIntervalId = useRef<NodeJS.Timeout | null>(null);
+  
+  // TODO: [DEUDA TÉCNICA] ScriptProcessorNode está deprecado.
+  // La alternativa moderna es AudioWorkletNode, pero requiere:
+  // 1. Crear un AudioWorklet module separado (.js)
+  // 2. Registrarlo con audioContext.audioWorklet.addModule()
+  // 3. Mayor complejidad de setup
+  // Mantener ScriptProcessorNode por ahora ya que sigue funcionando en todos los navegadores
+  // y la migración requiere refactorización significativa.
+  // Referencia: https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletNode
   const audioAnalysisNode = useRef<ScriptProcessorNode | null>(null);
 
   // --- CONTROL DE MONTAJE ---
@@ -171,6 +224,14 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   // --- API HANDLERS ---
   const terminateSessionAndBlock = useCallback(async (reason: string, eventType: string, severity: 'critical' | 'warning' = 'critical') => {
     if (isTerminated || !user) return;
+    
+    // Extraer studentId de forma robusta
+    const studentId = getStudentId(userProfile, user.account);
+    if (!studentId) {
+      console.warn('⚠️ [terminateSessionAndBlock] Abortado: No se pudo obtener studentId');
+      return;
+    }
+    
     const imgSrc = takeSnapshot();
 
     // Fire and forget alerts to avoid blocking UI
@@ -180,9 +241,9 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             action: 'alert',
-            studentId: user.uid,
+            studentId,
             examId,
-            payload: { examId, studentId: user.uid, studentName: userProfile?.nombre, description: eventType, severity, evidenceUrl: imgSrc || '' },
+            payload: { examId, studentId, studentName: userProfile?.nombre, description: eventType, severity, evidenceUrl: imgSrc || '' },
         }),
     }).catch(console.error);
 
@@ -190,7 +251,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
       await fetch('/api/live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'finish', payload: { studentId: user.uid, examId, reason } }),
+        body: JSON.stringify({ action: 'finish', studentId, examId, payload: { studentId, examId, reason } }),
       });
     } catch (error) { console.error(error); }
     onTerminate(reason);
@@ -198,6 +259,14 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
 
   const handleProctoringEvent = useCallback(async (event: {eventType: string, eventDetails: string, severity?: 'critical' | 'warning' | 'info'}) => {
     if (!user || !userProfile || isTerminated || step !== 'monitoring') return;
+    
+    // Extraer studentId de forma robusta
+    const studentId = getStudentId(userProfile, user.account);
+    if (!studentId) {
+      console.warn('⚠️ [handleProctoringEvent] Abortado: No se pudo obtener studentId');
+      return;
+    }
+    
     const now = Date.now();
     // Cooldown inicial de 60s
     if (monitoringStartTime && (now - monitoringStartTime < 60000)) return; 
@@ -219,15 +288,20 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'alert',
-          studentId: user.uid,
+          studentId,
           examId,
-          payload: { examId, studentId: user.uid, studentName: userProfile.nombre, description: event.eventType, severity: event.severity || 'warning', evidenceUrl: imgSrc || '' },
+          payload: { examId, studentId, studentName: userProfile.nombre, description: event.eventType, severity: event.severity || 'warning', evidenceUrl: imgSrc || '' },
         }),
     }).catch(error => console.error("Error al enviar alerta:", error));
   }, [user, userProfile, takeSnapshot, examId, isTerminated, step, monitoringStartTime, criticalAlertCount, toast, setCriticalAlertCount, grantImmunity]);
 
   const handleRequestHelp = useCallback(async () => {
-    if (!user || !userProfile || isRequestingHelp || !helpMessage.trim()) return;
+    // Usar getStudentId para validar en lugar de depender solo de userProfile
+    const studentId = getStudentId(userProfile, user?.account ?? null);
+    if (!studentId || isRequestingHelp || !helpMessage.trim()) {
+      if (!studentId) console.warn('⚠️ [handleRequestHelp] Abortado: No se pudo obtener studentId');
+      return;
+    }
     setIsRequestingHelp(true);
     await handleProctoringEvent({ eventType: 'Solicitud de Ayuda', eventDetails: helpMessage, severity: 'critical' });
     toast({ title: "Solicitud Enviada", description: "Tu solicitud ha sido enviada." });
@@ -378,9 +452,11 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     // ═══════════════════════════════════════════════════════════════
     if (step !== 'monitoring' || !isMonitoringActive || isTerminated) return;
     
-    // Guard Clause: Verificar que user.uid existe antes de cualquier fetch
-    if (!user?.uid) {
-      console.warn('⚠️ [Heartbeat] Abortado: user.uid no disponible');
+    // Extraer studentId de forma robusta usando la función utilitaria
+    const currentStudentId = getStudentId(userProfile, user?.account ?? null);
+    
+    if (!currentStudentId) {
+      console.warn('⚠️ [Heartbeat] Abortado: No se pudo obtener studentId de userProfile ni account');
       return;
     }
     
@@ -390,9 +466,8 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     }
 
     // Capturar valores en variables locales para evitar race conditions
-    const currentStudentId = user.uid;
     const currentStudentName = userProfile.nombre;
-    const currentStudentEmail = user.email;
+    const currentStudentEmail = userProfile.correo || user?.account?.username;
 
     // Heartbeat inicial (Join)
     fetch('/api/live', { 
@@ -413,9 +488,10 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     }).catch(err => console.error('Join failed:', err));
 
     const imageUpdateInterval = setInterval(async () => {
-        // Re-validar antes de cada heartbeat (user podría haber cambiado)
-        if (!user?.uid) {
-          console.warn('⚠️ [Heartbeat Interval] Skipped: user.uid undefined');
+        // Re-validar antes de cada heartbeat usando función robusta
+        const studentId = getStudentId(userProfile, user?.account ?? null);
+        if (!studentId) {
+          console.warn('⚠️ [Heartbeat Interval] Skipped: studentId no disponible');
           return;
         }
         
@@ -434,11 +510,11 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
                 body: JSON.stringify({ 
                   action: 'heartbeat', 
                   // REDUNDANCIA: studentId en nivel superior para extracción directa
-                  studentId: user.uid,
+                  studentId,
                   examId,
                   payload: { 
                     examId, 
-                    studentId: user.uid, 
+                    studentId, 
                     snapshot: imgSrc 
                   } 
                 }),
@@ -524,7 +600,12 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
             <Dialog>
                 <DialogTrigger asChild><Button variant="destructive" className="shadow-lg"><Phone className="mr-2 h-4 w-4" />Ayuda</Button></DialogTrigger>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Solicitar Ayuda</DialogTitle></DialogHeader>
+                    <DialogHeader>
+                      <DialogTitle>Solicitar Ayuda</DialogTitle>
+                      <DialogDescription>
+                        Describe el problema que estás experimentando. Un supervisor revisará tu solicitud lo antes posible.
+                      </DialogDescription>
+                    </DialogHeader>
                     <Textarea value={helpMessage} onChange={(e) => setHelpMessage(e.target.value)} placeholder="Describe tu problema..." rows={4}/>
                     <DialogFooter><Button onClick={handleRequestHelp} disabled={isRequestingHelp || !helpMessage.trim()}>Enviar</Button></DialogFooter>
                 </DialogContent>
