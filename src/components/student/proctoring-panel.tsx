@@ -174,11 +174,14 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     const imgSrc = takeSnapshot();
 
     // Fire and forget alerts to avoid blocking UI
+    // DEFENSE IN DEPTH: studentId redundante en nivel superior
     fetch('/api/live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             action: 'alert',
+            studentId: user.uid,
+            examId,
             payload: { examId, studentId: user.uid, studentName: userProfile?.nombre, description: eventType, severity, evidenceUrl: imgSrc || '' },
         }),
     }).catch(console.error);
@@ -210,11 +213,14 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         toast({ variant: 'destructive', title: '¡Falta Grave Detectada!', description: `${event.eventType}`, duration: 10000 });
     }
     const imgSrc = takeSnapshot();
+    // DEFENSE IN DEPTH: studentId redundante en nivel superior
     await fetch('/api/live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'alert',
+          studentId: user.uid,
+          examId,
           payload: { examId, studentId: user.uid, studentName: userProfile.nombre, description: event.eventType, severity: event.severity || 'warning', evidenceUrl: imgSrc || '' },
         }),
     }).catch(error => console.error("Error al enviar alerta:", error));
@@ -365,30 +371,97 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   }, [step, isMonitoringActive, mediaError, setupMedia, isTerminated]);
 
   // --- HEARTBEAT ---
+  // DEFENSE IN DEPTH: Validación estricta en cliente antes de enviar
   useEffect(() => {
-    if (step !== 'monitoring' || !isMonitoringActive || !user || !userProfile || isTerminated) return;
+    // ═══════════════════════════════════════════════════════════════
+    // VALIDACIÓN ESTRICTA: No enviar si faltan datos críticos
+    // ═══════════════════════════════════════════════════════════════
+    if (step !== 'monitoring' || !isMonitoringActive || isTerminated) return;
+    
+    // Guard Clause: Verificar que user.uid existe antes de cualquier fetch
+    if (!user?.uid) {
+      console.warn('⚠️ [Heartbeat] Abortado: user.uid no disponible');
+      return;
+    }
+    
+    if (!userProfile?.nombre) {
+      console.warn('⚠️ [Heartbeat] Abortado: userProfile.nombre no disponible');
+      return;
+    }
 
-    // Heartbeat inicial
-    fetch('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'join', payload: { examId, studentId: user.uid, name: userProfile.nombre, email: user.email } }) }).catch(console.error);
+    // Capturar valores en variables locales para evitar race conditions
+    const currentStudentId = user.uid;
+    const currentStudentName = userProfile.nombre;
+    const currentStudentEmail = user.email;
+
+    // Heartbeat inicial (Join)
+    fetch('/api/live', { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ 
+        action: 'join', 
+        // REDUNDANCIA: studentId en nivel superior Y en payload para máxima compatibilidad
+        studentId: currentStudentId,
+        examId,
+        payload: { 
+          examId, 
+          studentId: currentStudentId, 
+          name: currentStudentName, 
+          email: currentStudentEmail 
+        } 
+      }) 
+    }).catch(err => console.error('Join failed:', err));
 
     const imageUpdateInterval = setInterval(async () => {
+        // Re-validar antes de cada heartbeat (user podría haber cambiado)
+        if (!user?.uid) {
+          console.warn('⚠️ [Heartbeat Interval] Skipped: user.uid undefined');
+          return;
+        }
+        
         const imgSrc = takeSnapshot();
-        if (user && !isTerminated && imgSrc) { // Solo si hay imagen válida
-            try {
-                const res = await fetch('/api/live', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'heartbeat', payload: { examId, studentId: user.uid, snapshot: imgSrc } }),
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.data?.messages?.length > 0) {
-                        data.data.messages.forEach((msg: string) => { grantImmunity(); toast({ title: 'Mensaje del Supervisor', description: msg }); });
-                    }
+        
+        // Solo enviar si hay imagen válida
+        if (!imgSrc) {
+          console.log('⚠️ [Heartbeat] Skipped: No hay snapshot disponible');
+          return;
+        }
+
+        try {
+            const res = await fetch('/api/live', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  action: 'heartbeat', 
+                  // REDUNDANCIA: studentId en nivel superior para extracción directa
+                  studentId: user.uid,
+                  examId,
+                  payload: { 
+                    examId, 
+                    studentId: user.uid, 
+                    snapshot: imgSrc 
+                  } 
+                }),
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                if (data.data?.messages?.length > 0) {
+                    data.data.messages.forEach((msg: string) => { 
+                      grantImmunity(); 
+                      toast({ title: 'Mensaje del Supervisor', description: msg }); 
+                    });
                 }
-            } catch (error) { console.warn("Heartbeat skip", error); }
+            } else if (res.status === 400) {
+                // Log detallado si el servidor rechaza por datos inválidos
+                const errorData = await res.json().catch(() => ({}));
+                console.error('⛔ [Heartbeat] Rechazado por servidor:', errorData);
+            }
+        } catch (error) { 
+          console.warn("Heartbeat network error:", error); 
         }
     }, 5000);
+    
     return () => clearInterval(imageUpdateInterval);
   }, [step, isMonitoringActive, user, userProfile, takeSnapshot, toast, examId, isTerminated, grantImmunity]);
 

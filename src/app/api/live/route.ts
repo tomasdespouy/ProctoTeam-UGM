@@ -28,52 +28,143 @@ export async function POST(request: NextRequest) {
       // --- ACCIONES DEL ALUMNO ---
 
       case 'REGISTER_STUDENT': 
-      case 'join': // Alias para compatibilidad
-        // El alumno entra al examen
+      case 'join': {
+        // ═══════════════════════════════════════════════════════════════
+        // DEFENSE IN DEPTH: Validación para join (mismo patrón)
+        // ═══════════════════════════════════════════════════════════════
+        const joinStudentId = body.studentId || payload.studentId || payload.uid || body.uid;
+        const joinExamId = body.examId || payload.examId;
+        
+        if (!joinStudentId) {
+          console.warn('⛔ [API /live] join rechazado: Missing studentId');
+          return NextResponse.json(
+            { error: 'Bad Request', details: 'Missing required field: studentId for join' }, 
+            { status: 400 }
+          );
+        }
+        
+        if (!joinExamId) {
+          console.warn('⛔ [API /live] join rechazado: Missing examId');
+          return NextResponse.json(
+            { error: 'Bad Request', details: 'Missing required field: examId for join' }, 
+            { status: 400 }
+          );
+        }
+
         result = await liveSessionService.joinSession({
-            examId: payload.examId,
-            studentId: payload.studentId || payload.uid, // Soporte para ambos nombres de campo
-            name: payload.name || payload.studentName,
-            email: payload.email
+            examId: joinExamId,
+            studentId: joinStudentId,
+            name: payload.name || payload.studentName || body.name || 'Estudiante',
+            email: payload.email || body.email
         });
         break;
+      }
 
       case 'UPDATE_IMAGE':
-      case 'heartbeat':
-        // Latido periódico + Foto
-        const studentId = payload.studentId || payload.uid;
+      case 'heartbeat': {
+        // ═══════════════════════════════════════════════════════════════
+        // DEFENSE IN DEPTH: Extracción estandarizada y validación estricta
+        // ═══════════════════════════════════════════════════════════════
+        
+        // 1. Extracción robusta: Buscar studentId en múltiples ubicaciones
+        //    Prioridad: body.studentId > payload.studentId > payload.uid > body.uid
+        const extractedStudentId = body.studentId || payload.studentId || payload.uid || body.uid;
+        const extractedExamId = body.examId || payload.examId;
+        
+        // 2. Validación explícita ANTES de llamar al servicio
+        if (!extractedStudentId) {
+          console.warn('⛔ [API /live] heartbeat rechazado: Missing studentId');
+          return NextResponse.json(
+            { error: 'Bad Request', details: 'Missing required field: studentId' }, 
+            { status: 400 }
+          );
+        }
+        
+        if (!extractedExamId) {
+          console.warn('⛔ [API /live] heartbeat rechazado: Missing examId');
+          return NextResponse.json(
+            { error: 'Bad Request', details: 'Missing required field: examId' }, 
+            { status: 400 }
+          );
+        }
+
+        // 3. Llamar al servicio con datos validados
         await liveSessionService.heartbeat(
-            payload.examId, 
-            studentId, 
-            payload.imgSrc || payload.snapshot // Soporte para ambos nombres
+            extractedExamId, 
+            extractedStudentId, 
+            payload.imgSrc || payload.snapshot || body.snapshot
         );
 
-        // Aprovechamos para devolver mensajes pendientes (Piggybacking)
-        const messages = await liveSessionService.getMyMessages(payload.examId, studentId);
-
-        // Verificamos si el alumno sigue autorizado (no ha sido expulsado)
-        // Esto es implícito: si heartbeat falla o devuelve error, el cliente debería desconectar
+        // 4. Piggybacking: devolver mensajes pendientes
+        const messages = await liveSessionService.getMyMessages(extractedExamId, extractedStudentId);
         result = { status: 'alive', messages };
         break;
+      }
 
       case 'ADD_ALERT':
-      case 'alert':
-        // IA reporta anomalía
+      case 'alert': {
+        // ═══════════════════════════════════════════════════════════════
+        // DEFENSE IN DEPTH: Validación para alertas (mismo patrón que heartbeat)
+        // ═══════════════════════════════════════════════════════════════
+        // Extracción robusta: Buscar studentId en múltiples ubicaciones
+        // Prioridad: body.studentId > payload.studentId > payload.uid > body.uid
+        const alertStudentId = body.studentId || payload.studentId || payload.uid || body.uid;
+        const alertExamId = body.examId || payload.examId;
+        
+        if (!alertStudentId) {
+          console.warn('⛔ [API /live] alert rechazado: Missing studentId');
+          return NextResponse.json(
+            { error: 'Bad Request', details: 'Missing required field: studentId for alert' }, 
+            { status: 400 }
+          );
+        }
+        
+        if (!alertExamId) {
+          console.warn('⛔ [API /live] alert rechazado: Missing examId');
+          return NextResponse.json(
+            { error: 'Bad Request', details: 'Missing required field: examId for alert' }, 
+            { status: 400 }
+          );
+        }
+
         result = await liveSessionService.reportAlert({
-            examId: payload.examId,
-            studentId: payload.studentId,
-            description: payload.description,
-            severity: payload.severity,
-            evidenceUrl: payload.imgSrc || payload.evidenceUrl
+            examId: alertExamId,
+            studentId: alertStudentId,
+            description: payload.description || 'Alerta sin descripción',
+            severity: payload.severity || 'warning',
+            evidenceUrl: payload.imgSrc || payload.evidenceUrl || body.imgSrc
         });
         break;
+      }
 
       case 'FINISH_STUDENT_SESSION':
-      case 'finish':
-        // Alumno termina voluntariamente
-        await liveSessionService.finishExam(payload.examId, payload.studentId);
+      case 'finish': {
+        // ═══════════════════════════════════════════════════════════════
+        // DEFENSE IN DEPTH: Validación para finish (mismo patrón)
+        // ═══════════════════════════════════════════════════════════════
+        const finishStudentId = body.studentId || payload.studentId || payload.uid || body.uid;
+        const finishExamId = body.examId || payload.examId;
+        
+        if (!finishStudentId) {
+          console.warn('⛔ [API /live] finish rechazado: Missing studentId');
+          return NextResponse.json(
+            { error: 'Bad Request', details: 'Missing required field: studentId for finish' }, 
+            { status: 400 }
+          );
+        }
+        
+        if (!finishExamId) {
+          console.warn('⛔ [API /live] finish rechazado: Missing examId');
+          return NextResponse.json(
+            { error: 'Bad Request', details: 'Missing required field: examId for finish' }, 
+            { status: 400 }
+          );
+        }
+
+        await liveSessionService.finishExam(finishExamId, finishStudentId);
         result = { status: 'finished' };
         break;
+      }
 
       // --- ACCIONES DEL PROFESOR (DASHBOARD) ---
 

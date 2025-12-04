@@ -32,8 +32,27 @@ export const liveSessionService = {
 
   /**
    * Registra la entrada de un estudiante al examen (Join/Rejoin)
+   * 
+   * DEFENSE IN DEPTH: Guard Clause + Safe Logging
    */
   joinSession: async (data: { examId: string; studentId: string; name: string; email?: string }) => {
+    // ═══════════════════════════════════════════════════════════════
+    // GUARD CLAUSE: Validación estricta de parámetros requeridos
+    // ═══════════════════════════════════════════════════════════════
+    if (!data.studentId || typeof data.studentId !== 'string') {
+      console.warn('⛔ [JOIN_SESSION] Guard Clause: studentId inválido o undefined. Operación abortada.');
+      return { success: false, reason: 'INVALID_STUDENT_ID' };
+    }
+    
+    if (!data.examId || typeof data.examId !== 'string') {
+      console.warn('⛔ [JOIN_SESSION] Guard Clause: examId inválido o undefined. Operación abortada.');
+      return { success: false, reason: 'INVALID_EXAM_ID' };
+    }
+
+    // SAFE LOGGING
+    const studentIdPreview = data.studentId?.substring?.(0, 8) ?? 'UNKNOWN';
+    console.log(`📥 Join Session: ${studentIdPreview}... | Name: ${data.name}`);
+
     // Usamos UPSERT: Si ya existe, actualizamos su estado a 'in-progress' y su última conexión
     const query = `
       INSERT INTO exam_participations (exam_session_id, student_id, student_name, status, started_at, last_snapshot)
@@ -50,8 +69,27 @@ export const liveSessionService = {
 
   /**
    * Reporta una alerta de comportamiento sospechoso
+   * 
+   * DEFENSE IN DEPTH: Guard Clause + Safe Logging
    */
   reportAlert: async (data: { examId: string; studentId: string; description: string; severity: string; evidenceUrl?: string }) => {
+    // ═══════════════════════════════════════════════════════════════
+    // GUARD CLAUSE: Validación estricta de parámetros requeridos
+    // ═══════════════════════════════════════════════════════════════
+    if (!data.studentId || typeof data.studentId !== 'string') {
+      console.warn('⛔ [REPORT_ALERT] Guard Clause: studentId inválido o undefined. Operación abortada.');
+      return { success: false, reason: 'INVALID_STUDENT_ID' };
+    }
+    
+    if (!data.examId || typeof data.examId !== 'string') {
+      console.warn('⛔ [REPORT_ALERT] Guard Clause: examId inválido o undefined. Operación abortada.');
+      return { success: false, reason: 'INVALID_EXAM_ID' };
+    }
+
+    // SAFE LOGGING
+    const studentIdPreview = data.studentId?.substring?.(0, 8) ?? 'UNKNOWN';
+    console.log(`🚨 Alert registrada: ${studentIdPreview}... | Severity: ${data.severity} | Desc: ${data.description?.substring(0, 30)}...`);
+
     // 1. Guardar la alerta
     const res = await db.query(
       `INSERT INTO alerts (exam_session_id, student_id, description, severity, evidence_url, timestamp)
@@ -69,13 +107,31 @@ export const liveSessionService = {
   /**
    * Actualiza el "latido" y la foto del estudiante
    * Se debe llamar periódicamente (ej. cada 10-30s)
+   * 
+   * DEFENSE IN DEPTH: Guard Clause + Safe Logging
    */
   heartbeat: async (examId: string, studentId: string, snapshot?: string) => {
-    // DIAGNÓSTICO: Ver si llega la imagen
+    // ═══════════════════════════════════════════════════════════════
+    // GUARD CLAUSE: Validación estricta de parámetros requeridos
+    // Protege contra datos corruptos que lleguen desde capas superiores
+    // ═══════════════════════════════════════════════════════════════
+    if (!studentId || typeof studentId !== 'string') {
+      console.warn('⛔ [HEARTBEAT] Guard Clause: studentId inválido o undefined. Operación abortada.');
+      return { success: false, reason: 'INVALID_STUDENT_ID' };
+    }
+    
+    if (!examId || typeof examId !== 'string') {
+      console.warn('⛔ [HEARTBEAT] Guard Clause: examId inválido o undefined. Operación abortada.');
+      return { success: false, reason: 'INVALID_EXAM_ID' };
+    }
+
+    // SAFE LOGGING: Usamos optional chaining para prevenir excepciones
+    const studentIdPreview = studentId?.substring?.(0, 8) ?? 'UNKNOWN';
+    
     if (snapshot) {
-        console.log(`💓 Heartbeat recibido: ${studentId.substring(0, 5)}... | IMG Size: ${snapshot.length} chars`);
+        console.log(`💓 Heartbeat OK: ${studentIdPreview}... | IMG Size: ${snapshot.length} chars`);
     } else {
-        console.log(`💓 Heartbeat recibido: ${studentId.substring(0, 5)}... | ❌ IMG IS NULL`);
+        console.log(`💓 Heartbeat OK: ${studentIdPreview}... | ⚠️ Sin imagen`);
     }
 
     // Solo actualizamos si el alumno no ha finalizado
@@ -132,14 +188,35 @@ export const liveSessionService = {
 
   /**
    * Finaliza el examen (Submit)
+   * 
+   * DEFENSE IN DEPTH: Guard Clause + Safe Logging
    */
   finishExam: async (examId: string, studentId: string) => {
+    // ═══════════════════════════════════════════════════════════════
+    // GUARD CLAUSE: Validación estricta de parámetros requeridos
+    // ═══════════════════════════════════════════════════════════════
+    if (!studentId || typeof studentId !== 'string') {
+      console.warn('⛔ [FINISH_EXAM] Guard Clause: studentId inválido o undefined. Operación abortada.');
+      return { success: false, reason: 'INVALID_STUDENT_ID' };
+    }
+    
+    if (!examId || typeof examId !== 'string') {
+      console.warn('⛔ [FINISH_EXAM] Guard Clause: examId inválido o undefined. Operación abortada.');
+      return { success: false, reason: 'INVALID_EXAM_ID' };
+    }
+
+    // SAFE LOGGING
+    const studentIdPreview = studentId?.substring?.(0, 8) ?? 'UNKNOWN';
+    console.log(`✅ Finish Exam: ${studentIdPreview}...`);
+
     await db.query(
       `UPDATE exam_participations 
        SET status = 'submitted', finished_at = NOW() 
        WHERE exam_session_id = $1 AND student_id = $2`,
       [examId, studentId]
     );
+    
+    return { success: true };
   },
 
   /**
