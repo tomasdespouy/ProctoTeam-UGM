@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from 'react';
 import { DashboardLayout } from '@/components/instructor/dashboard-layout';
 import type { StudentSession } from '@/services/live-session.service';
 import { Card } from '@/components/ui/card';
-import Image from 'next/image';
 import { WifiOff, Loader2, ArrowLeft, Users } from 'lucide-react';
 import { UserNav } from '@/components/instructor/user-nav';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -90,12 +89,10 @@ function LiveMonitorContent() {
               <Card key={student.id} className="overflow-hidden shadow-md hover:shadow-xl transition-shadow bg-card border-white/10">
                 <div className="aspect-[4/3] w-full bg-black/90 relative group">
                    {student.lastSnapshot ? (
-                       <Image 
+                       <img 
                         src={student.lastSnapshot} 
                         alt={`Pantalla de ${student.name}`} 
-                        fill
-                        className="object-contain" 
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        className="absolute inset-0 w-full h-full object-contain"
                       />
                    ) : (
                        <div className="flex items-center justify-center h-full text-white/50">
