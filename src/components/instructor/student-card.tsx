@@ -1,6 +1,5 @@
 "use client"
 
-import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -44,8 +43,8 @@ const statusConfig = {
 }
 
 export function StudentCard({ student }: StudentCardProps) {
-    const { name, id, status, lastAlert, imgSrc, alerts } = student;
-    const hasValidImage = typeof imgSrc === 'string' && imgSrc.trim().length > 0;
+    const { name, id, status, lastAlert, lastSnapshot, alerts } = student;
+    const hasValidImage = typeof lastSnapshot === 'string' && lastSnapshot.trim().length > 0;
     const currentStatus = statusConfig[status as keyof typeof statusConfig];
     const { toast } = useToast();
     const [message, setMessage] = useState('');
@@ -161,9 +160,9 @@ export function StudentCard({ student }: StudentCardProps) {
                 </div>
             </CardHeader>
             <CardContent className="flex-grow space-y-3">
-                <div className="aspect-[4/3] w-full rounded-md overflow-hidden bg-muted">
+                <div className="aspect-[4/3] w-full rounded-md overflow-hidden bg-muted relative">
                     {hasValidImage ? (
-                        <Image src={imgSrc} alt={`Pantalla de ${name}`} width={1280} height={960} className="w-full h-full object-cover" data-ai-hint="student screen" />
+                        <img src={lastSnapshot} alt={`Pantalla de ${name}`} className="absolute inset-0 w-full h-full object-cover" />
                     ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
                             <User className="h-12 w-12 mb-2" />
@@ -196,13 +195,10 @@ export function StudentCard({ student }: StudentCardProps) {
                                 <div className="p-4 pt-0">
                                     <div className="relative aspect-video w-full rounded-md overflow-hidden bg-muted border">
                                         {hasValidImage ? (
-                                            <Image 
-                                                src={imgSrc} 
+                                            <img 
+                                                src={lastSnapshot} 
                                                 alt={`Pantalla de ${name}`} 
-                                                fill
-                                                sizes="(max-width: 1024px) 100vw, 80vw"
-                                                className="object-contain" 
-                                                data-ai-hint="student screen"
+                                                className="absolute inset-0 w-full h-full object-contain"
                                             />
                                         ) : (
                                             <div className="w-full h-full flex flex-col items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
