@@ -36,6 +36,17 @@ interface ExamData {
     status: 'pending' | 'active' | 'finished';
 }
 
+// --- NUEVO COMPONENTE DE CARGA ATRACTIVO ---
+const ProfessionalLoader = () => (
+    <div className="flex flex-col min-h-screen items-center justify-center p-8 bg-[#161F45] text-white">
+        <Loader2 className="h-16 w-16 animate-spin text-white mb-6" />
+        <h1 className="text-2xl font-bold mb-2">Preparando Entorno Seguro</h1>
+        <p className="text-sm text-gray-400">Verificando conexión y cargando datos del examen...</p>
+        <Skeleton className="h-4 w-64 mt-8 bg-gray-600/50" />
+    </div>
+);
+// ------------------------------------------
+
 export default function StudentExamLivePage() {
   const { user, userProfile, loading } = useAuth();
   const params = useParams();
@@ -57,10 +68,14 @@ export default function StudentExamLivePage() {
     }
   }, []);
 
-  // --- CARGA DE DATOS Y POLLING (CORREGIDO) ---
+  // --- CARGA DE DATOS Y POLLING ---
   useEffect(() => {
     // Esperar a que tengamos el ID y el usuario autenticado
     if (!examId || !user) return;
+
+    // Usamos userProfile.uid como fuente principal (asumiendo que es el ID de la DB)
+    const studentIdForCheck = userProfile?.uid || user.uid;
+    if (!studentIdForCheck) return; // Validación de la identidad lista
 
     const fetchExamStatus = async () => {
         try {
@@ -118,15 +133,19 @@ export default function StudentExamLivePage() {
     // Polling cada 5 segundos para mantener sincronía
     const interval = setInterval(fetchExamStatus, 5000);
 
+    // Agregamos userProfile al dependency array para que el polling se inicie apenas tengamos el perfil
     return () => clearInterval(interval);
-  }, [examId, user, isTerminated, toast]);
+  }, [examId, user, userProfile, isTerminated, toast]); 
 
   const handleAcceptRequirements = () => {
     setStep('monitoring');
   };
 
   const handleFinishExam = async () => {
-    if (!user || !examId) return;
+    // CORRECCIÓN: Usar userProfile.uid como fuente principal de verdad para el backend
+    const studentIdToUse = userProfile?.uid || user.uid; 
+    if (!studentIdToUse || !examId) return;
+
     setIsFinishing(true);
     try {
         await fetch('/api/live', {
@@ -135,7 +154,7 @@ export default function StudentExamLivePage() {
             body: JSON.stringify({
                 action: 'finish', 
                 payload: { 
-                    studentId: user.uid,
+                    studentId: studentIdToUse,
                     examId: examId,
                 }
             })
@@ -157,36 +176,29 @@ export default function StudentExamLivePage() {
   const examStarted = step === 'monitoring';
 
   if (loading || !examData) {
-    return (
-      <div className="flex flex-col min-h-screen bg-secondary p-4">
-          <Skeleton className="h-16 w-full mb-4" />
-          <div className="flex-grow flex container mx-auto gap-6 justify-center">
-            <Skeleton className="h-[calc(100vh-150px)] w-full max-w-4xl" />
-          </div>
-      </div>
-    );
+    // REFINAMIENTO UX: Usar loader profesional
+    return <ProfessionalLoader />;
   }
 
   if (step === 'finished') {
+    // REFINAMIENTO UX: Pantalla de finalización más asertiva (Full Screen Modal)
      return (
-        <div className="flex flex-col min-h-screen bg-secondary items-center justify-center p-4">
-             <Card className={`shadow-lg max-w-lg border-t-4 ${blockReason ? 'border-red-500' : 'border-green-500'}`}>
-                <CardHeader>
-                    <CardTitle className={`font-headline flex items-center gap-2 ${blockReason ? 'text-red-600' : 'text-green-600'}`}>
-                        {blockReason ? <XCircle /> : <CheckCircle />} 
-                        {blockReason ? 'Sesión Interrumpida' : 'Examen Finalizado'}
+        <div className="fixed inset-0 bg-[#161F45] flex items-center justify-center p-4 z-50">
+             <Card className={`shadow-2xl max-w-lg w-full border-t-8 ${blockReason ? 'border-red-600' : 'border-green-500'}`}>
+                <CardHeader className="bg-white p-6">
+                    <CardTitle className={`font-bold flex items-center justify-center gap-3 text-2xl ${blockReason ? 'text-red-700' : 'text-green-600'}`}>
+                        {blockReason ? <XCircle size={30} /> : <CheckCircle size={30} />} 
+                        {blockReason ? 'Sesión Interrumpida' : 'Proceso de Monitoreo Finalizado'}
                     </CardTitle>
                 </CardHeader>
-                <CardContent className="text-center space-y-4 pt-6">
-                    <Alert variant={blockReason ? "destructive" : "default"}>
-                        {blockReason ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle className="h-4 w-4" />}
-                        <AlertTitle>{blockReason ? 'Acceso Revocado' : '¡Todo listo!'}</AlertTitle>
-                        <AlertDescription>
-                           {blockReason || 'Has finalizado el monitoreo exitosamente. Ya puedes cerrar esta ventana.'}
+                <CardContent className="text-center space-y-5 pt-8 pb-6">
+                    <Alert variant={blockReason ? "destructive" : "default"} className="bg-gray-50 border-none text-left">
+                        <AlertDescription className="text-base text-gray-700">
+                           {blockReason || 'Has completado la sesión de monitoreo exitosamente. Ahora puedes enviar o verificar tus respuestas en la plataforma del examen.'}
                         </AlertDescription>
                     </Alert>
-                    <Button onClick={() => window.location.href = '/student'} className="w-full mt-4">
-                        <LogOut className="mr-2 h-4 w-4" /> Volver al Portal
+                    <Button onClick={() => window.location.href = '/student'} className="w-full h-12 mt-4 bg-[#161F45] hover:bg-[#0c1223]">
+                        <LogOut className="mr-2 h-5 w-5" /> Volver al Portal de Estudiantes
                     </Button>
                 </CardContent>
             </Card>
@@ -209,45 +221,54 @@ export default function StudentExamLivePage() {
       <main className="flex-grow flex items-center justify-center mt-16 mb-10 px-4">
         {step === 'monitoring' ? (
             <div className="w-full flex-grow flex items-center justify-center">
-                <Card className="w-full max-w-2xl text-center shadow-lg border-0">
+                <Card className="w-full max-w-2xl text-center shadow-2xl border-0">
                     <CardHeader className="bg-[#161F45] text-white rounded-t-lg py-6">
-                        <CardTitle className="text-2xl font-bold flex items-center justify-center gap-2">
+                        <CardTitle className="text-2xl font-bold flex items-center justify-center gap-3">
+                            {/* REVISIÓN DE TEXTO */}
                             <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_#ef4444]"></div>
-                            Monitoreo Activo
+                            MONITOREO ACTIVO
                         </CardTitle>
-                        <CardDescription className="text-blue-200">
-                            La cámara y el micrófono están transmitiendo al supervisor.
+                        <CardDescription className="text-gray-300">
+                            {/* REVISIÓN DE TEXTO: Ajustado a la realidad de la implementación (snapshots y audio monitoreado) */}
+                            Tu cámara y pantalla están activas. El audio es monitoreado. No cierres esta pestaña.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6 pt-8">
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left text-sm text-yellow-800">
-                            <p className="font-bold flex items-center gap-2 mb-2"><AlertTriangle className="h-4 w-4"/> Reglas de Oro:</p>
+
+                        {/* REFINAMIENTO UX: Reglas Claras, nuevo título formal */}
+                        <div className="p-4 rounded-lg text-left text-sm border border-yellow-300 bg-yellow-50 text-yellow-800">
+                            {/* REVISIÓN DE TEXTO */}
+                            <p className="font-bold flex items-center gap-2 mb-2"><AlertTriangle className="h-4 w-4"/> REQUERIMIENTOS DE MONITOREO:</p>
                             <ul className="list-disc list-inside space-y-1 ml-1">
-                                <li>Mantén la pantalla completa (<code className="bg-yellow-100 px-1 rounded">{fullscreenKey}</code>).</li>
-                                <li>No cambies de pestaña ni minimices el navegador.</li>
-                                <li>Mantente siempre frente a la cámara.</li>
+                                <li>Mantén la pantalla completa (<code className="bg-yellow-100 px-1 rounded font-mono text-xs text-yellow-900">{fullscreenKey}</code>).</li>
+                                <li>No cambies de pestaña, ni minimices la ventana.</li>
+                                <li>Mantente siempre visible y sin ayuda externa.</li>
                             </ul>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="space-y-4">
+                            {/* REFINAMIENTO UI: Botón con degradado (usando clases de Tailwind o estilos inyectados si es necesario) */}
+                            {/* Usamos el gradiente inyectando clases de bg-gradient-to-r para el efecto deseado */}
                             <Button 
-                                className="w-full h-12 text-lg bg-[#00d4ff] hover:bg-[#00b8e6] text-[#161F45] font-bold"
+                                className="w-full h-12 text-lg font-bold shadow-md transition-colors text-white 
+                                           bg-gradient-to-r from-blue-600 to-green-500 hover:from-blue-700 hover:to-green-600"
                                 onClick={() => window.open('https://ugm.blackboard.com/?new_loc=%2Fultra%2Fcourse', '_blank')}
                             >
                                 <ExternalLink className="mr-2 h-5 w-5" />
-                                Ir a Blackboard (Nueva Pestaña)
+                                Abrir Plataforma de Examen (Blackboard)
                             </Button>
                             <p className="text-xs text-muted-foreground">
-                                * Se abrirá en una nueva pestaña. No cierres esta ventana de monitoreo.
+                                * Se abrirá en una nueva pestaña. **No cierres** esta ventana de monitoreo.
                             </p>
                         </div>
                     </CardContent>
-                    <CardFooter className="bg-gray-50 rounded-b-lg border-t p-6">
+                    <CardFooter className="bg-gray-100 rounded-b-lg border-t p-6">
+                         {/* MEJORA UX: Botón de finalizar siempre en rojo (advertencia) */}
                          <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button variant="destructive" className="w-full" disabled={isFinishing}>
+                                <Button variant="destructive" className="w-full h-10 shadow-lg" disabled={isFinishing}>
                                     {isFinishing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                                    Terminé mi examen
+                                    Terminé mi examen / Finalizar Monitoreo
                                 </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -270,8 +291,8 @@ export default function StudentExamLivePage() {
             </div>
         ) : (
             <div className="w-full max-w-4xl mx-auto p-4 text-center">
-                <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4"/>
-                <p className="text-muted-foreground">Preparando entorno seguro...</p>
+                <Loader2 className="h-10 w-10 animate-spin text-[#161F45] mx-auto mb-4"/>
+                <p className="text-muted-foreground font-semibold">Cargando la interfaz de verificación...</p>
             </div>
         )}
       </main>

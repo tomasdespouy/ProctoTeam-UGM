@@ -2,7 +2,8 @@
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, ShieldAlert, UserCheck, MicOff, Users, MonitorOff } from 'lucide-react';
+// [CORRECCIÓN]: Cambiado MicOff por FileText para la prohibición de materiales
+import { CheckCircle, ShieldAlert, UserCheck, FileText, Users, MonitorOff } from 'lucide-react';
 
 interface RequirementsModalProps {
   isOpen: boolean;
@@ -38,7 +39,8 @@ export function RequirementsModal({ isOpen, onAcceptRequirements }: Requirements
             </div>
           </div>
            <div className="flex items-start space-x-3">
-            <MicOff className="h-5 w-5 mt-1 flex-shrink-0 text-primary" />
+            {/* [CORRECCIÓN ICONO]: Cambiado a FileText para representar materiales/ayuda. */}
+            <FileText className="h-5 w-5 mt-1 flex-shrink-0 text-primary" />
             <div>
               <h4 className="font-semibold">Prohibición de Ayuda Externa</h4>
               <p className="text-muted-foreground">No utilizaré material de apoyo no autorizado, dispositivos electrónicos adicionales (incluyendo teléfonos), ni recibiré ayuda verbal o no verbal de ninguna persona.</p>
@@ -48,7 +50,8 @@ export function RequirementsModal({ isOpen, onAcceptRequirements }: Requirements
             <MonitorOff className="h-5 w-5 mt-1 flex-shrink-0 text-primary" />
             <div>
               <h4 className="font-semibold">Monitoreo Técnico</h4>
-              <p className="text-muted-foreground">Acepto que mi cámara, micrófono y pantalla completa serán monitoreados durante toda la sesión para garantizar el cumplimiento de las reglas. El cambio de pestaña o el uso de software no permitido será registrado.</p>
+              {/* [CORRECCIÓN REDACCIÓN]: Eliminado el audio por completo. */}
+              <p className="text-muted-foreground">Acepto que mi cámara y pantalla completa serán monitoreadas para la captura de imágenes. El sistema registrará el cambio de pestaña o el uso de software no permitido.</p>
             </div>
           </div>
            <div className="p-4 bg-muted/50 rounded-lg mt-2">
