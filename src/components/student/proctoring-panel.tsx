@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth, UserProfile } from '@/context/auth-context';
 import { AccountInfo } from '@azure/msal-browser';
 import { Button } from '@/components/ui/button';
-// [CORRECCIÓN]: Añadida 'Send' a la lista de imports de lucide-react para corregir ReferenceError
 import { Loader2, Phone, Eye, EyeOff, Send } from 'lucide-react'; 
 import { useToast } from "@/hooks/use-toast"
 import type { ExamStep } from '@/app/student/exam/[examId]/page';
@@ -14,7 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * UTILIDAD: Extracción robusta de Student ID
+ * UTILIDAD: Extracción robusta de Student ID (Base de la Defensa en Profundidad)
  * ═══════════════════════════════════════════════════════════════════════════
  */
 function getStudentId(
@@ -76,6 +75,13 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('Iniciando sistema de monitoreo...');
   const [mediaError, setMediaError] = useState<string | null>(null);
+
+  // --- ESTADOS DE RESILIENCIA ---
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [recoveryAttempts, setRecoveryAttempts] = useState(0);
+  const MAX_RECOVERY_ATTEMPTS = 5;
+  // ------------------------------
+
   const [isRequestingHelp, setIsRequestingHelp] = useState(false);
   const [monitoringStartTime, setMonitoringStartTime] = useState<number | null>(null);
   const [helpMessage, setHelpMessage] = useState('');
@@ -86,7 +92,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   const lastAlertTimestamp = useRef<{[key: string]: number}>({});
   const personDetectionIntervalId = useRef<NodeJS.Timeout | null>(null);
 
-  // TODO: [DEUDA TÉCNICA] ScriptProcessorNode está deprecado.
+  // NOTA: Se mantiene la estructura para la deuda técnica, pero ya no se usa para análisis.
   const audioAnalysisNode = useRef<ScriptProcessorNode | null>(null);
 
   // --- CONTROL DE MONTAJE ---
@@ -126,6 +132,9 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     // Solo reseteamos estado si el componente sigue montado
     if (isMounted.current) {
         setIsMonitoringActive(false);
+        // [RESILIENCIA] Detenemos la recuperación si limpiamos completamente
+        setIsRecovering(false);
+        setRecoveryAttempts(0);
     }
     setupInitiated.current = false;
   }, []);
@@ -152,7 +161,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     };
   }, [step, cleanupStreams]);
 
-  // --- TAKE SNAPSHOT ---
+  // --- TAKE SNAPSHOT OMITTED ---
   const takeSnapshot = useCallback((): string | null => {
     const MAX_WIDTH = 320; 
     const canvas = document.createElement('canvas');
@@ -207,8 +216,19 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     return canvas.toDataURL('image/jpeg', 0.4);
   }, []);
 
-  // --- API HANDLERS ---
-  const terminateSessionAndBlock = useCallback(async (reason: string, eventType: string, severity: 'critical' | 'warning' = 'critical') => {
+  // --- API HANDLERS OMITTED ---
+  const terminateSessionAndBlock = useCallback(async (reason: string, eventType: string, severity: 'critical' | 'warning' = 'critical', attemptRecovery = false) => {
+
+    // [CRÍTICO DE RESILIENCIA]: Si la razón es de pérdida de stream y se permite la recuperación, NO terminamos el examen.
+    if (attemptRecovery) {
+        console.warn(`⚠️ [Recovery] Stream perdido por ${eventType}. Iniciando ciclo de recuperación...`);
+        cleanupStreams();
+        setIsRecovering(true);
+        // La finalización forzada del examen (onTerminate) ocurre solo si MAX_ATTEMPTS se agota.
+        return; 
+    }
+
+    // --- Lógica de Finalización Forzada (Si se agotan los intentos o es una acción del instructor) ---
     if (isTerminated || !user) return;
 
     // Extraer studentId de forma robusta
@@ -221,7 +241,6 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     const imgSrc = takeSnapshot();
 
     // Fire and forget alerts to avoid blocking UI
-    // DEFENSE IN DEPTH: studentId redundante en nivel superior
     fetch('/api/live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -241,7 +260,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
       });
     } catch (error) { console.error(error); }
     onTerminate(reason);
-  }, [user, examId, userProfile, isTerminated, takeSnapshot, onTerminate]);
+  }, [user, examId, userProfile, isTerminated, takeSnapshot, onTerminate, cleanupStreams]);
 
   const handleProctoringEvent = useCallback(async (event: {eventType: string, eventDetails: string, severity?: 'critical' | 'warning' | 'info'}) => {
     if (!user || !userProfile || isTerminated || step !== 'monitoring') return;
@@ -295,7 +314,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     setTimeout(() => setIsRequestingHelp(false), 15000);
   }, [user, userProfile, isRequestingHelp, helpMessage, handleProctoringEvent, toast]);
 
-  // --- IA HELPERS ---
+  // --- IA HELPERS (Reincorporados) ---
   const detectPersons = useCallback(async () => {
     if (!modelRef.current || !videoRef.current || videoRef.current.readyState < 2 || isTerminated) return;
     try {
@@ -308,7 +327,6 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
 
   const loadMLModelAndStartDetection = useCallback(async () => {
     if (isTerminated) return;
-    // Función auxiliar para retry seguro
     const loadWithRetry = async (importFn: () => Promise<any>, retries = 2) => {
       for (let i = 0; i < retries; i++) { try { return await importFn(); } catch (e) { await new Promise(r => setTimeout(r, 1000)); } }
       throw new Error("Failed to load model");
@@ -327,39 +345,13 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
   }, [detectPersons, toast, isTerminated]);
 
   const initializeAudioAnalysis = useCallback((stream: MediaStream) => {
-    // [CRÍTICO] Si no hay pistas de audio, abortamos el análisis
-    if (!stream.getAudioTracks().length || isTerminated) return;
-    try {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        const audioContext = new AudioContextClass();
-        audioContextRef.current = audioContext;
-        const source = audioContext.createMediaStreamSource(stream);
-        const processor = audioContext.createScriptProcessor(2048, 1, 1);
-        audioAnalysisNode.current = processor;
-        let speakingCount = 0;
-        const SPEAKING_THRESHOLD = 0.04;
-        const CONSECUTIVE_SAMPLES = 3;
-        processor.onaudioprocess = (e) => {
-            if (isTerminated) return;
-            const input = e.inputBuffer.getChannelData(0);
-            let sum = 0;
-            for (let i = 0; i < input.length; ++i) sum += input[i] * input[i];
-            const rms = Math.sqrt(sum / input.length);
-            if (rms > SPEAKING_THRESHOLD) {
-                speakingCount++;
-                if (speakingCount >= CONSECUTIVE_SAMPLES) {
-                    handleProctoringEvent({ eventType: 'Sonido sospechoso', eventDetails: 'Habla o ruido fuerte.', severity: 'warning' });
-                    speakingCount = 0;
-                }
-            } else speakingCount = 0;
-        };
-        source.connect(processor);
-        processor.connect(audioContext.destination);
-    } catch (e) { console.warn("Audio analysis failed", e); }
-  }, [handleProctoringEvent, isTerminated]);
+    // [CRÍTICO] Se ha deshabilitado el análisis de audio por falta de soporte en el backend.
+    console.warn("🚫 Audio analysis is intentionally disabled as per backend requirements.");
+    return;
+  }, []);
 
   // --- SETUP PRINCIPAL ---
-  const setupMedia = useCallback(async () => {
+  const setupMedia = useCallback(async (isRecoveryAttempt = false) => {
     setIsLoading(true);
     setMediaError(null);
 
@@ -372,11 +364,16 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     };
 
     try {
-        setLoadingMessage('Solicitando permisos...');
+        setLoadingMessage(isRecoveryAttempt 
+          ? `Intento de reconexión #${recoveryAttempts + 1}...` 
+          : 'Solicitando permisos...');
+
         const [camStream, screenStream] = await Promise.all([
+          // [CRÍTICO]: NO AUDIO. Solo cámara.
           navigator.mediaDevices.getUserMedia({ video: true, audio: false }), 
-              navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
-          ]);
+          // [CRÍTICO]: NO AUDIO. Solo pantalla.
+          navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+        ]);
 
         // VERIFICACIÓN CORREGIDA: Usamos isMounted y verificamos refs
         if (!isMounted.current || isTerminated) {
@@ -386,6 +383,14 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
             return;
         }
 
+        // Si la reconexión es exitosa, reiniciamos el estado de recovery
+        if (isRecoveryAttempt) {
+            setIsRecovering(false);
+            setRecoveryAttempts(0);
+            toast({ title: '¡Conexión Restablecida!', description: 'El monitoreo continúa.', duration: 3000 });
+        }
+
+
         // Si por alguna razón extraña los refs son null (no deberían serlo con el arreglo del render), lanzamos error controlado
         if (!videoRef.current || !screenVideoRef.current) {
             throw new Error("Error interno: Elementos de video no inicializados.");
@@ -394,8 +399,9 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         videoRef.current.srcObject = camStream;
         screenVideoRef.current.srcObject = screenStream;
 
+        // [RESILIENCIA] Si el stream de pantalla se termina, iniciamos la recuperación.
         screenStream.getVideoTracks()[0].onended = async () => {
-             await terminateSessionAndBlock('Has detenido la compartición de pantalla.', 'Compartir pantalla detenido');
+             await terminateSessionAndBlock('Pérdida de stream de pantalla.', 'Pérdida de Stream', 'warning', true);
         };
 
         await Promise.all([ waitForVideoReady(videoRef.current), waitForVideoReady(screenVideoRef.current) ]);
@@ -405,7 +411,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
             await screenVideoRef.current.play();
         }
 
-        // [CRÍTICO] La fuente de audio es el stream de la pantalla (screenStream)
+        // La función initializeAudioAnalysis ahora está vacía/deshabilitada
         initializeAudioAnalysis(screenStream); 
 
         // Cargamos IA en segundo plano para no bloquear tanto
@@ -415,15 +421,24 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         setMonitoringStartTime(Date.now()); 
     } catch (err: any) {
         console.error('Error setupMedia:', err);
+
+        // [RESILIENCIA] Si estamos en modo recuperación, incrementamos intentos y reintentamos.
+        if (isRecoveryAttempt) {
+            setRecoveryAttempts(prev => prev + 1);
+            return; 
+        }
+
+        // Si es la carga inicial y falla, bloqueamos
         let errorMessage = `Error: ${err.message}`;
         if (err.name === 'NotAllowedError') errorMessage = 'Permiso denegado. Debes permitir cámara y pantalla.';
         setMediaError(errorMessage);
         setupInitiated.current = false; 
         onTerminate(errorMessage); 
     } finally { 
-        if (isMounted.current) setIsLoading(false); 
+        // Solo quitamos el loader si no estamos en un ciclo de recuperación activo
+        if (isMounted.current && !isRecovering) setIsLoading(false); 
     }
-  }, [terminateSessionAndBlock, initializeAudioAnalysis, loadMLModelAndStartDetection, onTerminate, isTerminated]);
+  }, [terminateSessionAndBlock, initializeAudioAnalysis, loadMLModelAndStartDetection, onTerminate, isTerminated, recoveryAttempts, isRecovering]);
 
   useEffect(() => {
     if (step === 'monitoring' && !isMonitoringActive && !setupInitiated.current && !mediaError && !isTerminated) {
@@ -432,7 +447,69 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     }
   }, [step, isMonitoringActive, mediaError, setupMedia, isTerminated]);
 
-  // --- HEARTBEAT LOGIC OMITTED FOR BREVITY ---
+  // --- EFECTO DE RESILIENCIA: CICLO DE RECUPERACIÓN (BACKOFF EXPONENCIAL) ---
+  useEffect(() => {
+    if (!isRecovering || isTerminated || recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
+        // Si se agotan los intentos, forzamos la terminación del examen
+        if (isRecovering && recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
+            terminateSessionAndBlock(`Máximo de ${MAX_RECOVERY_ATTEMPTS} intentos de reconexión agotados.`, 'Límite de reconexión agotado', 'critical', false);
+        }
+        return;
+    }
+
+    // Calcula el tiempo de espera: 5s * (intento + 1) ^ 1.5, máximo 60s.
+    const delay = Math.min(
+      5000 * Math.pow(1.5, recoveryAttempts), 
+      60000
+    );
+
+    console.log(`⏳ Esperando ${delay / 1000}s para el intento #${recoveryAttempts + 1}`);
+
+    const timer = setTimeout(() => {
+        // Intentamos re-ejecutar setupMedia en modo recuperación
+        setupMedia(true); 
+    }, delay);
+
+    return () => clearTimeout(timer);
+
+  }, [isRecovering, recoveryAttempts, isTerminated, setupMedia, terminateSessionAndBlock]);
+  // ---------------------------------------------------------------------------
+
+
+  // --- HEARTBEAT LOGIC (Reincorporado) ---
+  useEffect(() => {
+    if (step !== 'monitoring' || !isMonitoringActive || !user || !userProfile || isTerminated) return;
+
+    // Extraer studentId de forma robusta
+    const studentId = getStudentId(userProfile, user.account);
+    if (!studentId) return;
+
+    // Heartbeat inicial
+    fetch('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'join', studentId, examId, payload: { studentId, name: userProfile.nombre, email: user.email } }) }).catch(console.error);
+
+    const imageUpdateInterval = setInterval(async () => {
+        const imgSrc = takeSnapshot();
+        if (user && !isTerminated && imgSrc) { 
+            try {
+                const res = await fetch('/api/live', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'heartbeat', studentId, examId, payload: { studentId, snapshot: imgSrc } }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.data?.messages?.length > 0) {
+                        data.data.messages.forEach((msg: string) => { grantImmunity(); toast({ title: 'Mensaje del Supervisor', description: msg }); });
+                    }
+                }
+            } catch (error) { 
+                // [RESILIENCIA]: Si el heartbeat falla (red), no hacemos nada; el ciclo de recovery se encargará de los streams.
+                console.warn("Heartbeat skip/error", error); 
+            }
+        }
+    }, 5000);
+    return () => clearInterval(imageUpdateInterval);
+  }, [step, isMonitoringActive, user, userProfile, takeSnapshot, toast, examId, isTerminated, grantImmunity]);
 
   useEffect(() => {
     if (step !== 'monitoring' || !isMonitoringActive || isTerminated) return;
@@ -458,7 +535,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         </div>
       )}
 
-      {/* ESPEJO FLOTANTE (Ahora superior derecha, z-index alto) */}
+      {/* ESPEJO FLOTANTE (Superior derecha, z-index alto) */}
       <div style={{ position: 'fixed', top: '80px', right: '20px', width: '280px', zIndex: 50 }} className="bg-black/90 border border-white/20 rounded-lg shadow-2xl overflow-hidden backdrop-blur-sm transition-all">
           <div className="flex justify-between items-center p-2 bg-[#161F45] text-white text-xs">
               <span className="flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"/> Grabando</span>
@@ -489,10 +566,10 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
       </div>
 
       {isMonitoringActive && !isTerminated && (
-              <div className="fixed bottom-16 left-4 z-[90]"> {/* Z-index alto para estar sobre el footer y alertas */}
+              <div className="fixed bottom-16 left-4 z-[90]"> 
                   <Dialog>
                       <DialogTrigger asChild>
-                        {/* [CORRECCIÓN DE DISEÑO]: Usamos color índigo como color de contacto/información */}
+                        {/* [CORRECCIÓN DE DISEÑO]: Botón Ayuda en índigo/info */}
                         <Button 
                           variant="default" 
                           className="shadow-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
@@ -503,7 +580,6 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
                       </DialogTrigger>
                       <DialogContent>
                           <DialogHeader>
-                            {/* MEJORA UI: Icono en el título */}
                             <DialogTitle className="flex items-center gap-2 text-xl">
                               <Phone className="h-5 w-5 text-indigo-600" />
                               Solicitar Ayuda al Supervisor
@@ -520,7 +596,6 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
                             className="resize-none"
                           />
                           <DialogFooter>
-                            {/* MEJORA UX: Estado de Carga */}
                             <Button 
                               onClick={handleRequestHelp} 
                               disabled={isRequestingHelp || !helpMessage.trim()}

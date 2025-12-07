@@ -25,18 +25,19 @@ export async function GET(
     let query = '';
 
     // 3. Construcción de Query Segura
-    // Si es UUID buscamos por ID, si no, buscamos por access_code. 
-    // Esto evita el error de Postgres "invalid input syntax for type uuid"
+    // [CORRECCIÓN BACKEND]: Se incluye ep.started_at en el SELECT de ambas queries
     if (isUUID) {
         query = `
-          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status, ep.status as student_status
+          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status, ep.status as student_status,
+          ep.started_at as student_started_at
           FROM exam_sessions es
           LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
           WHERE es.id = $1
         `;
     } else {
         query = `
-          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status, ep.status as student_status
+          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status, ep.status as student_status,
+          ep.started_at as student_started_at
           FROM exam_sessions es
           LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
           WHERE es.access_code = $1
@@ -59,6 +60,8 @@ export async function GET(
         section: data.section,
         duration: data.duration,
         status: data.exam_status,
+        // [CORRECCIÓN BACKEND]: Se agrega la hora de inicio persistente
+        startedAt: data.student_started_at ? data.student_started_at.toISOString() : null,
       },
       studentStatus: data.student_status
     });

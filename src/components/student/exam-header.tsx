@@ -18,6 +18,8 @@ interface ExamData {
     instructorId: string;
     createdAt: string | Date;
     status: 'pending' | 'active' | 'finished';
+    // [CORRECCIÓN FRONTEND]: Se asume que esta propiedad viene ahora de la API
+    startedAt?: string; 
 }
 interface ExamHeaderProps {
   examStarted: boolean;
@@ -34,12 +36,22 @@ export function ExamHeader({ examStarted, examData }: ExamHeaderProps) {
     window.location.href = '/';
   };
 
+  // [CORRECCIÓN FRONTEND]: Se inicializa el tiempo restante basado en el tiempo transcurrido desde startedAt
   useEffect(() => {
-    if (examData && timeLeft === null) {
-      const totalTimeInSeconds = examData.duration * 60;
-      setTimeLeft(totalTimeInSeconds);
-    }
+      if (!examData?.startedAt || timeLeft !== null) return;
+
+      const totalDurationSeconds = examData.duration * 60;
+      const startTime = new Date(examData.startedAt).getTime();
+      const nowTime = new Date().getTime();
+      const elapsedSeconds = Math.floor((nowTime - startTime) / 1000);
+
+      const remainingSeconds = totalDurationSeconds - elapsedSeconds;
+
+      // Si ya pasó el tiempo o el examen no ha empezado formalmente, inicializar con el valor calculado
+      setTimeLeft(remainingSeconds);
+
   }, [examData, timeLeft]);
+
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -48,6 +60,11 @@ export function ExamHeader({ examStarted, examData }: ExamHeaderProps) {
         setTimeLeft((prevTime) => (prevTime !== null ? prevTime - 1 : null));
       }, 1000);
     }
+    // Si el tiempo llega a cero o menos, el examen debe marcarse como terminado (aunque esto lo controla la página principal)
+    if (timeLeft !== null && timeLeft <= 0) {
+        // Lógica opcional para enviar una alerta o un toast de finalización
+    }
+
     return () => clearInterval(timer);
   }, [examStarted, timeLeft]);
 
@@ -61,14 +78,8 @@ export function ExamHeader({ examStarted, examData }: ExamHeaderProps) {
       return `${m}:${ss}`;
     };
 
-    const [startTime, setStartTime] = useState<Date | null>(null);
-
-    useEffect(() => {
-      if(examStarted && !startTime && examData) {
-        setStartTime(new Date());
-      }
-    }, [examStarted, startTime, examData]);
-
+    // [CÓDIGO ELIMINADO/MODIFICADO]: Ya no necesitamos calcular startTime localmente, lo obtenemos de examData
+    const startTime = examData?.startedAt ? new Date(examData.startedAt) : null;
     const endTime = startTime && examData ? new Date(startTime.getTime() + examData.duration * 60000) : null;
     const displayName = userProfile?.nombre || user?.displayName || user?.name; // Agregamos user?.name
     const avatarFallback = displayName ? displayName.substring(0, 2).toUpperCase() : 'UG';
@@ -113,7 +124,10 @@ export function ExamHeader({ examStarted, examData }: ExamHeaderProps) {
                   {/* MEJORA UI: Se cambia el color del texto y fondo para un mejor contraste */}
                   <div className="flex items-center gap-2 font-bold text-lg tabular-nums bg-white px-3 py-1 rounded-lg border border-gray-200">
                     <Clock className="h-5 w-5 text-[#161F45]" />
-                    <span className="text-[#161F45]">{formatTime(timeLeft)}</span>
+                    {/* MEJORA UX: Color de advertencia si quedan menos de 5 minutos */}
+                    <span className={`text-[#161F45] ${timeLeft !== null && timeLeft <= 300 ? 'text-red-600 animate-pulse' : ''}`}>
+                        {formatTime(timeLeft)}
+                    </span>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
