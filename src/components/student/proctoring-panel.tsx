@@ -284,7 +284,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
         const newCount = criticalAlertCount + 1;
         setCriticalAlertCount(newCount);
         grantImmunity();
-        toast({ variant: 'destructive', title: '¡Falta Grave Detectada!', description: `${event.eventType}`, duration: 10000 });
+        toast({ variant: 'destructive', title: '¡Alerta Crítica Registrada!', description: `${event.eventType}\n\nManténgase en la pantalla del examen.`, duration: 10000 });
     }
     const imgSrc = takeSnapshot();
     // DEFENSE IN DEPTH: studentId redundante en nivel superior
@@ -320,8 +320,8 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
     try {
         const predictions = await modelRef.current.detect(videoRef.current);
         const personCount = predictions.filter((p: any) => p.class === 'person').length;
-        if (personCount === 0) handleProctoringEvent({ eventType: 'Estudiante ausente', eventDetails: 'No se detectó rostro.', severity: 'critical' });
-        else if (personCount > 1) handleProctoringEvent({ eventType: 'Múltiples personas', eventDetails: `${personCount} personas detectadas.`, severity: 'critical' });
+        if (personCount === 0) handleProctoringEvent({ eventType: 'Ausencia Detectada: El rostro no fue visible para la cámara.', eventDetails: 'No se detectó presencia humana en el campo visual de la cámara.', severity: 'critical' });
+        else if (personCount > 1) handleProctoringEvent({ eventType: 'Presencia Externa: Se detectó más de una persona en el entorno.', eventDetails: `${personCount} personas detectadas en la zona de monitoreo.`, severity: 'critical' });
     } catch(error) { console.error("Error AI detection", error); }
   }, [handleProctoringEvent, isTerminated]);
 
@@ -401,7 +401,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
 
         // [RESILIENCIA] Si el stream de pantalla se termina, iniciamos la recuperación.
         screenStream.getVideoTracks()[0].onended = async () => {
-             await terminateSessionAndBlock('Pérdida de stream de pantalla.', 'Pérdida de Stream', 'warning', true);
+             await terminateSessionAndBlock('Fallo de Captura: Pérdida de la señal de cámara/pantalla.', 'Fallo de Captura', 'warning', true);
         };
 
         await Promise.all([ waitForVideoReady(videoRef.current), waitForVideoReady(screenVideoRef.current) ]);
@@ -513,7 +513,7 @@ export function ProctoringPanel({ step, examName, examId, examSubject, examSecti
 
   useEffect(() => {
     if (step !== 'monitoring' || !isMonitoringActive || isTerminated) return;
-    const handleVisibility = () => { if (document.hidden && !isImmune) handleProctoringEvent({ eventType: 'Cambio de pestaña', eventDetails: 'Minimizó o cambió ventana', severity: 'critical' }); };
+    const handleVisibility = () => { if (document.hidden && !isImmune) handleProctoringEvent({ eventType: 'Infracción de Ventana: El estudiante minimizó o cambió de pestaña.', eventDetails: 'Se detectó navegación fuera de la interfaz del examen.', severity: 'critical' }); };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [step, isMonitoringActive, handleProctoringEvent, isTerminated, isImmune]);
