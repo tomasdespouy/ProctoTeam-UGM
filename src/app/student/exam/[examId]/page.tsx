@@ -258,7 +258,7 @@ export default function StudentExamLivePage() {
                                 Abrir Plataforma de Examen (Blackboard)
                             </Button>
                             <p className="text-xs text-muted-foreground">
-                                * Se abrirá en una nueva pestaña. **No cierres** esta ventana de monitoreo.
+                                 Se abrirá en una nueva pestaña. No cierres esta ventana de monitoreo.
                             </p>
                         </div>
                     </CardContent>
