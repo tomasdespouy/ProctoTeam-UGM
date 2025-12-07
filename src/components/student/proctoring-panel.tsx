@@ -119,8 +119,6 @@ export function ProctoringPanel({
     const lastAlertTimestamp = useRef<{ [key: string]: number }>({});
     const personDetectionIntervalId = useRef<NodeJS.Timeout | null>(null);
 
-    // NOTA: Se mantiene la estructura para la deuda técnica, pero ya no se usa para análisis.
-    const audioAnalysisNode = useRef<ScriptProcessorNode | null>(null);
 
     // --- CONTROL DE MONTAJE ---
     useEffect(() => {
@@ -134,10 +132,6 @@ export function ProctoringPanel({
         if (personDetectionIntervalId.current) {
             clearInterval(personDetectionIntervalId.current);
             personDetectionIntervalId.current = null;
-        }
-        if (audioAnalysisNode.current) {
-            audioAnalysisNode.current.disconnect();
-            audioAnalysisNode.current = null;
         }
         if (audioContextRef.current?.state !== "closed") {
             audioContextRef.current?.close().catch(console.error);
@@ -532,13 +526,6 @@ export function ProctoringPanel({
         }
     }, [detectPersons, toast, isTerminated]);
 
-    const initializeAudioAnalysis = useCallback((stream: MediaStream) => {
-        // [CRÍTICO] Se ha deshabilitado el análisis de audio por falta de soporte en el backend.
-        console.warn(
-            "🚫 Audio analysis is intentionally disabled as per backend requirements.",
-        );
-        return;
-    }, []);
 
     // --- SETUP PRINCIPAL ---
     const setupMedia = useCallback(
@@ -610,8 +597,8 @@ export function ProctoringPanel({
                 // [RESILIENCIA] Si el stream de pantalla se termina, iniciamos la recuperación.
                 screenStream.getVideoTracks()[0].onended = async () => {
                     await terminateSessionAndBlock(
-                        "Fallo de Captura: Pérdida de la señal de cámara/pantalla.",
-                        "Fallo de Captura",
+                        "Pérdida de stream de pantalla.",
+                        "Pérdida de stream de pantalla.",
                         "warning",
                         true,
                     );
@@ -627,8 +614,6 @@ export function ProctoringPanel({
                     await screenVideoRef.current.play();
                 }
 
-                // La función initializeAudioAnalysis ahora está vacía/deshabilitada
-                initializeAudioAnalysis(screenStream);
 
                 // Cargamos IA en segundo plano para no bloquear tanto
                 loadMLModelAndStartDetection();
@@ -659,7 +644,6 @@ export function ProctoringPanel({
         },
         [
             terminateSessionAndBlock,
-            initializeAudioAnalysis,
             loadMLModelAndStartDetection,
             onTerminate,
             isTerminated,
@@ -780,8 +764,16 @@ export function ProctoringPanel({
                         }
                     }
                 } catch (error) {
-                    // [RESILIENCIA]: Si el heartbeat falla (red), no hacemos nada; el ciclo de recovery se encargará de los streams.
-                    console.warn("Heartbeat skip/error", error);
+                    // [RESILIENCIA]: Si el heartbeat falla y NO estamos ya en recuperación, iniciamos el ciclo.
+                    console.warn("Heartbeat failed", error);
+                    if (!isRecovering) {
+                        terminateSessionAndBlock(
+                            "Pérdida de Conexión con el Servidor.",
+                            "Pérdida de Conexión con el Servidor.",
+                            "warning",
+                            true,
+                        );
+                    }
                 }
             }
         }, 5000);
@@ -796,6 +788,8 @@ export function ProctoringPanel({
         examId,
         isTerminated,
         grantImmunity,
+        terminateSessionAndBlock,
+        isRecovering,
     ]);
 
     useEffect(() => {
@@ -999,100 +993,3 @@ export function ProctoringPanel({
         </>
     );
 }
-
-
-// Reemplazar el useEffect del Heartbeat completo:
-  useEffect(() => {
-    // Si ya estamos en modo recuperación, el ciclo de recuperación lo maneja.
-    if (step !== 'monitoring' || !isMonitoringActive || !user || !userProfile || isTerminated || isRecovering) return;
-
-    // ... (Lógica de join heartbeat y studentId OMITTED) ...
-
-    const studentId = getStudentId(userProfile, user.account);
-    if (!studentId) return;
-
-    const imageUpdateInterval = setInterval(async () => {
-        const imgSrc = takeSnapshot();
-        if (user && !isTerminated && imgSrc) { 
-            try {
-                const res = await fetch('/api/live', {
-                    // ... (existing fetch logic OMITTED) ...
-                });
-                if (res.ok) {
-                    setIsHeartbeatHealthy(true); // ✅ Éxito
-                    // ... (data messages logic OMITTED) ...
-                } else {
-                    // Si el servidor responde con 500/400, es un fallo del servidor, lo manejamos como error.
-                    throw new Error(`Server status ${res.status}`);
-                }
-            } catch (error) { 
-                console.warn("Heartbeat failed, checking recovery...", error); 
-                setIsHeartbeatHealthy(false); // ❌ Fallo
-
-                // [CRÍTICO] Si el heartbeat falla, iniciamos la recuperación no basada en stream.
-                if (!isRecovering) {
-                   terminateSessionAndBlock('Pérdida de conexión con el servidor.', 'Pérdida de Conexión', 'warning', true);
-                }
-            }
-        }
-    }, 5000);
-    return () => clearInterval(imageUpdateInterval);
-  }, [step, isMonitoringActive, user, userProfile, takeSnapshot, toast, examId, isTerminated, grantImmunity, isRecovering, terminateSessionAndBlock, setIsHeartbeatHealthy]);
-
-// Reemplazar el último useEffect antes del return (el que manejaba visibilitychange)
-
-  useEffect(() => {
-    // Si ya estamos en estado final o bloqueados, no monitoreamos.
-    if (step !== 'monitoring' || isTerminated || isUserInfractionBlocked) return;
-
-    // Handler 1: Detectar salida de Pantalla Completa (Método más robusto)
-    const handleFullscreenChange = () => {
-      // document.fullscreenElement será null si se sale del modo pantalla completa
-      if (!document.fullscreenElement && isMonitoringActive && !isImmune) {
-        // [NUEVA ALERTA PROFESIONAL]
-        handleProctoringEvent({
-          eventType: 'Infracción de Pantalla Completa: El estudiante salió del modo fullscreen.',
-          eventDetails: 'Salió de Pantalla Completa.',
-          severity: 'critical',
-        });
-      }
-    };
-
-    // Handler 2: Detectar minimizado/cambio de pestaña (Método de fallback)
-    const handleVisibility = () => { 
-        // Solo disparamos la alerta si NO estamos ya intentando recuperar (solución al falso positivo por red)
-        if (document.hidden && isMonitoringActive && !isImmune && !isRecovering) {
-            handleProctoringEvent({ 
-                eventType: 'Infracción de Ventana: El estudiante minimizó o cambió de pestaña.', 
-                eventDetails: 'Ventana minimizada/cambiada.', 
-                severity: 'critical' 
-            });
-        }
-    };
-
-    // Intentar entrar en modo Fullscreen al iniciar monitoreo
-    if (isMonitoringActive && document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen().catch(err => {
-            console.warn("Fallo al entrar en Fullscreen: ", err);
-            toast({
-                variant: 'warning',
-                title: 'Atención',
-                description: 'La aplicación no pudo ingresar a pantalla completa. Por favor, hágalo manualmente.',
-                duration: 8000
-            });
-        });
-    }
-
-    // Montar ambos listeners
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [step, isMonitoringActive, isTerminated, isImmune, isUserInfractionBlocked, isRecovering, handleProctoringEvent, toast]);
-
-// Dentro de la función ProctoringPanel, junto a otros useState:
-// [NUEVO ESTADO] Para monitorear la salud del servidor, independiente de la cámara.
-const [isHeartbeatHealthy, setIsHeartbeatHealthy] = useState(true);
