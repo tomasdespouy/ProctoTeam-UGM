@@ -49,19 +49,27 @@ export async function getUserByEmail(email: string): Promise<UserProfile | null>
   }
 }
 
+// Helper para determinar el rol según el dominio del email
+export function determineUserRole(email: string): 'student' | 'instructor' {
+  if (email.toLowerCase().endsWith('@estudiante.ugm.cl')) {
+    return 'student';
+  }
+  return 'instructor';
+}
+
 // Crear o actualizar usuario (upsert) con lógica de Primer Usuario = Admin
 export async function upsertUser(userData: {
   uid: string;
   email: string;
   nombre: string;
-  role: 'student' | 'instructor' | 'super-admin';
+  role?: 'student' | 'instructor' | 'super-admin';
   photo_url?: string;
 }): Promise<UserProfile> {
   try {
-    let finalRole = userData.role;
+    // 1. Determinar rol base (estudiante o instructor) si no se provee uno específico
+    let finalRole: 'student' | 'instructor' | 'super-admin' = userData.role || determineUserRole(userData.email);
 
-    // --- LÓGICA AUTOMÁTICA DE ADMIN ---
-    // Verificamos si la base de datos está vacía antes de insertar
+    // 2. LÓGICA AUTOMÁTICA DE ADMIN (Solo para el primer usuario absoluto del sistema)
     const countResult = await query('SELECT count(*) FROM users');
     const userCount = parseInt(countResult.rows[0].count);
 
@@ -69,7 +77,6 @@ export async function upsertUser(userData: {
       console.log(`🚀 Primer usuario detectado (${userData.email}). Asignando rol de 'super-admin' automáticamente.`);
       finalRole = 'super-admin';
     }
-    // ----------------------------------
 
     const result = await query(
       `INSERT INTO users (uid, email, nombre, role, photo_url, created_at, updated_at)

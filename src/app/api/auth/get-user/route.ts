@@ -36,12 +36,11 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. MAGIA: Upsert (Crea el usuario si no existe, o lo actualiza)
-    // Esto evita el error 401 para usuarios nuevos y asigna admin al primero
+    // El rol se determinará automáticamente en upsertUser basándose en el email
     const user = await upsertUser({
       uid,
       email,
-      nombre: name,
-      role: 'student' // El upsertUser lo cambiará a 'super-admin' si es el primero
+      nombre: name
     });
 
     return NextResponse.json({ user });
