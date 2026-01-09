@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { 
   Video, 
   VideoOff, 
@@ -24,6 +23,8 @@ interface StudentCamProps {
   onAlert?: (alertType: string, description: string, severity: 'low' | 'medium' | 'high' | 'critical') => void;
 }
 
+const HEARTBEAT_INTERVAL_MS = 180000; // 3 minutos para registro de asistencia
+
 export function StudentCam({ 
   examId, 
   studentId, 
@@ -41,7 +42,33 @@ export function StudentCam({
   const streamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const snapshotIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const captureSnapshot = useCallback(() => {
+    if (!videoRef.current || !streamRef.current) return null;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    ctx.drawImage(videoRef.current, 0, 0, 320, 240);
+    return canvas.toDataURL('image/jpeg', 0.4);
+  }, []);
+
+  const sendSnapshotWithReason = useCallback((reason: string) => {
+    const snapshot = captureSnapshot();
+    if (snapshot && socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('student:snapshot', {
+        examId,
+        studentId,
+        snapshot,
+        reason,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }, [examId, studentId, captureSnapshot]);
 
   const sendAlert = useCallback((
     alertType: string, 
@@ -64,29 +91,14 @@ export function StudentCam({
     }
   }, [examId, studentId, participationId, onAlert]);
 
-  const captureSnapshot = useCallback(() => {
-    if (!videoRef.current || !streamRef.current) return null;
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = 320;
-    canvas.height = 240;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    
-    ctx.drawImage(videoRef.current, 0, 0, 320, 240);
-    return canvas.toDataURL('image/jpeg', 0.4);
-  }, []);
-
-  const sendSnapshot = useCallback(() => {
-    const snapshot = captureSnapshot();
-    if (snapshot && socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit('student:snapshot', {
-        examId,
-        studentId,
-        snapshot,
-      });
-    }
-  }, [examId, studentId, captureSnapshot]);
+  const sendAlertWithSnapshot = useCallback((
+    alertType: string, 
+    description: string, 
+    severity: 'low' | 'medium' | 'high' | 'critical' = 'medium'
+  ) => {
+    sendAlert(alertType, description, severity);
+    sendSnapshotWithReason(`alert:${alertType}`);
+  }, [sendAlert, sendSnapshotWithReason]);
 
   useEffect(() => {
     const initCamera = async () => {
@@ -114,12 +126,12 @@ export function StudentCam({
 
         videoTrack?.addEventListener('ended', () => {
           setHasVideo(false);
-          sendAlert('camera_disabled', 'La cámara fue deshabilitada', 'high');
+          sendAlertWithSnapshot('camera_disabled', 'La cámara fue deshabilitada', 'high');
         });
 
         audioTrack?.addEventListener('ended', () => {
           setHasAudio(false);
-          sendAlert('microphone_disabled', 'El micrófono fue deshabilitado', 'medium');
+          sendAlertWithSnapshot('microphone_disabled', 'El micrófono fue deshabilitado', 'medium');
         });
 
       } catch (error: any) {
@@ -136,7 +148,7 @@ export function StudentCam({
         streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
-  }, [sendAlert]);
+  }, [sendAlert, sendAlertWithSnapshot]);
 
   useEffect(() => {
     const socket = io({
@@ -184,13 +196,20 @@ export function StudentCam({
     });
 
     socket.on('instructor:disconnected', () => {
-      // Instructor disconnected - keep recording locally
+    });
+
+    socket.on('instructor:request-snapshot', () => {
+      sendSnapshotWithReason('instructor_request');
+    });
+
+    socket.on('ai:request-snapshot', (data: { reason: string }) => {
+      sendSnapshotWithReason(`ai:${data.reason}`);
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [examId, studentId, studentName, participationId, sendAlert]);
+  }, [examId, studentId, studentName, participationId, sendAlert, sendSnapshotWithReason]);
 
   useEffect(() => {
     if (!isConnected || !streamRef.current || !socketRef.current) return;
@@ -238,25 +257,27 @@ export function StudentCam({
 
   useEffect(() => {
     if (isConnected && hasVideo) {
-      snapshotIntervalRef.current = setInterval(sendSnapshot, 5000);
+      heartbeatIntervalRef.current = setInterval(() => {
+        sendSnapshotWithReason('heartbeat');
+      }, HEARTBEAT_INTERVAL_MS);
     }
 
     return () => {
-      if (snapshotIntervalRef.current) {
-        clearInterval(snapshotIntervalRef.current);
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
       }
     };
-  }, [isConnected, hasVideo, sendSnapshot]);
+  }, [isConnected, hasVideo, sendSnapshotWithReason]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        sendAlert('tab_switch', 'El estudiante cambió de pestaña', 'high');
+        sendAlertWithSnapshot('tab_switch', 'El estudiante cambió de pestaña', 'high');
       }
     };
 
     const handleBlur = () => {
-      sendAlert('window_blur', 'El estudiante salió de la ventana', 'medium');
+      sendAlertWithSnapshot('window_blur', 'El estudiante salió de la ventana', 'medium');
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -266,7 +287,7 @@ export function StudentCam({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [sendAlert]);
+  }, [sendAlertWithSnapshot]);
 
   return (
     <Card className="overflow-hidden">

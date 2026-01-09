@@ -12,7 +12,8 @@ import {
   Users, 
   Eye,
   Ban,
-  Maximize2
+  Maximize2,
+  Camera
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 
@@ -23,6 +24,8 @@ interface StudentStream {
   connected: boolean;
   stream?: MediaStream;
   alertCount: number;
+  lastSnapshot?: string;
+  lastSnapshotTime?: string;
 }
 
 interface Alert {
@@ -32,6 +35,7 @@ interface Alert {
   severity: 'low' | 'medium' | 'high' | 'critical';
   description: string;
   timestamp: string;
+  snapshot?: string;
 }
 
 interface ProctorViewProps {
@@ -47,6 +51,23 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
+
+  const requestSnapshot = (studentId: string) => {
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('instructor:request-snapshot', {
+        examId,
+        studentId,
+      });
+    }
+  };
+
+  const requestAllSnapshots = () => {
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('instructor:request-all-snapshots', {
+        examId,
+      });
+    }
+  };
 
   useEffect(() => {
     const socket = io({
@@ -188,8 +209,21 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
     socket.on('student:snapshot', (data: {
       studentId: string;
       snapshot: string;
+      reason?: string;
+      timestamp?: string;
     }) => {
-      // Handle snapshot updates if needed
+      setStudents(prev => {
+        const updated = new Map(prev);
+        const student = updated.get(data.studentId);
+        if (student) {
+          updated.set(data.studentId, {
+            ...student,
+            lastSnapshot: data.snapshot,
+            lastSnapshotTime: data.timestamp || new Date().toISOString(),
+          });
+        }
+        return updated;
+      });
     });
 
     return () => {
@@ -228,9 +262,20 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
                   {isConnected ? 'Conectado' : 'Desconectado'}
                 </Badge>
               </CardTitle>
-              <Badge variant="secondary">
-                {studentsArray.filter(s => s.connected).length} / {studentsArray.length} activos
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={requestAllSnapshots}
+                  disabled={!isConnected}
+                >
+                  <Camera className="h-4 w-4 mr-1" />
+                  Capturar Todos
+                </Button>
+                <Badge variant="secondary">
+                  {studentsArray.filter(s => s.connected).length} / {studentsArray.length} activos
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -275,6 +320,18 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
                   </div>
                   
                   <div className="absolute bottom-2 right-2 flex gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      title="Solicitar captura"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        requestSnapshot(student.studentId);
+                      }}
+                    >
+                      <Camera className="h-3 w-3" />
+                    </Button>
                     <Button
                       size="icon"
                       variant="ghost"

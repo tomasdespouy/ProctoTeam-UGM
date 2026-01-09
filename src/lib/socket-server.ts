@@ -149,8 +149,27 @@ export function initSocketServer(httpServer: HTTPServer): SocketIOServer {
       examId: string;
       studentId: string;
       snapshot: string;
+      reason?: string;
+      timestamp?: string;
     }) => {
       io.to(`instructor:${data.examId}`).emit('student:snapshot', data);
+    });
+
+    socket.on('instructor:request-snapshot', (data: { examId: string; studentId: string }) => {
+      const { examId, studentId } = data;
+      io.to(`student:${examId}:${studentId}`).emit('instructor:request-snapshot');
+      console.log(`[Socket] Instructor solicitó snapshot de ${studentId}`);
+    });
+
+    socket.on('instructor:request-all-snapshots', (data: { examId: string }) => {
+      const { examId } = data;
+      const room = examRooms.get(examId);
+      if (room) {
+        for (const [studentId] of room.students.entries()) {
+          io.to(`student:${examId}:${studentId}`).emit('instructor:request-snapshot');
+        }
+        console.log(`[Socket] Instructor solicitó snapshots de todos los estudiantes del examen ${examId}`);
+      }
     });
 
     socket.on('disconnect', () => {
