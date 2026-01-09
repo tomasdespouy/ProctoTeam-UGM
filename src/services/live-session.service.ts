@@ -10,6 +10,7 @@ import { db } from '@/lib/db';
 export interface Alert {
   id: string;
   studentId: string;
+  studentName?: string;
   description: string;
   severity: 'critical' | 'warning' | 'info';
   timestamp: Date;
@@ -24,6 +25,7 @@ export interface StudentSession {
   status: 'joined' | 'in-progress' | 'submitted' | 'blocked';
   lastSnapshot?: string; // Base64 o URL de la imagen
   lastSeen: Date;
+  startedAt?: Date;
   alerts: Alert[];
   unreadMessages: number; // Conteo de mensajes sin leer
 }
@@ -251,6 +253,7 @@ export const liveSessionService = {
         u.email,
         ep.status,
         ep.last_snapshot as "lastSnapshot",
+        ep.started_at as "startedAt",
         -- Usamos started_at o finished_at como proxy de "visto por última vez" si no tenemos columna heartbeat dedicada
         COALESCE(ep.finished_at, ep.started_at) as "lastSeen",
 

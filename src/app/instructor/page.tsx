@@ -176,7 +176,11 @@ export default function InstructorDashboard() {
 
         // Configurar tiempo
         if (students.length > 0 && !sessionStartTime) {
-             const firstStart = students.map(s => new Date(s.startedAt).getTime()).filter(t => !isNaN(t)).sort((a, b) => a - b)[0];
+             const firstStart = students
+               .filter(s => s.startedAt)
+               .map(s => new Date(s.startedAt!).getTime())
+               .filter(t => !isNaN(t))
+               .sort((a, b) => a - b)[0];
              if (firstStart) setSessionStartTime(firstStart);
         }
 
