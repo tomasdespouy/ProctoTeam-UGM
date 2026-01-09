@@ -115,17 +115,41 @@ Preferred communication style: Simple, everyday language.
 - **Visibility API**: Tab focus and window state monitoring
 - **Audio Context**: Audio level monitoring for conversation detection
 
-# Recent Changes (Nov 29, 2025)
+# Recent Changes (Jan 09, 2026)
 
-## Authentication Fixes
+## Block 3: Real-time Monitoring Infrastructure
+- **WebSocket Server**: Custom Next.js server with Socket.io for real-time communication
+  - Path: `/api/socket`
+  - Handles WebRTC signaling (offer/answer/ICE candidates)
+  - Manages exam room membership and student connections
+  - Broadcasts alerts and snapshots to instructors
+- **Evidence Storage**: `POST /api/exam/evidence` endpoint
+  - Uploads snapshots to Replit Object Storage
+  - Persists alerts in `exam_alerts` table with severity levels
+  - Requires authentication via `getAuthenticatedUser`
+- **Database**: New `exam_alerts` table
+  - Related to `exam_participations` via `participation_id`
+  - Tracks alert type, severity, evidence URL, and review status
+- **Frontend Components**:
+  - `ProctorView`: Instructor dashboard with video grid and alert panel
+  - `StudentCam`: Student camera component with WebRTC streaming
+
+## Exam Session Improvements
+- **Recursive Access Code Generation**: System auto-generates unique 6-char codes without user intervention
+- **Immutable started_at**: Prevents time fraud on student rejoin (ON CONFLICT preserves original timestamp)
+- **Blocked Student Validation**: Join endpoint checks participation status before allowing entry
+
+## Previous Changes (Nov 29, 2025)
+
+### Authentication Fixes
 - **Auth Context**: Now uses `idToken` instead of `accessToken` for API authentication
 - **Token Refresh**: `getIdToken()` function now obtains fresh tokens on each call via `acquireTokenSilent`
 - **Super-Admin Dashboard**: Fixed 401 errors by adding Authorization headers to API calls
 
-## Live Session Service
+### Live Session Service
 - **Force Close Exam**: Added `forceCloseExam` method to properly terminate exams and mark all participants as submitted
 - **Database Schema**: Uses `exam_participations` table for student session tracking
 
-## Performance Optimizations
+### Performance Optimizations
 - **Proctoring Panel**: Image snapshots optimized to 320px width with 0.4 JPEG quality (~5KB per image)
 - **Update Frequency**: Snapshots sent every 5 seconds to minimize bandwidth
