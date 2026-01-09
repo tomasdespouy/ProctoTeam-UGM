@@ -1,4 +1,4 @@
-import { query, getClient } from './db';
+import { query } from './db';
 
 export interface ExamSession {
   id: string;
