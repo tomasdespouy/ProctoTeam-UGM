@@ -26,6 +26,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 3.1 Validación de formato de datos
+    const parsedDuration = parseInt(duration);
+    if (isNaN(parsedDuration) || parsedDuration <= 0) {
+      return NextResponse.json({ error: 'Duración inválida' }, { status: 400 });
+    }
+
+    if (accessCode.length < 4) {
+      return NextResponse.json({ error: 'El código de acceso es demasiado corto' }, { status: 400 });
+    }
+
     // 4. Insertar en PostgreSQL (Nuevo Esquema)
     // Nota: Ya no insertamos 'students' aquí. Los estudiantes se unen después.
     const query = `

@@ -10,8 +10,6 @@ export interface ExamSession {
   instructor_id: string;
   instructor_name?: string;
   status: 'pending' | 'active' | 'finished';
-  students: string[];
-  blocked_students: BlockedStudent[];
   created_at: Date;
   updated_at: Date;
 }
@@ -51,12 +49,11 @@ export async function createExamSession(sessionData: {
   access_code: string;
   instructor_id: string;
   instructor_name?: string;
-  students?: string[];
 }): Promise<ExamSession> {
   const result = await query(
     `INSERT INTO exam_sessions 
-     (title, subject, section, duration, access_code, instructor_id, instructor_name, students, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+     (title, subject, section, duration, access_code, instructor_id, instructor_name, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
      RETURNING *`,
     [
       sessionData.title,
@@ -66,7 +63,6 @@ export async function createExamSession(sessionData: {
       sessionData.access_code,
       sessionData.instructor_id,
       sessionData.instructor_name || null,
-      sessionData.students || [],
     ]
   );
   
@@ -136,15 +132,11 @@ export async function addBlockedStudent(
   sessionId: string,
   blockedStudent: BlockedStudent
 ): Promise<void> {
-  const session = await getExamSessionById(sessionId);
-  if (!session) throw new Error('Session not found');
-  
-  const blockedStudents = session.blocked_students || [];
-  blockedStudents.push(blockedStudent);
-  
   await query(
-    'UPDATE exam_sessions SET blocked_students = $1, updated_at = NOW() WHERE id = $2',
-    [JSON.stringify(blockedStudents), sessionId]
+    `UPDATE exam_participations 
+     SET status = 'blocked', updated_at = NOW() 
+     WHERE exam_session_id = $1 AND student_id = $2`,
+    [sessionId, blockedStudent.uid]
   );
 }
 
