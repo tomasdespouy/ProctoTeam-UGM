@@ -410,7 +410,28 @@ export default function InstructorDashboard() {
                                ) : (
                                     <div className="text-center py-10 text-muted-foreground">
                                         <p>Esperando estudiantes...</p>
-                                        <p className="text-sm mt-2">Comparte el código: <span className="font-mono font-bold">{currentExamCode}</span></p>
+                                        <div className="flex flex-col items-center gap-2 mt-4">
+                                            <p className="text-sm text-muted-foreground">Comparte el código con tus alumnos:</p>
+                                            <Button 
+                                                variant="outline" 
+                                                className="bg-[#161F45] border-[#00d4ff] text-[#00d4ff] font-mono text-xl py-6 px-8 hover:bg-[#161F45]/80 group relative overflow-hidden transition-all active:scale-95"
+                                                onClick={() => {
+                                                    if (currentExamCode) {
+                                                        navigator.clipboard.writeText(currentExamCode);
+                                                        toast({
+                                                            title: "Copiado",
+                                                            description: "El código se ha copiado al portapapeles",
+                                                        });
+                                                    }
+                                                }}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <span className="tracking-[0.2em] font-bold">{currentExamCode}</span>
+                                                    <Copy className="h-5 w-5 opacity-50 group-hover:opacity-100 transition-opacity" />
+                                                </div>
+                                            </Button>
+                                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1">Clic para copiar</p>
+                                        </div>
                                     </div>
                                )}
                             </AccordionContent>
