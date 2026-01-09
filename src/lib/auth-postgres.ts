@@ -57,26 +57,17 @@ export function determineUserRole(email: string): 'student' | 'instructor' {
   return 'instructor';
 }
 
-// Crear o actualizar usuario (upsert) con lógica de Primer Usuario = Admin
+// Crear o actualizar usuario (upsert) con lógica estricta de dominio
 export async function upsertUser(userData: {
   uid: string;
   email: string;
   nombre: string;
-  role?: 'student' | 'instructor' | 'super-admin';
   photo_url?: string;
 }): Promise<UserProfile> {
   try {
-    // 1. Determinar rol base (estudiante o instructor) si no se provee uno específico
-    let finalRole: 'student' | 'instructor' | 'super-admin' = userData.role || determineUserRole(userData.email);
-
-    // 2. LÓGICA AUTOMÁTICA DE ADMIN (Solo para el primer usuario absoluto del sistema)
-    const countResult = await query('SELECT count(*) FROM users');
-    const userCount = parseInt(countResult.rows[0].count);
-
-    if (userCount === 0) {
-      console.log(`🚀 Primer usuario detectado (${userData.email}). Asignando rol de 'super-admin' automáticamente.`);
-      finalRole = 'super-admin';
-    }
+    // 1. Determinar rol ÚNICAMENTE por dominio de email (Fuente de verdad estricta)
+    // El rol 'super-admin' solo se puede asignar manualmente en la DB
+    const finalRole = determineUserRole(userData.email);
 
     const result = await query(
       `INSERT INTO users (uid, email, nombre, role, photo_url, created_at, updated_at)
