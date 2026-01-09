@@ -16,10 +16,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, subject, section, duration, accessCode } = body;
+    const { title, subject, section, duration } = body;
 
-    // 3. Validación de campos
-    if (!title || !subject || !section || !duration || !accessCode) {
+    // 3. Validación de campos (accessCode ya no viene del body)
+    if (!title || !subject || !section || !duration) {
       return NextResponse.json(
         { error: 'Faltan campos requeridos' },
         { status: 400 }
@@ -32,11 +32,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Duración inválida' }, { status: 400 });
     }
 
-    if (accessCode.length < 4) {
-      return NextResponse.json({ error: 'El código de acceso es demasiado corto' }, { status: 400 });
-    }
+    // 4. Generación de código único recursivo
+    const generateUniqueCode = async (): Promise<string> => {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Evitamos I, O, 0, 1 para legibilidad
+        let code = '';
+        for (let i = 0; i < 6; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
 
-    // 4. Insertar en PostgreSQL (Nuevo Esquema)
+        // Verificar si existe
+        const exists = await db.query('SELECT 1 FROM exam_sessions WHERE access_code = $1', [code]);
+        if (exists.rowCount && exists.rowCount > 0) {
+            return generateUniqueCode();
+        }
+        return code;
+    };
+
+    const accessCode = await generateUniqueCode();
+
+    // 5. Insertar en PostgreSQL (Nuevo Esquema)
     // Nota: Ya no insertamos 'students' aquí. Los estudiantes se unen después.
     const query = `
       INSERT INTO exam_sessions (
