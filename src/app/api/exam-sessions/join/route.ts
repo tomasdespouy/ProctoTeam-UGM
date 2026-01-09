@@ -33,9 +33,10 @@ export async function POST(request: NextRequest) {
 
     // 3. Registrar la intención de participación (IDEMPOTENTE)
     // Usamos ON CONFLICT para manejar si el estudiante ya se había unido antes
+    // IMPORTANTE: NO actualizamos started_at si ya existe para evitar reinicio de tiempo
     await db.query(
-        `INSERT INTO exam_participations (exam_session_id, student_id, student_name, status)
-         VALUES ($1, $2, $3, 'joined')
+        `INSERT INTO exam_participations (exam_session_id, student_id, student_name, status, started_at)
+         VALUES ($1, $2, $3, 'joined', NOW())
          ON CONFLICT (exam_session_id, student_id) 
          DO UPDATE SET 
             status = CASE 
