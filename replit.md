@@ -90,6 +90,7 @@ Preferred communication style: Simple, everyday language.
 ## AI & Machine Learning
 - **TensorFlow.js**: Client-side machine learning for real-time object detection
 - **COCO-SSD Model**: Pre-trained model for person and object detection in video streams
+- **MediaPipe Face Mesh**: Real-time face detection and head pose estimation
 - **Google Genkit**: AI workflow framework for structured AI operations
 
 ## UI & Styling
@@ -115,7 +116,24 @@ Preferred communication style: Simple, everyday language.
 - **Visibility API**: Tab focus and window state monitoring
 - **Audio Context**: Audio level monitoring for conversation detection
 
-# Recent Changes (Jan 09, 2026)
+# Recent Changes (Jan 10, 2026)
+
+## Block 4: AI-Powered Proctoring Engine
+- **Modular AI Architecture** (`src/lib/ai/`):
+  - `face-detector.ts`: MediaPipe Face Mesh for presence detection (0/1/>1 faces) and head pose estimation (yaw/pitch/roll)
+  - `object-detector.ts`: COCO-SSD for prohibited object detection (only 'cell phone' with 60%+ confidence)
+  - `ai-coordinator.ts`: Central orchestration with debounce logic and cooldown timers
+  - `index.ts`: Barrel exports for clean imports
+- **Detection Rules**:
+  - Multiple faces (>1): Immediate critical alert with snapshot
+  - No face (0): Alert after 5 seconds continuous absence
+  - Looking away: Alert after 5 seconds continuous deviation (yaw >30° or pitch >25°)
+  - Cell phone: Immediate critical alert with snapshot
+- **Spam Prevention**: 30-second cooldown between repeated alerts for same violation type
+- **Event-Driven Snapshots**: Evidence captured only on alerts, instructor request, or AI detection (no periodic polling)
+- **StudentCam Integration**: AI auto-initializes with visual status indicator (loading/active/error)
+
+# Previous Changes (Jan 09, 2026)
 
 ## Block 3: Real-time Monitoring Infrastructure
 - **WebSocket Server**: Custom Next.js server with Socket.io for real-time communication
