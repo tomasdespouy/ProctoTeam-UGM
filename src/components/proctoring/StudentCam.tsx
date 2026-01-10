@@ -23,8 +23,6 @@ interface StudentCamProps {
   onAlert?: (alertType: string, description: string, severity: 'low' | 'medium' | 'high' | 'critical') => void;
 }
 
-const HEARTBEAT_INTERVAL_MS = 180000; // 3 minutos para registro de asistencia
-
 export function StudentCam({ 
   examId, 
   studentId, 
@@ -42,7 +40,6 @@ export function StudentCam({
   const streamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const captureSnapshot = useCallback(() => {
     if (!videoRef.current || !streamRef.current) return null;
@@ -254,20 +251,6 @@ export function StudentCam({
       }
     };
   }, [isConnected, examId, studentId]);
-
-  useEffect(() => {
-    if (isConnected && hasVideo) {
-      heartbeatIntervalRef.current = setInterval(() => {
-        sendSnapshotWithReason('heartbeat');
-      }, HEARTBEAT_INTERVAL_MS);
-    }
-
-    return () => {
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-      }
-    };
-  }, [isConnected, hasVideo, sendSnapshotWithReason]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
