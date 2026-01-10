@@ -13,7 +13,7 @@ export interface DetectedObject {
 }
 
 const PROHIBITED_OBJECTS = ['cell phone'];
-const MIN_CONFIDENCE = 0.6;
+const MIN_CONFIDENCE = 0.75;
 
 let model: cocoSsd.ObjectDetection | null = null;
 let isLoading = false;
