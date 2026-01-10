@@ -11,15 +11,24 @@ import {
   Wifi, 
   WifiOff,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Brain
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
+import { 
+  initAICoordinator, 
+  startDetection, 
+  stopDetection, 
+  disposeAICoordinator,
+  type AIAlert 
+} from '@/lib/ai';
 
 interface StudentCamProps {
   examId: string;
   studentId: string;
   studentName: string;
   participationId: string;
+  enableAI?: boolean;
   onAlert?: (alertType: string, description: string, severity: 'low' | 'medium' | 'high' | 'critical') => void;
 }
 
@@ -28,6 +37,7 @@ export function StudentCam({
   studentId, 
   studentName, 
   participationId,
+  enableAI = true,
   onAlert 
 }: StudentCamProps) {
   const [isConnected, setIsConnected] = useState(false);
@@ -35,11 +45,13 @@ export function StudentCam({
   const [hasAudio, setHasAudio] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'failed'>('connecting');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<'loading' | 'active' | 'error' | 'disabled'>('loading');
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const aiInitializedRef = useRef(false);
 
   const captureSnapshot = useCallback(() => {
     if (!videoRef.current || !streamRef.current) return null;
@@ -97,6 +109,14 @@ export function StudentCam({
     sendSnapshotWithReason(`alert:${alertType}`);
   }, [sendAlert, sendSnapshotWithReason]);
 
+  const handleAIAlert = useCallback((alert: AIAlert) => {
+    sendAlert(alert.type, alert.description, alert.severity);
+  }, [sendAlert]);
+
+  const handleAISnapshot = useCallback((reason: string) => {
+    sendSnapshotWithReason(`ai:${reason}`);
+  }, [sendSnapshotWithReason]);
+
   useEffect(() => {
     const initCamera = async () => {
       try {
@@ -146,6 +166,45 @@ export function StudentCam({
       }
     };
   }, [sendAlert, sendAlertWithSnapshot]);
+
+  useEffect(() => {
+    if (!enableAI || !hasVideo || !videoRef.current || aiInitializedRef.current) return;
+
+    const initAI = async () => {
+      try {
+        setAiStatus('loading');
+        await initAICoordinator();
+        
+        if (videoRef.current) {
+          startDetection(videoRef.current, {
+            onAlert: handleAIAlert,
+            onRequestSnapshot: handleAISnapshot,
+          });
+          aiInitializedRef.current = true;
+          setAiStatus('active');
+        }
+      } catch (error) {
+        console.error('Error initializing AI:', error);
+        setAiStatus('error');
+      }
+    };
+
+    const timer = setTimeout(initAI, 2000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [enableAI, hasVideo, handleAIAlert, handleAISnapshot]);
+
+  useEffect(() => {
+    return () => {
+      if (aiInitializedRef.current) {
+        stopDetection();
+        disposeAICoordinator();
+        aiInitializedRef.current = false;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const socket = io({
@@ -272,6 +331,33 @@ export function StudentCam({
     };
   }, [sendAlertWithSnapshot]);
 
+  const getAIStatusBadge = () => {
+    if (!enableAI) return null;
+    
+    switch (aiStatus) {
+      case 'loading':
+        return (
+          <Badge className="bg-yellow-600 text-xs">
+            <Brain className="h-3 w-3 mr-1 animate-pulse" /> IA Cargando
+          </Badge>
+        );
+      case 'active':
+        return (
+          <Badge className="bg-purple-600 text-xs">
+            <Brain className="h-3 w-3 mr-1" /> IA Activa
+          </Badge>
+        );
+      case 'error':
+        return (
+          <Badge className="bg-red-600 text-xs">
+            <Brain className="h-3 w-3 mr-1" /> IA Error
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <Card className="overflow-hidden">
       <div className="aspect-video bg-black relative">
@@ -299,6 +385,7 @@ export function StudentCam({
               <><WifiOff className="h-3 w-3 mr-1" /> Desconectado</>
             )}
           </Badge>
+          {getAIStatusBadge()}
         </div>
 
         <div className="absolute top-2 right-2 flex gap-1">
