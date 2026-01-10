@@ -118,6 +118,20 @@ Preferred communication style: Simple, everyday language.
 
 # Recent Changes (Jan 10, 2026)
 
+## Block 5: Mandatory Screen Sharing
+- **Blocking Setup Flow**: Three-phase initialization (camera → screen → ready)
+  - Student cannot connect to instructor until both camera AND screen are shared
+  - Explicit "Compartir Pantalla" button using `getDisplayMedia`
+  - Error handling for cancelled/failed screen share attempts
+- **Dead Man's Switch**: `track.onended` listener detects when student stops sharing
+  - Triggers immediate `screen_share_ended` critical alert with snapshot
+  - Activates full-screen blocking modal (z-50 fixed inset-0)
+  - Disables all controls until screen sharing is restored
+- **WebRTC Integration**: Screen track added to RTCPeerConnection
+  - `addScreenTrackToWebRTC()` function handles track addition and renegotiation
+  - `isRenegotiation` flag signals backend of updated offer
+  - Screen feed reaches instructor alongside webcam feed
+
 ## Block 4: AI-Powered Proctoring Engine
 - **Modular AI Architecture** (`src/lib/ai/`):
   - `face-detector.ts`: MediaPipe Face Mesh for presence detection (0/1/>1 faces) and head pose estimation (yaw/pitch/roll)
