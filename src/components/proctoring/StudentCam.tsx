@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { 
   Video, 
   VideoOff, 
@@ -12,7 +13,10 @@ import {
   WifiOff,
   AlertCircle,
   CheckCircle,
-  Brain
+  Brain,
+  Monitor,
+  MonitorOff,
+  AlertTriangle
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { 
@@ -30,7 +34,10 @@ interface StudentCamProps {
   participationId: string;
   enableAI?: boolean;
   onAlert?: (alertType: string, description: string, severity: 'low' | 'medium' | 'high' | 'critical') => void;
+  onReady?: () => void;
 }
+
+type SetupPhase = 'camera' | 'screen' | 'ready';
 
 export function StudentCam({ 
   examId, 
@@ -38,17 +45,23 @@ export function StudentCam({
   studentName, 
   participationId,
   enableAI = true,
-  onAlert 
+  onAlert,
+  onReady
 }: StudentCamProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [hasVideo, setHasVideo] = useState(false);
   const [hasAudio, setHasAudio] = useState(false);
+  const [hasScreen, setHasScreen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'failed'>('connecting');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<'loading' | 'active' | 'error' | 'disabled'>('loading');
+  const [setupPhase, setSetupPhase] = useState<SetupPhase>('camera');
+  const [screenBlocked, setScreenBlocked] = useState(false);
+  const [screenError, setScreenError] = useState<string | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const aiInitializedRef = useRef(false);
@@ -117,6 +130,88 @@ export function StudentCam({
     sendSnapshotWithReason(`ai:${reason}`);
   }, [sendSnapshotWithReason]);
 
+  const handleScreenShareEnded = useCallback(() => {
+    setHasScreen(false);
+    setScreenBlocked(true);
+    
+    sendAlertWithSnapshot(
+      'screen_share_ended', 
+      'El estudiante dejó de compartir pantalla', 
+      'critical'
+    );
+  }, [sendAlertWithSnapshot]);
+
+  const addScreenTrackToWebRTC = useCallback(async (screenStream: MediaStream) => {
+    const pc = peerConnectionRef.current;
+    if (!pc || !socketRef.current) return;
+
+    const screenTrack = screenStream.getVideoTracks()[0];
+    if (!screenTrack) return;
+
+    pc.addTrack(screenTrack, screenStream);
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    socketRef.current.emit('webrtc:offer', {
+      examId,
+      fromStudentId: studentId,
+      offer,
+      isRenegotiation: true,
+    });
+  }, [examId, studentId]);
+
+  const startScreenShare = useCallback(async () => {
+    setScreenError(null);
+    
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          displaySurface: 'monitor',
+        },
+        audio: false,
+      });
+      
+      screenStreamRef.current = screenStream;
+      setHasScreen(true);
+      setScreenBlocked(false);
+      
+      const videoTrack = screenStream.getVideoTracks()[0];
+      
+      videoTrack.addEventListener('ended', handleScreenShareEnded);
+      
+      if (peerConnectionRef.current && socketRef.current) {
+        await addScreenTrackToWebRTC(screenStream);
+      }
+      
+      if (setupPhase === 'screen') {
+        setSetupPhase('ready');
+        onReady?.();
+      }
+      
+      return true;
+    } catch (error: any) {
+      console.error('Error sharing screen:', error);
+      
+      if (error.name === 'NotAllowedError') {
+        setScreenError('Debes seleccionar una pantalla para compartir. Haz clic en el botón e intenta de nuevo.');
+      } else if (error.name === 'NotFoundError') {
+        setScreenError('No se encontró ninguna pantalla para compartir.');
+      } else {
+        setScreenError(error.message || 'Error al compartir pantalla');
+      }
+      
+      return false;
+    }
+  }, [handleScreenShareEnded, setupPhase, onReady, addScreenTrackToWebRTC]);
+
+  const restoreScreenShare = useCallback(async () => {
+    const success = await startScreenShare();
+    if (success) {
+      setScreenBlocked(false);
+    }
+  }, [startScreenShare]);
+
   useEffect(() => {
     const initCamera = async () => {
       try {
@@ -140,6 +235,8 @@ export function StudentCam({
         
         setHasVideo(videoTrack?.enabled ?? false);
         setHasAudio(audioTrack?.enabled ?? false);
+        
+        setSetupPhase('screen');
 
         videoTrack?.addEventListener('ended', () => {
           setHasVideo(false);
@@ -163,6 +260,9 @@ export function StudentCam({
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(track => track.stop());
       }
     };
   }, [sendAlert, sendAlertWithSnapshot]);
@@ -207,6 +307,8 @@ export function StudentCam({
   }, []);
 
   useEffect(() => {
+    if (setupPhase !== 'ready') return;
+    
     const socket = io({
       path: '/api/socket',
       transports: ['websocket', 'polling'],
@@ -265,10 +367,10 @@ export function StudentCam({
     return () => {
       socket.disconnect();
     };
-  }, [examId, studentId, studentName, participationId, sendAlert, sendSnapshotWithReason]);
+  }, [examId, studentId, studentName, participationId, setupPhase, sendAlert, sendSnapshotWithReason]);
 
   useEffect(() => {
-    if (!isConnected || !streamRef.current || !socketRef.current) return;
+    if (!isConnected || !streamRef.current || !socketRef.current || setupPhase !== 'ready') return;
 
     const initWebRTC = async () => {
       const pc = new RTCPeerConnection({
@@ -280,6 +382,13 @@ export function StudentCam({
       streamRef.current!.getTracks().forEach(track => {
         pc.addTrack(track, streamRef.current!);
       });
+
+      if (screenStreamRef.current) {
+        const screenTrack = screenStreamRef.current.getVideoTracks()[0];
+        if (screenTrack) {
+          pc.addTrack(screenTrack, screenStreamRef.current);
+        }
+      }
 
       pc.onicecandidate = (event) => {
         if (event.candidate && socketRef.current) {
@@ -309,9 +418,11 @@ export function StudentCam({
         peerConnectionRef.current.close();
       }
     };
-  }, [isConnected, examId, studentId]);
+  }, [isConnected, examId, studentId, setupPhase]);
 
   useEffect(() => {
+    if (setupPhase !== 'ready') return;
+    
     const handleVisibilityChange = () => {
       if (document.hidden) {
         sendAlertWithSnapshot('tab_switch', 'El estudiante cambió de pestaña', 'high');
@@ -329,7 +440,7 @@ export function StudentCam({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [sendAlertWithSnapshot]);
+  }, [sendAlertWithSnapshot, setupPhase]);
 
   const getAIStatusBadge = () => {
     if (!enableAI) return null;
@@ -358,6 +469,104 @@ export function StudentCam({
     }
   };
 
+  if (screenBlocked) {
+    return (
+      <div className="fixed inset-0 z-50 bg-red-900/95 flex items-center justify-center">
+        <div className="max-w-md mx-auto p-8 text-center text-white">
+          <AlertTriangle className="h-20 w-20 mx-auto mb-6 animate-pulse" />
+          <h2 className="text-2xl font-bold mb-4">
+            Conexión de Pantalla Perdida
+          </h2>
+          <p className="text-lg mb-6">
+            Se ha perdido la conexión con tu pantalla compartida. 
+            Debes volver a compartir inmediatamente para continuar con el examen.
+          </p>
+          <Button 
+            onClick={restoreScreenShare}
+            size="lg"
+            className="bg-white text-red-900 hover:bg-gray-100"
+          >
+            <Monitor className="h-5 w-5 mr-2" />
+            Compartir Pantalla Nuevamente
+          </Button>
+          {screenError && (
+            <p className="mt-4 text-yellow-300 text-sm">{screenError}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (setupPhase === 'screen') {
+    return (
+      <Card className="overflow-hidden">
+        <div className="aspect-video bg-black relative">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ transform: 'scaleX(-1)' }}
+          />
+          <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white p-6">
+            <Monitor className="h-16 w-16 mb-4" />
+            <h3 className="text-xl font-bold mb-2">Compartir Pantalla Requerido</h3>
+            <p className="text-center text-sm text-gray-300 mb-6 max-w-sm">
+              Para continuar con el examen, debes compartir tu pantalla completa. 
+              Esto es obligatorio para garantizar la integridad del examen.
+            </p>
+            <Button 
+              onClick={startScreenShare}
+              size="lg"
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Monitor className="h-5 w-5 mr-2" />
+              Compartir Pantalla
+            </Button>
+            {screenError && (
+              <p className="mt-4 text-red-400 text-sm text-center">{screenError}</p>
+            )}
+          </div>
+        </div>
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Paso 2 de 2: Compartir pantalla</span>
+            <Badge variant="secondary">
+              <CheckCircle className="h-3 w-3 mr-1" /> Cámara lista
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (setupPhase === 'camera') {
+    return (
+      <Card className="overflow-hidden">
+        <div className="aspect-video bg-black relative flex items-center justify-center">
+          {errorMessage ? (
+            <div className="text-white text-center px-4">
+              <VideoOff className="h-12 w-12 mx-auto mb-2" />
+              <p className="text-sm">{errorMessage}</p>
+            </div>
+          ) : (
+            <div className="text-white text-center">
+              <div className="animate-spin h-8 w-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-4" />
+              <p>Solicitando acceso a cámara y micrófono...</p>
+            </div>
+          )}
+        </div>
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Paso 1 de 2: Permisos de cámara</span>
+            <Badge variant="secondary">Esperando...</Badge>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="overflow-hidden">
       <div className="aspect-video bg-black relative">
@@ -377,7 +586,7 @@ export function StudentCam({
           />
         )}
 
-        <div className="absolute top-2 left-2 flex gap-2">
+        <div className="absolute top-2 left-2 flex gap-2 flex-wrap">
           <Badge variant={isConnected ? 'default' : 'destructive'} className="text-xs">
             {isConnected ? (
               <><Wifi className="h-3 w-3 mr-1" /> Conectado</>
@@ -394,6 +603,9 @@ export function StudentCam({
           </Badge>
           <Badge variant={hasAudio ? 'default' : 'destructive'} className="text-xs">
             {hasAudio ? <Mic className="h-3 w-3" /> : <MicOff className="h-3 w-3" />}
+          </Badge>
+          <Badge variant={hasScreen ? 'default' : 'destructive'} className="text-xs">
+            {hasScreen ? <Monitor className="h-3 w-3" /> : <MonitorOff className="h-3 w-3" />}
           </Badge>
         </div>
 
@@ -423,8 +635,8 @@ export function StudentCam({
       <CardContent className="p-3">
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Estado de proctoring</span>
-          <Badge variant={hasVideo && hasAudio && isConnected ? 'default' : 'destructive'}>
-            {hasVideo && hasAudio && isConnected ? 'Activo' : 'Incompleto'}
+          <Badge variant={hasVideo && hasAudio && hasScreen && isConnected ? 'default' : 'destructive'}>
+            {hasVideo && hasAudio && hasScreen && isConnected ? 'Activo' : 'Incompleto'}
           </Badge>
         </div>
       </CardContent>
