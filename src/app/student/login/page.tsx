@@ -16,13 +16,10 @@ export default function StudentLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault(); // Evitar refresco
+    e.preventDefault();
 
     if (isLoading) return;
     setIsLoading(true);
-
-    // Marcamos la intención de login como estudiante para el router inteligente
-    sessionStorage.setItem('loginRole', 'student');
 
     try {
       // 1. Intentar con Popup (Mejor experiencia)

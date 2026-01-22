@@ -56,8 +56,6 @@ export default function InstructorLoginPage() {
     if (isLoading) return;
 
     setIsLoading(true);
-    // Guardamos la intención de login para saber dónde volver si se refresca
-    sessionStorage.setItem('loginRole', 'instructor');
 
     try {
         const result = await signInWithAzurePopup();

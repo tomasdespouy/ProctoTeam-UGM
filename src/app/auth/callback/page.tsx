@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getMsalInstance } from '@/lib/azure-auth';
 import { Loader2 } from 'lucide-react';
 
-// 1. Componente INTERNO: Maneja la lógica que usa useSearchParams
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -19,15 +18,14 @@ function AuthCallbackContent() {
         const response = await instance.handleRedirectPromise();
 
         if (response) {
-          const userRole = sessionStorage.getItem('loginRole');
-          sessionStorage.removeItem('loginRole');
-
-          if (userRole === 'student') {
+          const email = response.account?.username?.toLowerCase() || '';
+          
+          const isStudent = email.endsWith('@estudiante.ugm.cl');
+          
+          if (isStudent) {
             router.push('/student');
-          } else if (userRole === 'instructor') {
-            router.push('/instructor');
           } else {
-            router.push('/');
+            router.push('/instructor');
           }
         } else {
           const errorParam = searchParams.get('error');
@@ -38,13 +36,16 @@ function AuthCallbackContent() {
             setError(errorDescription || 'Error de autenticación');
             setTimeout(() => router.push('/'), 3000);
           } else {
-            // Caso defensivo: si no hay respuesta ni error, redirigir según rol guardado
-            const userRole = sessionStorage.getItem('loginRole');
-            sessionStorage.removeItem('loginRole');
-            if (userRole === 'student') {
-              router.push('/student');
-            } else if (userRole === 'instructor') {
-              router.push('/instructor');
+            const accounts = instance.getAllAccounts();
+            if (accounts.length > 0) {
+              const email = accounts[0].username?.toLowerCase() || '';
+              const isStudent = email.endsWith('@estudiante.ugm.cl');
+              
+              if (isStudent) {
+                router.push('/student');
+              } else {
+                router.push('/instructor');
+              }
             } else {
               router.push('/');
             }
@@ -91,7 +92,6 @@ function AuthCallbackContent() {
   );
 }
 
-// 2. Componente PRINCIPAL: Envuelve el contenido en Suspense
 export default function AuthCallbackPage() {
   return (
     <Suspense 
