@@ -2,13 +2,22 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, LogIn } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, LogIn, Bug, GraduationCap, BookOpen } from 'lucide-react';
 import { signInWithAzurePopup, signInWithAzureRedirect } from '@/lib/azure-auth';
 import { useToast } from "@/hooks/use-toast";
+import { useAuth, UserProfile } from '@/context/auth-context';
+import { useRouter } from 'next/navigation';
+
+const SHOW_DEV_LOGIN = process.env.NEXT_PUBLIC_SHOW_DEV_LOGIN === 'true';
 
 export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [devEmail, setDevEmail] = useState('');
+  const [devLoading, setDevLoading] = useState(false);
   const { toast } = useToast();
+  const { setDevUser } = useAuth();
+  const router = useRouter();
 
   const handleLogin = async () => {
     if (isLoading) return;
@@ -29,6 +38,56 @@ export default function HomePage() {
         description: "No se pudo iniciar sesión con Microsoft.",
       });
       setIsLoading(false);
+    }
+  };
+
+  const handleDevLogin = async (email: string) => {
+    if (devLoading) return;
+    setDevLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/dev-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error en dev login');
+      }
+
+      const profile: UserProfile = {
+        id: data.user.id,
+        uid: data.user.uid,
+        nombre: data.user.nombre,
+        correo: data.user.email,
+        role: data.user.role,
+        photoURL: data.user.photo_url,
+      };
+
+      setDevUser(profile);
+
+      toast({
+        title: "Dev Login exitoso",
+        description: `Entrando como ${profile.role}: ${profile.correo}`,
+      });
+
+      if (profile.role === 'student') {
+        router.push('/student');
+      } else {
+        router.push('/instructor');
+      }
+    } catch (error: any) {
+      console.error("Error en dev login:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "No se pudo iniciar sesión de desarrollo.",
+      });
+    } finally {
+      setDevLoading(false);
     }
   };
 
@@ -87,6 +146,69 @@ export default function HomePage() {
           <p>Autenticación segura vía Microsoft Azure AD</p>
         </div>
       </div>
+
+      {SHOW_DEV_LOGIN && (
+        <div className="mt-6 bg-amber-50 border-2 border-amber-400 rounded-xl p-4 max-w-md w-full relative z-10">
+          <div className="flex items-center gap-2 mb-3">
+            <Bug className="h-5 w-5 text-amber-600" />
+            <h3 className="font-semibold text-amber-800">Modo Desarrollo</h3>
+          </div>
+          
+          <div className="space-y-3">
+            <Input
+              type="email"
+              placeholder="Email de prueba..."
+              value={devEmail}
+              onChange={(e) => setDevEmail(e.target.value)}
+              className="bg-white border-amber-300 focus:border-amber-500"
+            />
+            
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDevEmail('test@estudiante.ugm.cl');
+                  handleDevLogin('test@estudiante.ugm.cl');
+                }}
+                disabled={devLoading}
+                className="flex-1 border-blue-400 text-blue-700 hover:bg-blue-50"
+              >
+                <GraduationCap className="h-4 w-4 mr-1" />
+                Estudiante
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDevEmail('test@ugm.cl');
+                  handleDevLogin('test@ugm.cl');
+                }}
+                disabled={devLoading}
+                className="flex-1 border-green-400 text-green-700 hover:bg-green-50"
+              >
+                <BookOpen className="h-4 w-4 mr-1" />
+                Instructor
+              </Button>
+            </div>
+            
+            <Button
+              onClick={() => handleDevLogin(devEmail)}
+              disabled={devLoading || !devEmail}
+              className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              {devLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Entrando...
+                </>
+              ) : (
+                'Entrar con email personalizado'
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <footer className="absolute bottom-0 left-0 right-0 bg-slate-800/90 backdrop-blur-sm text-white py-3 z-10">
         <div className="container mx-auto px-4 text-center">

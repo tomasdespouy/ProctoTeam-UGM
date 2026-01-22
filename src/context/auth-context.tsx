@@ -25,15 +25,19 @@ interface AuthContextType {
   user: MsalUser | null;
   userProfile: UserProfile | null;
   loading: boolean;
+  setDevUser: (profile: UserProfile | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   userProfile: null,
   loading: true,
+  setDevUser: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
+
+const DEV_USER_KEY = 'dev_user_profile';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -46,9 +50,52 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const router = useRouter();
   const pathname = usePathname();
 
+  const setDevUser = (profile: UserProfile | null) => {
+    if (profile) {
+      sessionStorage.setItem(DEV_USER_KEY, JSON.stringify(profile));
+      setUserProfile(profile);
+      const mockMsalUser: MsalUser = {
+        account: {
+          homeAccountId: profile.uid,
+          localAccountId: profile.uid,
+          environment: 'dev',
+          tenantId: 'dev-tenant',
+          username: profile.correo,
+          name: profile.nombre,
+        } as AccountInfo,
+        getIdToken: async () => 'dev-mock-token',
+      };
+      setUser(mockMsalUser);
+    } else {
+      sessionStorage.removeItem(DEV_USER_KEY);
+      setUserProfile(null);
+      setUser(null);
+    }
+  };
+
   useEffect(() => {
     const initAuth = async () => {
       try {
+        const storedDevUser = sessionStorage.getItem(DEV_USER_KEY);
+        if (storedDevUser) {
+          const devProfile = JSON.parse(storedDevUser) as UserProfile;
+          setUserProfile(devProfile);
+          const mockMsalUser: MsalUser = {
+            account: {
+              homeAccountId: devProfile.uid,
+              localAccountId: devProfile.uid,
+              environment: 'dev',
+              tenantId: 'dev-tenant',
+              username: devProfile.correo,
+              name: devProfile.nombre,
+            } as AccountInfo,
+            getIdToken: async () => 'dev-mock-token',
+          };
+          setUser(mockMsalUser);
+          setLoading(false);
+          return;
+        }
+
         await initializeMsal();
         const msalInstance = getMsalInstance();
         let account = msalInstance.getActiveAccount();
@@ -163,7 +210,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }, [user, pathname, loading, router]);
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, setDevUser }}>
       {children}
     </AuthContext.Provider>
   );

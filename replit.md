@@ -127,6 +127,20 @@ Preferred communication style: Simple, everyday language.
 - **Removed sessionStorage**: No longer stores `loginRole` in browser storage
 - **Cleaner UX**: Users no longer need to manually select their role before logging in
 
+## Development Authentication Bypass
+- **Endpoint**: `POST /api/auth/dev-login`
+  - Security: Returns 403 if `NODE_ENV !== 'development'`
+  - Receives `email` in request body
+  - Uses `upsertUser` to create/get user in database
+  - Role determined by `determineUserRole` based on email domain
+- **Environment Variable**: `NEXT_PUBLIC_SHOW_DEV_LOGIN=true` shows dev panel on landing page
+- **Dev Login Panel**: Visible only in development mode
+  - Quick buttons: "Estudiante" (`test@estudiante.ugm.cl`) and "Instructor" (`test@ugm.cl`)
+  - Custom email input for testing different accounts
+- **Session Management**: Dev users stored in sessionStorage with key `dev_user_profile`
+  - AuthContext checks for dev user before MSAL initialization
+  - `setDevUser` function allows programmatic login/logout
+
 ## Block 5: Mandatory Screen Sharing
 - **Blocking Setup Flow**: Three-phase initialization (camera → screen → ready)
   - Student cannot connect to instructor until both camera AND screen are shared
