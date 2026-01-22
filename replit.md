@@ -118,6 +118,15 @@ Preferred communication style: Simple, everyday language.
 
 # Recent Changes (Jan 10, 2026)
 
+## Unified Login with Auto-Role Detection
+- **Single Entry Point**: Landing page now has one "Ingresar a la Plataforma" button
+- **Automatic Role Detection**: System determines role based on email domain after Azure AD auth
+  - `@estudiante.ugm.cl` → redirects to `/student` (student portal)
+  - Any other UGM domain → redirects to `/instructor` (instructor portal)
+  - Super-admin detection handled by existing instructor page logic
+- **Removed sessionStorage**: No longer stores `loginRole` in browser storage
+- **Cleaner UX**: Users no longer need to manually select their role before logging in
+
 ## Block 5: Mandatory Screen Sharing
 - **Blocking Setup Flow**: Three-phase initialization (camera → screen → ready)
   - Student cannot connect to instructor until both camera AND screen are shared
