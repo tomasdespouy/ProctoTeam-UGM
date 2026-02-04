@@ -114,13 +114,27 @@ export default function HomePage() {
         <p className="text-[#242F62] text-lg font-medium">Sistema de Vigilancia de Exámenes en Línea</p>
       </div>
 
-      <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8 max-w-md w-full relative z-10">
+      <div className="bg-white border-2 border-[#00BBFF] rounded-[15px] shadow-[0px_3px_10px_2px_rgba(0,0,0,0.27)] p-8 max-w-md w-full relative z-10">
         <div className="text-center mb-6">
-          <h2 className="text-xl font-semibold text-[#242F62] mb-2">
-            Bienvenido
+          <div className="flex justify-center mb-4">
+            <div className="bg-[#D9D9D9] rounded-full p-4 w-24 h-24 flex items-center justify-center relative">
+              <LogIn className="h-12 w-12 text-[#242F62]" />
+              <div className="absolute top-0 right-0">
+                <div className="bg-[#4CAF50] rounded-full p-1 border-2 border-white">
+                  <div className="h-2 w-2 bg-white rounded-full"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <h2 className="text-[22px] font-extrabold text-[#242F62] mb-1">
+            Portal de estudiante
           </h2>
-          <p className="text-gray-600 text-sm">
-            Ingresa con tu cuenta institucional UGM. El sistema detectará automáticamente si eres estudiante o docente.
+          <p className="text-[#242F62] text-base mb-4">
+            Accede para rendir tu examen
+          </p>
+          <div className="w-full h-px bg-[#D9D9D9] mb-6"></div>
+          <p className="text-[#242F62] text-sm leading-relaxed mb-6 italic">
+            Para ingresar a la plataforma, utiliza tus credenciales institucionales de la Universidad Gabriela Mistral.
           </p>
         </div>
 
@@ -141,10 +155,6 @@ export default function HomePage() {
             </>
           )}
         </Button>
-
-        <div className="mt-4 text-center text-xs text-gray-500">
-          <p>Autenticación segura vía Microsoft Azure AD</p>
-        </div>
       </div>
 
       {SHOW_DEV_LOGIN && (
@@ -213,7 +223,7 @@ export default function HomePage() {
       <footer className="absolute bottom-0 left-0 right-0 bg-slate-800/90 backdrop-blur-sm text-white py-3 z-10">
         <div className="container mx-auto px-4 text-center">
           <p className="text-sm opacity-70">
-            Universidad Gabriela Mistral - 2025. Todos los derechos reservados.
+            Universidad Gabriela Mistral - 2026. Todos los derechos reservados.
           </p>
         </div>
       </footer>
