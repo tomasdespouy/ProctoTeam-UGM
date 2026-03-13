@@ -19,9 +19,7 @@ function AuthCallbackContent() {
 
         if (response) {
           const email = response.account?.username?.toLowerCase() || '';
-          
           const isStudent = email.endsWith('@estudiante.ugm.cl');
-          
           if (isStudent) {
             router.push('/student');
           } else {
@@ -40,7 +38,6 @@ function AuthCallbackContent() {
             if (accounts.length > 0) {
               const email = accounts[0].username?.toLowerCase() || '';
               const isStudent = email.endsWith('@estudiante.ugm.cl');
-              
               if (isStudent) {
                 router.push('/student');
               } else {
@@ -63,12 +60,15 @@ function AuthCallbackContent() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#00d4ff] via-[#0099cc] to-[#006699]">
-        <div className="bg-white p-8 rounded-lg shadow-lg max-w-md">
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: 'linear-gradient(135deg, #0D1240 0%, #1A1D6E 40%, #1E3A8A 100%)' }}
+      >
+        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full mx-4">
           <div className="text-center">
             <div className="text-red-500 text-xl font-semibold mb-4">Error de Autenticación</div>
             <p className="text-gray-600 mb-4">{error}</p>
-            <p className="text-sm text-gray-500">Redirigiendo al inicio...</p>
+            <p className="text-sm text-gray-400">Redirigiendo al inicio...</p>
           </div>
         </div>
       </div>
@@ -76,15 +76,18 @@ function AuthCallbackContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#00d4ff] via-[#0099cc] to-[#006699]">
-      <div className="bg-white p-8 rounded-lg shadow-lg">
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{ background: 'linear-gradient(135deg, #0D1240 0%, #1A1D6E 40%, #1E3A8A 100%)' }}
+    >
+      <div className="bg-white p-8 rounded-2xl shadow-xl">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 animate-spin text-[#00d4ff]" />
+          <Loader2 className="w-10 h-10 animate-spin text-[#00BBFF]" />
           <div className="text-center">
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            <h2 className="text-lg font-semibold text-[#1A1D47] mb-1">
               Procesando autenticación
             </h2>
-            <p className="text-gray-600">Por favor espera...</p>
+            <p className="text-sm text-gray-500">Por favor espera...</p>
           </div>
         </div>
       </div>
@@ -94,10 +97,13 @@ function AuthCallbackContent() {
 
 export default function AuthCallbackPage() {
   return (
-    <Suspense 
+    <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#00d4ff] via-[#0099cc] to-[#006699]">
-          <Loader2 className="w-12 h-12 animate-spin text-white" />
+        <div
+          className="min-h-screen flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, #0D1240 0%, #1A1D6E 40%, #1E3A8A 100%)' }}
+        >
+          <Loader2 className="w-10 h-10 animate-spin text-[#00BBFF]" />
         </div>
       }
     >

@@ -20,7 +20,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import Image from "next/image";
 
 export default function StudentHomePage() {
-  const { user, userProfile, loading } = useAuth();
+  const { user, userProfile, loading, setDevUser } = useAuth();
   const [accessCode, setAccessCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -157,6 +157,20 @@ export default function StudentHomePage() {
         <div className="px-4 py-5 border-t border-white/10">
           <button
             onClick={async () => {
+              // Dev sessions: just clear local state, no Azure popup
+              const isDevSession =
+                user?.account?.tenantId === 'dev-tenant' ||
+                user?.account?.environment === 'dev';
+
+              if (isDevSession) {
+                // Push to root FIRST so route guard sees a public path,
+                // then clear state to avoid the /student-login redirect flash
+                router.push('/');
+                setDevUser(null);
+                return;
+              }
+
+              // Real Azure session: call Microsoft logout
               const { signOut } = await import("@/lib/azure-auth");
               await signOut();
               router.push("/");

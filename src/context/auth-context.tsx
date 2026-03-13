@@ -203,9 +203,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     // Permitir acceso si es ruta pública o si el usuario está logueado
     if (!user && !publicPaths.includes(pathname)) {
-       // Redirección inteligente
-       if (pathname.includes('instructor')) router.push('/instructor/login');
-       else router.push('/student/login');
+      // Single unified login — always redirect to root
+      router.push('/');
     }
   }, [user, pathname, loading, router]);
 
