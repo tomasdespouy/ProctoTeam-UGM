@@ -73,7 +73,13 @@ export default {
           border: 'hsl(var(--sidebar-border))',
           ring: 'hsl(var(--sidebar-ring))',
         },
-        // Figma design colors
+        'ugm-navy': '#1A1D47',
+        'ugm-blue': '#242F62',
+        'ugm-deep': '#0F1123',
+        'ugm-cyan': '#00BBFF',
+        'ugm-cyan-dark': '#00B8E6',
+        'ugm-cyan-bright': '#00D4FF',
+        'ugm-gray': '#D9D9D9',
         'figma-primary': '#00d4ff',
         'figma-primary-dark': '#00b8e6',
         'figma-dark': '#1a1d47',
@@ -145,6 +151,7 @@ export default {
         'gradient-primary': 'linear-gradient(135deg, #00d4ff 0%, #00b8e6 50%, #0099cc 100%)',
       },
       boxShadow: {
+        'card': '0px 3px 10px 2px rgba(0,0,0,0.27)',
         'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.37)',
         'glass-inset': 'inset 0 2px 4px 0 rgba(255, 255, 255, 0.1)',
         'figma': '0 10px 40px rgba(0, 212, 255, 0.2)',

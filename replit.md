@@ -127,6 +127,25 @@ Preferred communication style: Simple, everyday language.
 - **Removed sessionStorage**: No longer stores `loginRole` in browser storage
 - **Cleaner UX**: Users no longer need to manually select their role before logging in
 
+## Design System — Tokens UGM (Fase 1 UI/UX)
+- **Theme**: Light-only (forced via ThemeProvider, Figma does not design dark mode)
+- **Design Tokens file**: `src/lib/design-tokens.ts` — TypeScript constants for inline usage
+- **UGM Color Palette** (in `tailwind.config.ts` as `ugm-*`):
+  - `ugm-navy` (#1A1D47): Dark backgrounds, navbar, buttons
+  - `ugm-blue` (#242F62): Text on light backgrounds, headers
+  - `ugm-deep` (#0F1123): Deepest background, overlays
+  - `ugm-cyan` (#00BBFF): Card borders, accents, ring
+  - `ugm-cyan-dark` (#00B8E6): Hover state for cyan
+  - `ugm-cyan-bright` (#00D4FF): Bright accent variant
+  - `ugm-gray` (#D9D9D9): Separators, avatar backgrounds
+- **CSS Variables** (`globals.css :root`):
+  - `--primary`: HSL 196 100% 50% (#00BBFF)
+  - `--foreground`: HSL 228 48% 27% (#242F62)
+  - `--border`: HSL 0 0% 85% (#D9D9D9)
+  - `--radius`: 0.9375rem (15px)
+- **Shadows**: `shadow-card` (0px 3px 10px 2px rgba(0,0,0,0.27))
+- **Fonts**: Inter (body) + Space Grotesk (headlines) — unchanged
+
 ## Development Authentication Bypass
 - **Endpoint**: `POST /api/auth/dev-login`
   - Security: Returns 403 if `NODE_ENV !== 'development'`
