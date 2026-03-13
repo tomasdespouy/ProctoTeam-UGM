@@ -1,6 +1,6 @@
 # Overview
 
-UGM Proctor is a comprehensive online exam proctoring platform built for university settings. The system provides real-time monitoring capabilities for remote examinations, featuring AI-powered behavior detection, live video surveillance, and instructor dashboards for comprehensive exam oversight. The platform is designed to ensure academic integrity while providing a user-friendly experience for both students and instructors.
+UGM Proctor is an online exam proctoring platform for universities, designed to ensure academic integrity during remote examinations. It features AI-powered behavior detection, real-time video surveillance, and instructor dashboards for comprehensive oversight. The platform aims to provide a user-friendly experience for both students and instructors while maintaining high standards of exam security.
 
 # User Preferences
 
@@ -8,222 +8,90 @@ Preferred communication style: Simple, everyday language.
 
 # System Architecture
 
-## Frontend Architecture
-- **Framework**: Next.js 15.3.3 with App Router for modern React development
-- **UI Library**: shadcn/ui components built on Radix UI primitives for consistent, accessible interface
-- **Styling**: Tailwind CSS with custom design tokens and dark/light theme support
-- **State Management**: React Context API for authentication, loading states, and theme management
-- **Animation**: Framer Motion for smooth transitions and micro-interactions
+## Frontend
+- **Framework**: Next.js with App Router
+- **UI Library**: shadcn/ui built on Radix UI
+- **Styling**: Tailwind CSS with custom design tokens and theme support
+- **State Management**: React Context API
+- **Animation**: Framer Motion
 
 ## Authentication & Authorization
-- **Provider**: Azure AD Single Sign-On (SSO) via MSAL (Microsoft Authentication Library) for UGM institutional accounts
-- **Tenant**: UGM Azure AD (05970e72-c674-4f1f-8033-6e35dd7f76aa)
-- **Client ID**: e9f08a61-0e07-4a60-b825-c6041cdf0505
-- **Redirect URI**: `/auth/callback` - Standard OAuth2/OIDC callback endpoint
-- **Production Domain**: `https://UGM-proctoring.replit.app`
-- **Authentication Flow**: 
-  - Users click login → MSAL popup/redirect → Azure AD authentication
-  - Azure AD redirects to `/auth/callback` with token
-  - Callback page processes token and redirects to appropriate portal (student/instructor)
-- **User Roles**: Role-based access control with 'student', 'instructor', and 'super-admin' roles
-- **Data Storage**: PostgreSQL (Replit) for user profiles and session data
-- **Identity Verification**: AI-powered biometric verification comparing ID cards with live facial recognition
-- **Token Management**: JWT tokens from Azure AD validated on the server using jsonwebtoken
+- **Provider**: Azure AD Single Sign-On (SSO) via MSAL
+- **Authentication Flow**: Azure AD redirects to `/auth/callback` with token, then to student/instructor portal.
+- **User Roles**: 'student', 'instructor', and 'super-admin' roles with role-based access control.
+- **Identity Verification**: AI-powered biometric verification (ID cards vs. live facial recognition).
+- **Token Management**: JWT tokens from Azure AD validated server-side.
+- **Unified Login**: Single entry point with automatic role detection based on email domain.
 
 ## AI Integration
-- **Framework**: Google Genkit for AI workflow orchestration
-- **Model**: Google Gemini 1.5 Flash for natural language processing
-- **Use Cases**: 
-  - Proctoring alert evaluation and severity assessment
-  - Student help desk automation
-  - Instructor support system
-  - Biometric identity verification
+- **Framework**: Google Genkit for AI workflow orchestration.
+- **Model**: Google Gemini 1.5 Flash for NLP.
+- **Use Cases**: Proctoring alert evaluation, student help desk, instructor support, biometric identity verification.
+- **Proctoring Engine**: Modular AI architecture for face detection (presence, pose), object detection (prohibited items like cell phones), and behavior detection.
+- **Detection Rules**: Alerts for multiple faces, no face, looking away, and prohibited objects. Includes spam prevention with cooldowns.
 
 ## Real-time Monitoring System
-- **Computer Vision**: TensorFlow.js with COCO-SSD model for object detection
-- **Behavior Detection**: Custom algorithms for suspicious activity identification including:
-  - Tab switching and window focus monitoring
-  - Audio spike detection for conversation monitoring
-  - Multiple person detection in camera feed
-  - Face visibility verification
-- **Live Session Management**: In-memory service for real-time student tracking and alert management
+- **Computer Vision**: TensorFlow.js with COCO-SSD for object detection, MediaPipe Face Mesh for face detection and head pose.
+- **Behavior Detection**: Custom algorithms for tab switching, audio spikes, multiple person detection, and face visibility.
+- **Live Session Management**: In-memory service for real-time student tracking and alert management.
+- **Mandatory Screen Sharing**: Students must share screen to join. Dead Man's Switch detects screen share termination, triggering critical alerts and blocking modals.
+- **WebSocket Server**: Custom Next.js server with Socket.io for real-time communication, WebRTC signaling, and alert broadcasting.
 
 ## Data Architecture
-- **Primary Database**: PostgreSQL (Replit) for persistent data storage with zero latency
-- **Database Schema**: 
-  - `users`: User profiles with Azure AD UID mapping
-  - `exam_sessions`: Exam configurations and student participation
-  - `alerts`: Proctoring alerts generated during exams
-  - `student_details`: Session completion details and timing
-- **Real-time Data**: In-memory session service for live monitoring capabilities
-- **Session Management**: Temporary data structures for active exam sessions
+- **Primary Database**: PostgreSQL (Replit) for persistent data storage.
+- **Schema**: `users`, `exam_sessions`, `alerts`, `student_details`, `exam_alerts`.
+- **Real-time Data**: In-memory session service.
+- **Evidence Storage**: Snapshots uploaded to Replit Object Storage; alerts persisted in `exam_alerts` table.
 
 ## Component Structure
-- **Student Portal**: Exam interface with video monitoring, requirements verification, and help systems
-- **Instructor Dashboard**: Live monitoring grid, alert management, and analytics visualization
-- **Super-Admin Portal**: Comprehensive historic dashboard with system-wide oversight capabilities
-- **Shared Components**: Reusable UI elements, authentication flows, and accessibility controls
+- **Student Portal**: Exam interface with monitoring and help systems.
+- **Instructor Dashboard**: Live monitoring, alert management, analytics.
+- **Super-Admin Portal**: System-wide oversight and analytics.
+- **Shared Components**: Reusable UI elements, authentication, accessibility.
 
 ## Super-Admin System
-- **Unified Login**: Super-admin users authenticate through the same instructor login interface
-- **Role-Based Routing**: Automatic redirection to appropriate dashboard based on user role after login
-- **Enhanced Historic View**: System-wide exam history with additional details including:
-  - Number of students per session
-  - Instructor names and information
-  - Cross-instructor analytics and oversight
-- **Supervisory Function**: Administrative oversight of all instructor activities without exam creation privileges
+- **Unified Login**: Authenticates via instructor login, then redirects based on role.
+- **Enhanced Historic View**: System-wide exam history with student counts, instructor details, and cross-instructor analytics.
+- **Supervisory Function**: Administrative oversight without exam creation privileges.
 
 ## Security Features
-- **Permission Controls**: Camera and microphone access management
-- **Content Security**: Tab switching prevention and window focus monitoring
-- **Data Protection**: Secure handling of biometric data and exam recordings
-- **Role Validation**: Server-side role verification for access control
+- **Permission Controls**: Camera/microphone access management.
+- **Content Security**: Tab switching prevention and window focus monitoring.
+- **Data Protection**: Secure handling of biometric data and exam recordings.
+- **Role Validation**: Server-side role verification for access control.
 
 # External Dependencies
 
 ## Core Services
-- **Azure AD**: Enterprise Single Sign-On for UGM institutional authentication via MSAL
-- **PostgreSQL (Replit)**: High-performance relational database with zero latency
-- **Google AI**: Gemini 1.5 Flash model via Genkit for AI-powered features
-- **Vercel/Deployment Platform**: Application hosting and serverless functions
+- **Azure AD**: Enterprise Single Sign-On (SSO).
+- **PostgreSQL (Replit)**: Relational database.
+- **Google AI**: Gemini 1.5 Flash via Genkit.
 
 ## AI & Machine Learning
-- **TensorFlow.js**: Client-side machine learning for real-time object detection
-- **COCO-SSD Model**: Pre-trained model for person and object detection in video streams
-- **MediaPipe Face Mesh**: Real-time face detection and head pose estimation
-- **Google Genkit**: AI workflow framework for structured AI operations
+- **TensorFlow.js**: Client-side machine learning.
+- **COCO-SSD Model**: Pre-trained model for object detection.
+- **MediaPipe Face Mesh**: Real-time face detection and head pose estimation.
+- **Google Genkit**: AI workflow framework.
 
 ## UI & Styling
-- **Radix UI**: Headless component primitives for accessibility
-- **Tailwind CSS**: Utility-first CSS framework
-- **Lucide React**: Icon library for consistent iconography
-- **Google Fonts**: Typography (Inter and Space Grotesk fonts)
+- **Radix UI**: Headless component primitives.
+- **Tailwind CSS**: Utility-first CSS framework.
+- **Lucide React**: Icon library.
+- **Google Fonts**: Typography (Inter and Space Grotesk).
 
 ## Development Tools
-- **TypeScript**: Type safety and development experience
-- **React Hook Form**: Form state management with validation
-- **Date-fns**: Date manipulation and formatting
-- **Recharts**: Data visualization for analytics dashboards
-- **node-postgres (pg)**: PostgreSQL client for Node.js
-- **Drizzle ORM**: Type-safe SQL toolkit for database operations
-- **@azure/msal-browser**: Microsoft Authentication Library for browser-based authentication
-- **@azure/msal-node**: Microsoft Authentication Library for server-side operations
-- **jsonwebtoken**: JWT token validation and decoding
+- **TypeScript**: Type safety.
+- **React Hook Form**: Form management.
+- **Date-fns**: Date manipulation.
+- **Recharts**: Data visualization.
+- **node-postgres (pg)**: PostgreSQL client.
+- **Drizzle ORM**: Type-safe SQL toolkit.
+- **@azure/msal-browser**: MSAL for browser.
+- **@azure/msal-node**: MSAL for server.
+- **jsonwebtoken**: JWT validation.
 
 ## Browser APIs
-- **MediaDevices API**: Camera and microphone access for monitoring
-- **Notifications API**: Browser notifications for alerts and messages
-- **Visibility API**: Tab focus and window state monitoring
-- **Audio Context**: Audio level monitoring for conversation detection
-
-# Recent Changes (Jan 10, 2026)
-
-## Unified Login with Auto-Role Detection
-- **Single Entry Point**: Landing page now has one "Ingresar a la Plataforma" button
-- **Automatic Role Detection**: System determines role based on email domain after Azure AD auth
-  - `@estudiante.ugm.cl` → redirects to `/student` (student portal)
-  - Any other UGM domain → redirects to `/instructor` (instructor portal)
-  - Super-admin detection handled by existing instructor page logic
-- **Removed sessionStorage**: No longer stores `loginRole` in browser storage
-- **Cleaner UX**: Users no longer need to manually select their role before logging in
-
-## Design System — Tokens UGM (Fase 1 UI/UX)
-- **Theme**: Light-only (forced via ThemeProvider, Figma does not design dark mode)
-- **Design Tokens file**: `src/lib/design-tokens.ts` — TypeScript constants for inline usage
-- **UGM Color Palette** (in `tailwind.config.ts` as `ugm-*`):
-  - `ugm-navy` (#1A1D47): Dark backgrounds, navbar, buttons
-  - `ugm-blue` (#242F62): Text on light backgrounds, headers
-  - `ugm-deep` (#0F1123): Deepest background, overlays
-  - `ugm-cyan` (#00BBFF): Card borders, accents, ring
-  - `ugm-cyan-dark` (#00B8E6): Hover state for cyan
-  - `ugm-cyan-bright` (#00D4FF): Bright accent variant
-  - `ugm-gray` (#D9D9D9): Separators, avatar backgrounds
-- **CSS Variables** (`globals.css :root`):
-  - `--primary`: HSL 196 100% 50% (#00BBFF)
-  - `--foreground`: HSL 228 48% 27% (#242F62)
-  - `--border`: HSL 0 0% 85% (#D9D9D9)
-  - `--radius`: 0.9375rem (15px)
-- **Shadows**: `shadow-card` (0px 3px 10px 2px rgba(0,0,0,0.27))
-- **Fonts**: Inter (body) + Space Grotesk (headlines) — unchanged
-
-## Development Authentication Bypass
-- **Endpoint**: `POST /api/auth/dev-login`
-  - Security: Returns 403 if `NODE_ENV !== 'development'`
-  - Receives `email` in request body
-  - Uses `upsertUser` to create/get user in database
-  - Role determined by `determineUserRole` based on email domain
-- **Environment Variable**: `NEXT_PUBLIC_SHOW_DEV_LOGIN=true` shows dev panel on landing page
-- **Dev Login Panel**: Visible only in development mode
-  - Quick buttons: "Estudiante" (`test@estudiante.ugm.cl`) and "Instructor" (`test@ugm.cl`)
-  - Custom email input for testing different accounts
-- **Session Management**: Dev users stored in sessionStorage with key `dev_user_profile`
-  - AuthContext checks for dev user before MSAL initialization
-  - `setDevUser` function allows programmatic login/logout
-
-## Block 5: Mandatory Screen Sharing
-- **Blocking Setup Flow**: Three-phase initialization (camera → screen → ready)
-  - Student cannot connect to instructor until both camera AND screen are shared
-  - Explicit "Compartir Pantalla" button using `getDisplayMedia`
-  - Error handling for cancelled/failed screen share attempts
-- **Dead Man's Switch**: `track.onended` listener detects when student stops sharing
-  - Triggers immediate `screen_share_ended` critical alert with snapshot
-  - Activates full-screen blocking modal (z-50 fixed inset-0)
-  - Disables all controls until screen sharing is restored
-- **WebRTC Integration**: Screen track added to RTCPeerConnection
-  - `addScreenTrackToWebRTC()` function handles track addition and renegotiation
-  - `isRenegotiation` flag signals backend of updated offer
-  - Screen feed reaches instructor alongside webcam feed
-
-## Block 4: AI-Powered Proctoring Engine
-- **Modular AI Architecture** (`src/lib/ai/`):
-  - `face-detector.ts`: MediaPipe Face Mesh for presence detection (0/1/>1 faces) and head pose estimation (yaw/pitch/roll)
-  - `object-detector.ts`: COCO-SSD for prohibited object detection (only 'cell phone' with 60%+ confidence)
-  - `ai-coordinator.ts`: Central orchestration with debounce logic and cooldown timers
-  - `index.ts`: Barrel exports for clean imports
-- **Detection Rules**:
-  - Multiple faces (>1): Immediate critical alert with snapshot
-  - No face (0): Alert after 5 seconds continuous absence
-  - Looking away: Alert after 5 seconds continuous deviation (yaw >30° or pitch >25°)
-  - Cell phone: Immediate critical alert with snapshot
-- **Spam Prevention**: 30-second cooldown between repeated alerts for same violation type
-- **Event-Driven Snapshots**: Evidence captured only on alerts, instructor request, or AI detection (no periodic polling)
-- **StudentCam Integration**: AI auto-initializes with visual status indicator (loading/active/error)
-
-# Previous Changes (Jan 09, 2026)
-
-## Block 3: Real-time Monitoring Infrastructure
-- **WebSocket Server**: Custom Next.js server with Socket.io for real-time communication
-  - Path: `/api/socket`
-  - Handles WebRTC signaling (offer/answer/ICE candidates)
-  - Manages exam room membership and student connections
-  - Broadcasts alerts and snapshots to instructors
-- **Evidence Storage**: `POST /api/exam/evidence` endpoint
-  - Uploads snapshots to Replit Object Storage
-  - Persists alerts in `exam_alerts` table with severity levels
-  - Requires authentication via `getAuthenticatedUser`
-- **Database**: New `exam_alerts` table
-  - Related to `exam_participations` via `participation_id`
-  - Tracks alert type, severity, evidence URL, and review status
-- **Frontend Components**:
-  - `ProctorView`: Instructor dashboard with video grid and alert panel
-  - `StudentCam`: Student camera component with WebRTC streaming
-
-## Exam Session Improvements
-- **Recursive Access Code Generation**: System auto-generates unique 6-char codes without user intervention
-- **Immutable started_at**: Prevents time fraud on student rejoin (ON CONFLICT preserves original timestamp)
-- **Blocked Student Validation**: Join endpoint checks participation status before allowing entry
-
-## Previous Changes (Nov 29, 2025)
-
-### Authentication Fixes
-- **Auth Context**: Now uses `idToken` instead of `accessToken` for API authentication
-- **Token Refresh**: `getIdToken()` function now obtains fresh tokens on each call via `acquireTokenSilent`
-- **Super-Admin Dashboard**: Fixed 401 errors by adding Authorization headers to API calls
-
-### Live Session Service
-- **Force Close Exam**: Added `forceCloseExam` method to properly terminate exams and mark all participants as submitted
-- **Database Schema**: Uses `exam_participations` table for student session tracking
-
-### Performance Optimizations
-- **Proctoring Panel**: Image snapshots optimized to 320px width with 0.4 JPEG quality (~5KB per image)
-- **Update Frequency**: Snapshots sent every 5 seconds to minimize bandwidth
+- **MediaDevices API**: Camera and microphone access.
+- **Notifications API**: Browser notifications.
+- **Visibility API**: Tab focus and window state monitoring.
+- **Audio Context**: Audio level monitoring.
