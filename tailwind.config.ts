@@ -80,6 +80,7 @@ export default {
         'ugm-cyan-dark': '#00B8E6',
         'ugm-cyan-bright': '#00D4FF',
         'ugm-gray': '#D9D9D9',
+        'ugm-white': '#FFFFFF',
         'figma-primary': '#00d4ff',
         'figma-primary-dark': '#00b8e6',
         'figma-dark': '#1a1d47',
