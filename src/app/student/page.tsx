@@ -1,19 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Loader2,
   KeyRound,
@@ -34,6 +26,23 @@ export default function StudentHomePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when modal opens
+  useEffect(() => {
+    if (isModalOpen) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [isModalOpen]);
+
+  // Close on Escape key
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsModalOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // ── ALL ORIGINAL LOGIC UNTOUCHED ─────────────────────────────────────────
   const handleJoinExam = async (e: React.FormEvent) => {
@@ -191,7 +200,6 @@ export default function StudentHomePage() {
               minHeight: '150px',
             }}
           >
-            {/* Text content */}
             <div className="relative z-10 p-6 pr-[240px]">
               <div className="flex items-center gap-1.5 text-white/80 text-sm mb-3 font-medium">
                 <Calendar className="h-4 w-4" />
@@ -206,11 +214,17 @@ export default function StudentHomePage() {
             </div>
 
             {/* Paper plane decorative */}
-            <div className="absolute top-1/2 left-1/2 -translate-y-1/2 opacity-30 pointer-events-none">
+            <div className="absolute top-1/2 left-[45%] -translate-y-1/2 opacity-30 pointer-events-none">
               <svg viewBox="0 0 40 40" className="w-12 h-12 fill-white" xmlns="http://www.w3.org/2000/svg">
                 <path d="M2 20L38 4L26 38L18 24L2 20ZM18 24L24 18" strokeLinecap="round"/>
               </svg>
             </div>
+
+            {/* Decorative purple circle */}
+            <div
+              className="absolute right-16 top-1/2 -translate-y-1/2 rounded-full pointer-events-none"
+              style={{ width: '140px', height: '140px', background: 'rgba(90,60,180,0.35)' }}
+            />
 
             {/* Characters image */}
             <div className="absolute right-0 bottom-0 h-full flex items-end pointer-events-none" style={{ width: '230px' }}>
@@ -224,76 +238,102 @@ export default function StudentHomePage() {
                 priority
               />
             </div>
-
-            {/* Decorative purple circle behind characters */}
-            <div
-              className="absolute right-16 top-1/2 -translate-y-1/2 rounded-full pointer-events-none"
-              style={{
-                width: '140px',
-                height: '140px',
-                background: 'rgba(90,60,180,0.35)',
-              }}
-            />
           </div>
 
-          {/* Placeholder content area (exam cards would go here) */}
-          <div className="text-center text-gray-400 py-8 text-sm">
-            Ingresa un código de examen para comenzar
+          {/* ── CTA: open join-exam modal ─────────────────────────────────── */}
+          <div className="flex justify-center pt-4">
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-3 px-8 py-3.5 rounded-2xl text-white font-semibold text-base shadow-lg transition-all hover:scale-105 active:scale-100"
+              style={{
+                background: 'linear-gradient(135deg, #6B5BCD 0%, #4A70D8 100%)',
+                boxShadow: '0 4px 20px rgba(75,80,200,0.35)',
+              }}
+            >
+              <KeyRound className="h-5 w-5" />
+              Unirse a un examen
+            </button>
           </div>
         </main>
       </div>
 
-      {/* ── JOIN EXAM DIALOG (all original form logic preserved) ───────────── */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <form onSubmit={handleJoinExam}>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-[#1A1D47]">
-                <KeyRound className="h-5 w-5 text-[#00BBFF]" />
-                Unirse a un examen
-              </DialogTitle>
-              <DialogDescription>
-                Ingresa el código de acceso proporcionado por tu docente para comenzar la sesión de monitoreo.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="modal-access-code" className="text-[#1A1D47] font-medium">
-                  Código de Acceso:
-                </Label>
-                <Input
-                  id="modal-access-code"
-                  value={accessCode}
-                  onChange={(e) => setAccessCode(e.target.value)}
-                  placeholder="Ej: ABC123"
-                  required
-                  className="text-center font-mono text-lg tracking-widest bg-gray-50 border-gray-300 text-[#1A1D47] placeholder-gray-400 focus:border-[#00BBFF] focus:ring-[#00BBFF]"
-                />
+      {/* ── CUSTOM CYAN-BLUR MODAL OVERLAY ────────────────────────────────── */}
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          onClick={() => setIsModalOpen(false)}
+        >
+          {/* Blur + cyan gradient overlay — matches Figma screenshot */}
+          <div
+            className="absolute inset-0"
+            style={{
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)',
+              background: 'linear-gradient(135deg, rgba(0,140,220,0.55) 0%, rgba(90,80,200,0.45) 100%)',
+            }}
+          />
+
+          {/* Modal card */}
+          <div
+            className="relative z-10 bg-white rounded-2xl w-full max-w-md mx-4 overflow-hidden"
+            style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <form onSubmit={handleJoinExam}>
+              <div className="p-6 space-y-5">
+                {/* Header */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <KeyRound className="h-5 w-5 text-[#5B5ECD]" />
+                    <h3 className="text-lg font-bold text-[#1A1D47]">
+                      Unirse a un examen
+                    </h3>
+                  </div>
+                  <p className="text-sm text-gray-500 leading-snug">
+                    Ingresa el código de acceso proporcionado por tu docente para comenzar la sesión de monitoreo.
+                  </p>
+                </div>
+
+                {/* Input */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="modal-access-code" className="text-[#1A1D47] font-medium text-sm">
+                    Código de Acceso:
+                  </Label>
+                  <Input
+                    ref={inputRef}
+                    id="modal-access-code"
+                    value={accessCode}
+                    onChange={(e) => setAccessCode(e.target.value)}
+                    placeholder=""
+                    required
+                    className="font-mono text-base tracking-widest text-[#1A1D47] border-gray-300 focus:border-[#5B5ECD] focus:ring-[#5B5ECD]"
+                  />
+                </div>
+
+                {/* Submit button */}
+                <Button
+                  type="submit"
+                  className="w-full h-11 text-white font-semibold rounded-full text-base"
+                  style={{ background: '#1A1D47' }}
+                  disabled={isLoading || !accessCode.trim()}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Verificando...
+                    </>
+                  ) : (
+                    'Unirse al Examen'
+                  )}
+                </Button>
               </div>
-            </div>
-            <DialogFooter>
-              <Button
-                type="submit"
-                className="w-full text-white font-semibold"
-                style={{ background: '#00BBFF' }}
-                disabled={isLoading || !accessCode.trim()}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Verificando...
-                  </>
-                ) : (
-                  <>
-                    <KeyRound className="mr-2 h-4 w-4" />
-                    Unirse al Examen
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+
+              {/* Bottom cyan accent bar */}
+              <div className="h-1.5 w-full" style={{ background: '#00BBFF' }} />
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
