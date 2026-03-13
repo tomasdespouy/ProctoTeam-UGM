@@ -68,7 +68,7 @@ export default function HomePage() {
         photoURL: data.user.photo_url,
       };
 
-      setDevUser(profile);
+      setDevUser(profile, data.devToken);
 
       toast({
         title: "Dev Login exitoso",

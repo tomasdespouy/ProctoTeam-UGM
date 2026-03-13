@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upsertUser, getUserByEmail } from '@/lib/auth-postgres';
 import { randomUUID } from 'crypto';
+import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
+
+// Secret used only for signing dev tokens — never exposed to production
+const DEV_JWT_SECRET = 'ugm-proctor-dev-secret-2024';
 
 export async function POST(request: NextRequest) {
   if (process.env.NODE_ENV !== 'development') {
@@ -44,8 +48,27 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Generate a properly-structured JWT so that auth-middleware.ts can decode it.
+    // The middleware uses jwt.decode() (no signature verification) and reads:
+    //   oid || sub || uid  → for the user ID
+    //   email || preferred_username || upn  → for the email
+    const devToken = jwt.sign(
+      {
+        sub: user.uid,
+        oid: user.uid,
+        uid: user.uid,
+        email: user.email,
+        preferred_username: user.email,
+        name: user.nombre,
+        dev: true,          // marker so logs can identify dev sessions
+      },
+      DEV_JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
     return NextResponse.json({
       success: true,
+      devToken,
       user: {
         id: user.id,
         uid: user.uid,

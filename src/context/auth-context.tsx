@@ -25,7 +25,7 @@ interface AuthContextType {
   user: MsalUser | null;
   userProfile: UserProfile | null;
   loading: boolean;
-  setDevUser: (profile: UserProfile | null) => void;
+  setDevUser: (profile: UserProfile | null, devToken?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -38,6 +38,7 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext);
 
 const DEV_USER_KEY = 'dev_user_profile';
+const DEV_TOKEN_KEY = 'dev_token';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -50,9 +51,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const router = useRouter();
   const pathname = usePathname();
 
-  const setDevUser = (profile: UserProfile | null) => {
+  const setDevUser = (profile: UserProfile | null, devToken?: string) => {
     if (profile) {
       sessionStorage.setItem(DEV_USER_KEY, JSON.stringify(profile));
+      // Persist the JWT so it survives page refreshes
+      if (devToken) {
+        sessionStorage.setItem(DEV_TOKEN_KEY, devToken);
+      }
+      const storedToken = devToken ?? sessionStorage.getItem(DEV_TOKEN_KEY) ?? null;
       setUserProfile(profile);
       const mockMsalUser: MsalUser = {
         account: {
@@ -63,11 +69,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           username: profile.correo,
           name: profile.nombre,
         } as AccountInfo,
-        getIdToken: async () => 'dev-mock-token',
+        // Return the real JWT so auth-middleware.ts can decode it
+        getIdToken: async () => storedToken,
       };
       setUser(mockMsalUser);
     } else {
       sessionStorage.removeItem(DEV_USER_KEY);
+      sessionStorage.removeItem(DEV_TOKEN_KEY);
       setUserProfile(null);
       setUser(null);
     }
@@ -79,6 +87,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const storedDevUser = sessionStorage.getItem(DEV_USER_KEY);
         if (storedDevUser) {
           const devProfile = JSON.parse(storedDevUser) as UserProfile;
+          const restoredToken = sessionStorage.getItem(DEV_TOKEN_KEY);
           setUserProfile(devProfile);
           const mockMsalUser: MsalUser = {
             account: {
@@ -89,7 +98,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
               username: devProfile.correo,
               name: devProfile.nombre,
             } as AccountInfo,
-            getIdToken: async () => 'dev-mock-token',
+            // Restore the real JWT from sessionStorage
+            getIdToken: async () => restoredToken,
           };
           setUser(mockMsalUser);
           setLoading(false);
