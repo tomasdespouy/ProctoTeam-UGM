@@ -61,6 +61,7 @@
     "genkit": "^1.8.0",
     "google-auth-library": "^10.5.0",
     "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^4.0.1",
     "lucide-react": "^0.475.0",
     "next": "15.3.3",
     "next-themes": "^0.3.0",
