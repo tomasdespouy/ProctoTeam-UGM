@@ -235,13 +235,33 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const students = await liveSessionService.getExamDashboardState(examId);
-        // Mapeamos para mantener compatibilidad con lo que espera el frontend antiguo
-        return NextResponse.json({ 
+        const { db } = await import('@/lib/db');
+
+        // Fetch students/alerts and exam metadata in parallel
+        const [students, examResult] = await Promise.all([
+            liveSessionService.getExamDashboardState(examId),
+            db.query(
+                `SELECT id, title, access_code, duration, created_at
+                 FROM exam_sessions WHERE id = $1`,
+                [examId]
+            ),
+        ]);
+
+        const examRow = examResult.rows[0] ?? null;
+        const exam = examRow ? {
+            id:          examRow.id,
+            title:       examRow.title,
+            accessCode:  examRow.access_code,
+            duration:    examRow.duration,     // minutes
+            createdAt:   examRow.created_at,
+        } : null;
+
+        return NextResponse.json({
+            exam,
             students,
-            // Las alertas ya vienen dentro de cada estudiante en el nuevo servicio, 
-            // pero si el frontend espera un array global 'alerts', lo extraemos:
-            alerts: students.flatMap(s => s.alerts).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            alerts: students
+                .flatMap(s => s.alerts)
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
         });
     } catch (error) {
         console.error('API GET Error:', error);

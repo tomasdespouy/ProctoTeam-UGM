@@ -8,7 +8,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, Copy, Save, Loader2, RefreshCw } from 'lucide-react';
+import {
+  Eye,
+  Copy,
+  Save,
+  Loader2,
+  RefreshCw,
+  MonitorPlay,
+  AlertTriangle,
+} from 'lucide-react';
 
 // ─── Access-code generator ────────────────────────────────────────────────────
 
@@ -26,14 +34,41 @@ export default function InstructorHome() {
   const router                = useRouter();
   const { toast }             = useToast();
 
-  const [title, setTitle]         = useState('');
-  const [subject, setSubject]     = useState('');
-  const [section, setSection]     = useState('');
-  const [duration, setDuration]   = useState<number>(60);
+  const [title,      setTitle]      = useState('');
+  const [subject,    setSubject]    = useState('');
+  const [section,    setSection]    = useState('');
+  const [duration,   setDuration]   = useState<number>(60);
   const [accessCode, setAccessCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ── Active-session guard (Bug 4) ───────────────────────────────────────────
+  const [activeSession, setActiveSession]       = useState<{ id: string; title: string } | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
   useEffect(() => { setAccessCode(generateCode()); }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const checkActiveSession = async () => {
+      try {
+        const token = await user.getIdToken();
+        const res   = await fetch('/api/exam-sessions/by-instructor', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data    = await res.json();
+        const active  = (data.sessions ?? []).find((s: any) => s.status === 'active') ?? null;
+        setActiveSession(active ? { id: active.id, title: active.title } : null);
+      } catch (err) {
+        console.error('[InstructorHome] Error verificando sesión activa:', err);
+      } finally {
+        setIsCheckingSession(false);
+      }
+    };
+
+    checkActiveSession();
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,12 +89,7 @@ export default function InstructorHome() {
 
       const session = await response.json();
 
-      toast({
-        title:       'Sala creada',
-        description: `Código de acceso: ${accessCode}`,
-      });
-
-      // Navigate directly to live monitor for this exam
+      toast({ title: 'Sala creada', description: `Código de acceso: ${accessCode}` });
       router.push(`/instructor/live-monitor?examId=${session.id}`);
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Error', description: err.message });
@@ -81,7 +111,6 @@ export default function InstructorHome() {
           minHeight: 220,
         }}
       >
-        {/* Decorative circles */}
         <div
           className="absolute -top-16 -right-16 w-72 h-72 rounded-full pointer-events-none"
           style={{ backgroundColor: '#00D4FF', opacity: 0.06 }}
@@ -91,12 +120,8 @@ export default function InstructorHome() {
           style={{ backgroundColor: '#4F5CC0', opacity: 0.12 }}
         />
 
-        {/* Text content */}
         <div className="relative z-10 px-8 py-8 pr-[340px] flex flex-col justify-center min-h-[220px]">
-          <p
-            className="text-xs font-bold uppercase tracking-[0.2em] mb-3"
-            style={{ color: '#00D4FF' }}
-          >
+          <p className="text-xs font-bold uppercase tracking-[0.2em] mb-3" style={{ color: '#00D4FF' }}>
             ProctoTeam — Portal del Docente
           </p>
           <h1 className="text-3xl font-extrabold text-white leading-tight mb-2">
@@ -124,7 +149,6 @@ export default function InstructorHome() {
           </div>
         </div>
 
-        {/* Avatar images — anchored to bottom-right */}
         <div
           className="absolute bottom-0 right-0 flex items-end pointer-events-none select-none"
           style={{ height: '100%' }}
@@ -150,19 +174,66 @@ export default function InstructorHome() {
         </div>
       </div>
 
+      {/* ── Active-session banner (Bug 4) ─────────────────────────────────── */}
+      {isCheckingSession ? (
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-gray-50 border border-gray-200 text-gray-500 text-sm">
+          <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+          Verificando si tienes un examen en curso...
+        </div>
+      ) : activeSession ? (
+        <div
+          className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4
+                     p-5 rounded-2xl border-2 shadow-md"
+          style={{
+            background:   'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)',
+            borderColor:  '#F97316',
+          }}
+        >
+          <div className="flex items-start gap-4">
+            <div
+              className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: '#F97316' }}
+            >
+              <AlertTriangle className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-orange-900 uppercase tracking-wide mb-0.5">
+                Examen en Curso
+              </p>
+              <h3 className="text-lg font-extrabold text-orange-800">
+                {activeSession.title}
+              </h3>
+              <p className="text-sm text-orange-700 mt-0.5">
+                Ya tienes una sesión activa. Retoma el monitoreo para continuar vigilando a tus estudiantes.
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={() => router.push(`/instructor/live-monitor?examId=${activeSession.id}`)}
+            size="lg"
+            className="flex-shrink-0 gap-2 font-bold shadow-lg h-12 px-6 whitespace-nowrap"
+            style={{ backgroundColor: '#F97316', color: '#fff' }}
+          >
+            <MonitorPlay className="h-5 w-5" />
+            Retomar Monitoreo
+          </Button>
+        </div>
+      ) : null}
+
       {/* ── Exam creation form ────────────────────────────────────────────── */}
-      <div>
+      <div className={activeSession ? 'opacity-50 pointer-events-none select-none' : ''}>
         <div className="mb-5">
           <h2 className="text-lg font-bold text-gray-900">Crear Nueva Sala de Examen</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            Completa los datos. Cuando crees la sala serás dirigido directamente al monitor.
+            {activeSession
+              ? 'Finaliza tu examen activo antes de crear uno nuevo.'
+              : 'Completa los datos. Cuando crees la sala serás dirigido directamente al monitor.'}
           </p>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 md:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
 
-            {/* Título */}
             <div className="space-y-2">
               <Label htmlFor="title" className="text-sm font-semibold text-gray-700">
                 Título del Examen
@@ -177,7 +248,6 @@ export default function InstructorHome() {
               />
             </div>
 
-            {/* Asignatura + Sección */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label htmlFor="subject" className="text-sm font-semibold text-gray-700">
@@ -207,7 +277,6 @@ export default function InstructorHome() {
               </div>
             </div>
 
-            {/* Duración + Código */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label htmlFor="duration" className="text-sm font-semibold text-gray-700">
@@ -266,11 +335,10 @@ export default function InstructorHome() {
               </div>
             </div>
 
-            {/* Submit */}
             <div className="flex justify-end pt-2">
               <Button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !!activeSession}
                 className="h-11 px-8 font-bold gap-2 text-sm"
                 style={{ backgroundColor: '#1A1D47', color: '#fff' }}
               >

@@ -1,9 +1,21 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import {
   Video,
   VideoOff,
@@ -13,10 +25,22 @@ import {
   Ban,
   Download,
   Filter,
+  Copy,
+  Square,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useToast } from '@/hooks/use-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ExamMeta {
+  id:         string;
+  title:      string;
+  accessCode: string;
+  duration:   number;   // minutes
+  createdAt:  string;   // ISO string — used as "started at" proxy
+}
 
 interface DbAlert {
   id: string;
@@ -30,19 +54,19 @@ interface DbAlert {
 }
 
 interface StudentStream {
-  studentId: string;
-  studentName: string;
+  studentId:       string;
+  studentName:     string;
   participationId: string;
-  connected: boolean;
-  stream?: MediaStream;
-  alertCount: number;
-  lastSnapshot?: string;
+  connected:       boolean;
+  stream?:         MediaStream;
+  alertCount:      number;
+  lastSnapshot?:   string;
 }
 
 interface ProctorViewProps {
-  examId: string;
-  instructorId: string;
-  onBlockStudent?: (participationId: string) => void;
+  examId:            string;
+  instructorId:      string;
+  onBlockStudent?:   (participationId: string) => void;
 }
 
 type AlertFilter = 'all' | 'critical' | 'warning' | 'info';
@@ -67,24 +91,56 @@ const SEVERITY_LABEL: Record<string, string> = {
   info:     'Info',
 };
 
+// ─── Timer helpers ────────────────────────────────────────────────────────────
+
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorViewProps) {
-  const [students, setStudents]         = useState<Map<string, StudentStream>>(new Map());
-  const [alerts, setAlerts]             = useState<DbAlert[]>([]);
-  const [alertFilter, setAlertFilter]   = useState<AlertFilter>('all');
-  const [isConnected, setIsConnected]   = useState(false);
-  const [isLoading, setIsLoading]       = useState(true);
+  const router      = useRouter();
+  const { toast }   = useToast();
+
+  const [students,     setStudents]     = useState<Map<string, StudentStream>>(new Map());
+  const [alerts,       setAlerts]       = useState<DbAlert[]>([]);
+  const [alertFilter,  setAlertFilter]  = useState<AlertFilter>('all');
+  const [isConnected,  setIsConnected]  = useState(false);
+  const [isLoading,    setIsLoading]    = useState(true);
+  const [isClosing,    setIsClosing]    = useState(false);
+
+  // ── Bug 3: exam metadata state ─────────────────────────────────────────────
+  const [examMeta, setExamMeta] = useState<ExamMeta | null>(null);
+
+  // ── Bug 3: elapsed timer (seconds since exam started) ─────────────────────
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!examMeta?.createdAt) return;
+    const started = new Date(examMeta.createdAt).getTime();
+    const tick = () => setElapsed(Math.floor((Date.now() - started) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [examMeta?.createdAt]);
 
   const peerConnections  = useRef<Map<string, RTCPeerConnection>>(new Map());
   const signalingChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // ── Load students + historical alerts from DB ─────────────────────────────
+  // ── Load students + historical alerts + exam metadata from DB ──────────────
   const loadData = useCallback(async () => {
     try {
       const res = await fetch(`/api/live?examId=${examId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+
+      // Bug 3: set exam metadata when returned by the API
+      if (data.exam) setExamMeta(data.exam);
 
       const studentsMap = new Map<string, StudentStream>();
       (data.students ?? []).forEach((s: any) => {
@@ -124,7 +180,37 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
     }
   }, [examId]);
 
-  // ── WebRTC signaling handler ──────────────────────────────────────────────
+  // ── Bug 5: close exam ─────────────────────────────────────────────────────
+  const handleCloseExam = async () => {
+    setIsClosing(true);
+    try {
+      const res = await fetch('/api/live', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          action:  'TERMINATE_ALL_SESSIONS',
+          payload: { examId },
+        }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      // Notify students via Supabase broadcast (best-effort; polling will also catch it)
+      signalingChannel.current?.send({
+        type:  'broadcast',
+        event: 'webrtc-signaling',
+        payload: { type: 'exam-closed', fromId: 'instructor', toId: 'all' },
+      });
+
+      toast({ title: 'Examen finalizado', description: 'Todos los estudiantes han sido notificados.' });
+      router.push('/instructor/historic');
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: `No se pudo finalizar: ${err.message}` });
+      setIsClosing(false);
+    }
+  };
+
+  // ── WebRTC signaling handler ───────────────────────────────────────────────
   const handleWebRTCSignaling = useCallback(async ({ payload }: any) => {
     const { type, fromId, toId, data, isRenegotiation } = payload;
 
@@ -222,7 +308,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
             return updated;
           });
           setAlerts(prev => [newAlert, ...prev].slice(0, 200));
-        }
+        },
       )
       .on('broadcast', { event: 'webrtc-signaling' }, handleWebRTCSignaling)
       .subscribe((status: string) => setIsConnected(status === 'SUBSCRIBED'));
@@ -239,9 +325,9 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
   }, [examId, loadData, handleWebRTCSignaling]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
-  const studentsArray   = Array.from(students.values());
-  const activeCount     = studentsArray.filter(s => s.connected).length;
-  const alertCount      = studentsArray.reduce((sum, s) => sum + s.alertCount, 0);
+  const studentsArray = Array.from(students.values());
+  const activeCount   = studentsArray.filter(s => s.connected).length;
+  const alertCount    = studentsArray.reduce((sum, s) => sum + s.alertCount, 0);
 
   const filteredAlerts = alertFilter === 'all'
     ? alerts
@@ -256,38 +342,119 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
     const csv = [
       'Timestamp,Estudiante,Severidad,Descripción',
       ...filteredAlerts.map(a =>
-        `"${a.timestamp}","${resolveStudentName(a)}","${a.severity}","${a.description.replace(/"/g, "'")}"`)
+        `"${a.timestamp}","${resolveStudentName(a)}","${a.severity}","${a.description.replace(/"/g, "'")}"`,
+      ),
     ].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url  = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
+    link.href     = url;
     link.download = `alertas-examen-${examId}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  // ── Timer display ─────────────────────────────────────────────────────────
+  const durationSeconds = (examMeta?.duration ?? 0) * 60;
+  const remaining       = Math.max(durationSeconds - elapsed, 0);
+  const isOvertime      = durationSeconds > 0 && elapsed > durationSeconds;
+
+  const timerValue = durationSeconds > 0
+    ? (isOvertime ? `+${formatDuration(elapsed - durationSeconds)}` : formatDuration(remaining))
+    : formatDuration(elapsed);
+
+  const timerSub = durationSeconds > 0
+    ? (isOvertime ? 'Tiempo excedido' : 'Tiempo restante')
+    : 'Tiempo transcurrido';
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="px-6 py-6 space-y-6 max-w-screen-2xl mx-auto">
 
       {/* ── Header row ───────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Panel de Vigilancia</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Resumen de la actividad de los estudiantes</p>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-xl font-bold text-gray-900">
+            {examMeta?.title ?? 'Panel de Vigilancia'}
+          </h1>
+          <p className="text-sm text-gray-500">
+            Resumen de la actividad de los estudiantes
+          </p>
+
+          {/* Bug 3: Access code displayed prominently so instructor can dictate it */}
+          {examMeta?.accessCode && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                Código de acceso:
+              </span>
+              <span
+                className="font-mono font-extrabold text-lg tracking-[0.25em] px-3 py-0.5 rounded-lg"
+                style={{ backgroundColor: '#1A1D47', color: '#00D4FF' }}
+              >
+                {examMeta.accessCode}
+              </span>
+              <button
+                title="Copiar código"
+                onClick={() => {
+                  navigator.clipboard.writeText(examMeta.accessCode);
+                  toast({ description: 'Código copiado al portapapeles' });
+                }}
+                className="opacity-50 hover:opacity-100 transition-opacity"
+              >
+                <Copy className="h-4 w-4 text-gray-500" />
+              </button>
+            </div>
+          )}
         </div>
-        <Badge
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full"
-          style={{
-            backgroundColor: isConnected ? '#DCFCE7' : '#FEE2E2',
-            color:           isConnected ? '#15803D' : '#DC2626',
-          }}
-        >
-          {isConnected
-            ? <><Wifi    className="h-3.5 w-3.5" /> Tiempo real</>
-            : <><WifiOff className="h-3.5 w-3.5" /> Conectando...</>}
-        </Badge>
+
+        {/* Right side: connection badge + Finalizar button */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <Badge
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full"
+            style={{
+              backgroundColor: isConnected ? '#DCFCE7' : '#FEE2E2',
+              color:           isConnected ? '#15803D' : '#DC2626',
+            }}
+          >
+            {isConnected
+              ? <><Wifi    className="h-3.5 w-3.5" /> Tiempo real</>
+              : <><WifiOff className="h-3.5 w-3.5" /> Conectando...</>}
+          </Badge>
+
+          {/* Bug 5: Finalizar Examen with confirmation dialog */}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="destructive"
+                className="gap-2 font-bold h-9 px-4 text-sm shadow"
+                disabled={isClosing}
+              >
+                {isClosing
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Square  className="h-4 w-4" />}
+                Finalizar Examen
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Finalizar el examen?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esto marcará el examen como <strong>terminado</strong>, cerrará todas las sesiones de los
+                  estudiantes y no podrás reactivar la sala. Esta acción es irreversible.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleCloseExam}
+                  className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                >
+                  Sí, finalizar examen
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
 
       {/* ── Metric cards ─────────────────────────────────────────────────── */}
@@ -299,11 +466,12 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
           gradient="linear-gradient(135deg, #00BBFF 0%, #0095FF 100%)"
           icon="👥"
         />
+        {/* Bug 3: real timer card */}
         <MetricCard
           label="Tiempo de Monitoreo"
-          value="En curso"
-          sub="Sesión activa"
-          color="#0095FF"
+          value={timerValue}
+          sub={timerSub}
+          color={isOvertime ? '#EF4444' : '#0095FF'}
           icon="🕐"
         />
         <MetricCard
@@ -377,7 +545,6 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          {/* Filter tabs */}
           <div className="flex items-center gap-2 mb-4">
             {(['all', 'critical', 'warning', 'info'] as AlertFilter[]).map(f => (
               <button
@@ -401,7 +568,6 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
             )}
           </div>
 
-          {/* Alert list */}
           <ScrollArea className="h-64">
             {filteredAlerts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-gray-400">
@@ -442,7 +608,7 @@ function MetricCard({
         <span className="text-lg">{icon}</span>
         <span className="text-sm font-semibold opacity-90">{label}</span>
       </div>
-      <p className="text-4xl font-bold leading-none">{value}</p>
+      <p className="text-3xl font-bold leading-none font-mono">{value}</p>
       <p className="text-sm opacity-70 mt-1.5">{sub}</p>
     </div>
   );
@@ -456,7 +622,6 @@ function StudentCard({ student, onBlock }: { student: StudentStream; onBlock: ()
       className="rounded-xl overflow-hidden flex flex-col border border-white/10 shadow"
       style={{ backgroundColor: '#1A2744', opacity: student.connected ? 1 : 0.5 }}
     >
-      {/* Header */}
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2 min-w-0">
           <div
@@ -485,7 +650,6 @@ function StudentCard({ student, onBlock }: { student: StudentStream; onBlock: ()
         </span>
       </div>
 
-      {/* Video / snapshot area */}
       <div
         className="mx-2 rounded-lg overflow-hidden relative flex items-center justify-center"
         style={{ height: 110, backgroundColor: '#0A1228' }}
@@ -514,7 +678,6 @@ function StudentCard({ student, onBlock }: { student: StudentStream; onBlock: ()
         )}
       </div>
 
-      {/* Footer */}
       <div className="flex items-center justify-between px-3 py-2">
         <ScanFace className="h-4 w-4" style={{ color: '#94A3B8' }} />
         <button
