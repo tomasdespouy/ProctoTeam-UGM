@@ -3,22 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { 
-  Users, 
-  FileText, 
-  Activity, 
-  ShieldAlert, 
-  Search, 
-  LogOut, 
-  Loader2,
-  Calendar,
-  UserCheck,
-  LayoutDashboard
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -26,11 +13,21 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { ThemeToggle } from '@/components/theme-toggle';
-import Image from 'next/image';
+} from '@/components/ui/table';
+import {
+  Users,
+  FileText,
+  Activity,
+  ShieldAlert,
+  Search,
+  Loader2,
+  Calendar,
+  UserCheck,
+  Eye,
+} from 'lucide-react';
 
-// Tipos de datos sincronizados con la API
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface DashboardStats {
   totalExams: number;
   activeExams: number;
@@ -51,250 +48,308 @@ interface ExamSessionData {
   critical_alerts: number;
 }
 
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+
+function KpiCard({
+  label,
+  value,
+  icon: Icon,
+  accent,
+  live = false,
+  sub,
+}: {
+  label: string;
+  value: number | string;
+  icon: React.ElementType;
+  accent: string;
+  live?: boolean;
+  sub?: string;
+}) {
+  return (
+    <div
+      className="bg-white rounded-2xl p-5 flex flex-col gap-3 shadow-sm border border-slate-100 hover:shadow-md transition-shadow"
+      style={{ borderLeft: `4px solid ${accent}` }}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</span>
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${accent}18` }}>
+          <Icon className="w-5 h-5" style={{ color: accent }} />
+        </div>
+      </div>
+      <div className="flex items-end gap-2">
+        <span className="text-3xl font-black text-slate-800 leading-none">{value}</span>
+        {live && (
+          <span className="flex items-center gap-1 mb-0.5">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs text-green-600 font-semibold">LIVE</span>
+          </span>
+        )}
+      </div>
+      {sub && <p className="text-xs text-slate-400 leading-snug">{sub}</p>}
+    </div>
+  );
+}
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: ExamSessionData['status'] }) {
+  if (status === 'active')   return <Badge className="bg-green-500 hover:bg-green-600 text-white text-[10px] animate-pulse">EN VIVO</Badge>;
+  if (status === 'pending')  return <Badge variant="outline" className="text-amber-600 border-amber-400 text-[10px]">Pendiente</Badge>;
+  return <Badge variant="secondary" className="text-[10px]">Finalizado</Badge>;
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function SuperAdminDashboard() {
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
 
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [exams, setExams] = useState<ExamSessionData[]>([]);
+  const [stats, setStats]             = useState<DashboardStats | null>(null);
+  const [exams, setExams]             = useState<ExamSessionData[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm]   = useState('');
 
-  // 1. Fetch de datos usando la API unificada (con autenticación)
+  // Auth guard
   useEffect(() => {
-    const fetchData = async () => {
-      if (!user) return;
-      
-      try {
-        // Obtener token de Azure AD
-        const idToken = await user.getIdToken();
-        
-        if (!idToken) {
-          console.error("No se pudo obtener el token de autenticación");
-          setIsLoadingData(false);
-          return;
-        }
+    if (!loading && userProfile && userProfile.role !== 'super-admin') {
+      router.push('/');
+    }
+  }, [loading, userProfile, router]);
 
-        const response = await fetch('/api/admin/dashboard-data', {
-          headers: {
-            'Authorization': `Bearer ${idToken}`,
-          },
+  // Data fetch
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchData = async () => {
+      try {
+        const idToken = await user.getIdToken();
+        if (!idToken) return;
+
+        const res = await fetch('/api/admin/dashboard-data', {
+          headers: { Authorization: `Bearer ${idToken}` },
         });
 
-        if (response.ok) {
-          const data = await response.json();
+        if (res.ok) {
+          const data = await res.json();
           setStats(data.stats);
-          setExams(data.exams || []);
+          setExams(data.exams ?? []);
         } else {
-          console.error("Error fetching admin data:", response.status);
+          console.error('Admin fetch error:', res.status);
         }
-      } catch (error) {
-        console.error("Error de conexión:", error);
+      } catch (err) {
+        console.error('Admin fetch error:', err);
       } finally {
         setIsLoadingData(false);
       }
     };
 
-    if (user) {
-        fetchData();
-    }
+    fetchData();
   }, [user]);
 
-  // Protección de ruta (Solo Super Admin)
-  useEffect(() => {
-    if (!loading && userProfile && userProfile.role !== 'super-admin') {
-        router.push('/'); // Expulsar si no es admin
-    }
-  }, [loading, userProfile, router]);
-
+  // ── Loading state ──────────────────────────────────────────────────────────
   if (loading || isLoadingData) {
-    return <div className="flex h-screen items-center justify-center bg-[#161F45]"><Loader2 className="h-10 w-10 animate-spin text-[#00d4ff]"/></div>;
+    return (
+      <div className="flex h-[calc(100vh-73px)] items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-[#00d4ff]" />
+      </div>
+    );
   }
 
   if (!userProfile || userProfile.role !== 'super-admin') return null;
 
-  // Filtrado de exámenes
-  const filteredExams = exams.filter(exam => 
-    exam.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (exam.instructor_name && exam.instructor_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    exam.subject.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredExams = exams.filter(e =>
+    e.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    e.instructor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    e.subject?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      {/* Header Admin */}
-      <header className="bg-[#161F45] border-b border-white/10 sticky top-0 z-10 shadow-md">
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-            <div className="flex items-center gap-4">
-                <Image src="/Logo lineas.png" alt="UGM" width={100} height={30} className="object-contain opacity-90" />
-                <div className="h-8 w-px bg-white/20 mx-2"></div>
-                <div className="flex flex-col">
-                    <h1 className="text-white font-bold text-lg leading-none">Super Admin</h1>
-                    <span className="text-[#00d4ff] text-xs font-mono">TORRE DE CONTROL</span>
-                </div>
-            </div>
-            <div className="flex items-center gap-4">
-                <ThemeToggle />
-                <div className="text-right hidden md:block">
-                    <p className="text-white text-sm font-medium">{userProfile.nombre}</p>
-                    <p className="text-white/50 text-xs">{userProfile.email}</p>
-                </div>
-                <Button variant="ghost" size="sm" className="text-white hover:bg-white/10" onClick={async () => {
-                    const { signOut } = await import("@/lib/azure-auth"); await signOut(); router.push("/");
-                }}>
-                    <LogOut className="h-4 w-4"/>
-                </Button>
-            </div>
+    <div className="container mx-auto px-6 py-8 space-y-8 max-w-7xl">
+
+      {/* ── Page header ─────────────────────────────────────────────────── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-1">Super Admin</p>
+          <h1 className="text-3xl font-black text-slate-800 leading-tight">
+            Centro de Mando Global
+          </h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Visión unificada del sistema de proctoring — exámenes, docentes y alertas en tiempo real.
+          </p>
         </div>
-      </header>
+        <p className="text-xs text-slate-400 whitespace-nowrap">
+          {new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </p>
+      </div>
 
-      <main className="container mx-auto px-6 py-8 space-y-8">
+      {/* ── KPI Grid ────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          label="Sesiones Activas"
+          value={stats?.activeExams ?? 0}
+          icon={Activity}
+          accent="#22c55e"
+          live
+          sub="Exámenes monitoreando en este momento"
+        />
+        <KpiCard
+          label="Exámenes Realizados"
+          value={stats?.totalExams ?? 0}
+          icon={FileText}
+          accent="#3b82f6"
+          sub="Total registrados en la plataforma"
+        />
+        <KpiCard
+          label="Docentes Activos"
+          value={stats?.totalInstructors ?? 0}
+          icon={UserCheck}
+          accent="#f59e0b"
+          sub="Cuentas con permisos de staff"
+        />
+        <KpiCard
+          label="Base de Estudiantes"
+          value={stats?.totalStudents ?? 0}
+          icon={Users}
+          accent="#8b5cf6"
+          sub="Alumnos registrados en el sistema"
+        />
+      </div>
 
-        {/* KPI Cards: Métricas clave para decisiones rápidas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow">
-                <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Exámenes Totales</CardTitle>
-                    <FileText className="h-4 w-4 text-blue-500"/>
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">{stats?.totalExams || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Registrados en la plataforma</p>
-                </CardContent>
-            </Card>
+      {/* ── Exam audit table ─────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
 
-            <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow bg-green-50/50 dark:bg-green-900/10">
-                <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">En Curso Ahora</CardTitle>
-                    <Activity className="h-4 w-4 text-green-500 animate-pulse"/>
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold text-green-700 dark:text-green-400">{stats?.activeExams || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Sesiones monitoreando en vivo</p>
-                </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow">
-                <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Estudiantes</CardTitle>
-                    <Users className="h-4 w-4 text-purple-500"/>
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">{stats?.totalStudents || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Base de datos de alumnos</p>
-                </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow">
-                <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Docentes</CardTitle>
-                    <UserCheck className="h-4 w-4 text-orange-500"/>
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">{stats?.totalInstructors || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Cuentas con permisos de staff</p>
-                </CardContent>
-            </Card>
+        {/* Table header bar */}
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <FileText className="h-4 w-4 text-slate-400" />
+              Auditoría de Exámenes
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {filteredExams.length} sesión{filteredExams.length !== 1 ? 'es' : ''} encontrada{filteredExams.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <div className="relative w-full md:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+            <Input
+              placeholder="Buscar por título, docente, materia…"
+              className="pl-9 text-sm bg-slate-50 border-slate-200 focus:bg-white"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </div>
 
-        {/* Tabla de Gestión Centralizada */}
-        <Card className="shadow-md border-0">
-            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div>
-                    <CardTitle className="flex items-center gap-2">
-                        <LayoutDashboard className="h-5 w-5 text-primary"/>
-                        Auditoría de Exámenes
-                    </CardTitle>
-                    <CardDescription>Visión global y estado de todas las sesiones.</CardDescription>
-                </div>
-                <div className="relative w-full md:w-auto">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                        placeholder="Buscar por título, docente..." 
-                        className="pl-8 w-full md:w-[300px] bg-secondary/50"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
-            </CardHeader>
-            <CardContent>
-                <div className="rounded-md border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="bg-muted/50">
-                                <TableHead className="w-[100px]">Estado</TableHead>
-                                <TableHead>Asignatura / Examen</TableHead>
-                                <TableHead>Docente Responsable</TableHead>
-                                <TableHead className="text-center">Alumnos</TableHead>
-                                <TableHead className="text-center">Alertas Críticas</TableHead>
-                                <TableHead className="text-right">Fecha</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {filteredExams.length > 0 ? (
-                                filteredExams.map((exam) => (
-                                    <TableRow key={exam.id}>
-                                        <TableCell>
-                                            {exam.status === 'active' && <Badge className="bg-green-500 hover:bg-green-600 animate-pulse">EN VIVO</Badge>}
-                                            {exam.status === 'pending' && <Badge variant="outline" className="text-yellow-600 border-yellow-600">Pendiente</Badge>}
-                                            {exam.status === 'finished' && <Badge variant="secondary">Finalizado</Badge>}
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="font-bold text-foreground">{exam.subject}</div>
-                                            <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                                <span className="font-mono bg-muted px-1 rounded">{exam.access_code}</span>
-                                                {exam.title}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 rounded-full bg-[#161F45]/10 flex items-center justify-center text-xs font-bold text-[#161F45]">
-                                                    {exam.instructor_name?.charAt(0).toUpperCase() || '?'}
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-medium">{exam.instructor_name || 'Desconocido'}</span>
-                                                    <span className="text-[10px] text-muted-foreground">{exam.instructor_email}</span>
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            <Badge variant="outline" className="gap-1">
-                                                <Users className="h-3 w-3"/> {exam.student_count}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            {exam.critical_alerts > 0 ? (
-                                                <Badge variant="destructive" className="gap-1">
-                                                    <ShieldAlert className="h-3 w-3"/> {exam.critical_alerts}
-                                                </Badge>
-                                            ) : (
-                                                <span className="text-muted-foreground text-xs">-</span>
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="text-right text-xs text-muted-foreground">
-                                            <div className="flex items-center justify-end gap-1">
-                                                <Calendar className="h-3 w-3"/>
-                                                {new Date(exam.created_at).toLocaleDateString()}
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
-                                <TableRow>
-                                    <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                                        <div className="flex flex-col items-center justify-center gap-2">
-                                            <FileText className="h-8 w-8 opacity-20"/>
-                                            <p>No se encontraron exámenes registrados.</p>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
-            </CardContent>
-        </Card>
-      </main>
+        {/* Table */}
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-slate-50 hover:bg-slate-50">
+              <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide w-28">Estado</TableHead>
+              <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Examen / Materia</TableHead>
+              <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Docente</TableHead>
+              <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide text-center w-24">Alumnos</TableHead>
+              <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide text-center w-28">Alertas</TableHead>
+              <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide text-right w-36">Fecha</TableHead>
+              <TableHead className="w-16" />
+            </TableRow>
+          </TableHeader>
+
+          <TableBody>
+            {filteredExams.length > 0 ? (
+              filteredExams.map((exam) => (
+                <TableRow key={exam.id} className="border-b border-slate-50 hover:bg-slate-50/70 transition-colors">
+
+                  {/* Status */}
+                  <TableCell className="py-4">
+                    <StatusBadge status={exam.status} />
+                  </TableCell>
+
+                  {/* Exam info */}
+                  <TableCell className="py-4">
+                    <p className="font-semibold text-slate-800 text-sm leading-snug">{exam.subject}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="font-mono text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
+                        {exam.access_code}
+                      </span>
+                      <span className="text-xs text-slate-400 truncate max-w-[180px]">{exam.title}</span>
+                    </div>
+                  </TableCell>
+
+                  {/* Instructor */}
+                  <TableCell className="py-4">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                        style={{ background: '#161F45' }}
+                      >
+                        {exam.instructor_name?.charAt(0).toUpperCase() ?? '?'}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-700 truncate">{exam.instructor_name ?? 'Desconocido'}</p>
+                        <p className="text-[10px] text-slate-400 truncate">{exam.instructor_email}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+
+                  {/* Student count */}
+                  <TableCell className="py-4 text-center">
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700">
+                      <Users className="h-3.5 w-3.5 text-slate-400" />
+                      {exam.student_count}
+                    </span>
+                  </TableCell>
+
+                  {/* Critical alerts */}
+                  <TableCell className="py-4 text-center">
+                    {exam.critical_alerts > 0 ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2.5 text-xs border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 gap-1"
+                      >
+                        <ShieldAlert className="h-3 w-3" />
+                        {exam.critical_alerts}
+                      </Button>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </TableCell>
+
+                  {/* Date */}
+                  <TableCell className="py-4 text-right">
+                    <span className="flex items-center justify-end gap-1 text-xs text-slate-400">
+                      <Calendar className="h-3 w-3" />
+                      {new Date(exam.created_at).toLocaleDateString('es-CL')}
+                    </span>
+                  </TableCell>
+
+                  {/* Action */}
+                  <TableCell className="py-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0 border-blue-200 text-blue-500 hover:bg-blue-50 hover:border-blue-400"
+                      title="Ver detalle"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
+
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={7} className="h-40 text-center">
+                  <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                    <FileText className="h-8 w-8 opacity-30" />
+                    <p className="text-sm">No se encontraron exámenes.</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
