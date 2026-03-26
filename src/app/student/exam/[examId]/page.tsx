@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
-import StudentHeader from '@/components/student/StudentHeader';
+import { ExamHeader } from '@/components/student/exam-header';
 import { RequirementsModal } from '@/components/student/requirements-modal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -242,8 +242,8 @@ export default function StudentExamLivePage() {
         onAcceptRequirements={handleAcceptRequirements}
       />
 
-      {/* Global student header */}
-      <StudentHeader />
+      {/* Exam header with timer */}
+      <ExamHeader examStarted={examStarted} examData={examData} />
 
       <main className="flex-grow mt-16 px-4 pb-6">
         {step === 'monitoring' ? (
@@ -314,16 +314,16 @@ export default function StudentExamLivePage() {
                   <Button
                     className="w-full text-base font-bold shadow-sm text-white border-0 transition-all hover:shadow-lg"
                     style={{
-                      background: 'linear-gradient(135deg, #00D4FF 0%, #00B8D4 100%)',
+                      background: 'linear-gradient(90deg, #00D4FF 0%, #22C55E 100%)',
                       height: 52,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.opacity = '0.85';
-                      e.currentTarget.style.filter = 'drop-shadow(0 0 12px rgba(0, 212, 255, 0.4))';
+                      e.currentTarget.style.opacity = '0.9';
+                      e.currentTarget.style.boxShadow = '0 0 20px rgba(0, 212, 255, 0.5)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.opacity = '1';
-                      e.currentTarget.style.filter = 'none';
+                      e.currentTarget.style.boxShadow = '';
                     }}
                     onClick={() => window.open('https://ugm.blackboard.com/?new_loc=%2Fultra%2Fcourse', '_blank')}
                   >
