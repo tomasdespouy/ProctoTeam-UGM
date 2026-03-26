@@ -28,6 +28,9 @@ import {
   Copy,
   Square,
   Loader2,
+  LayoutGrid,
+  Maximize2,
+  X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { useToast } from '@/hooks/use-toast';
@@ -107,12 +110,23 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
   const router      = useRouter();
   const { toast }   = useToast();
 
-  const [students,     setStudents]     = useState<Map<string, StudentStream>>(new Map());
-  const [alerts,       setAlerts]       = useState<DbAlert[]>([]);
-  const [alertFilter,  setAlertFilter]  = useState<AlertFilter>('all');
-  const [isConnected,  setIsConnected]  = useState(false);
-  const [isLoading,    setIsLoading]    = useState(true);
-  const [isClosing,    setIsClosing]    = useState(false);
+  const [students,          setStudents]          = useState<Map<string, StudentStream>>(new Map());
+  const [alerts,            setAlerts]            = useState<DbAlert[]>([]);
+  const [alertFilter,       setAlertFilter]       = useState<AlertFilter>('all');
+  const [isConnected,       setIsConnected]       = useState(false);
+  const [isLoading,         setIsLoading]         = useState(true);
+  const [isClosing,         setIsClosing]         = useState(false);
+  const [gridMode,          setGridMode]          = useState<'normal' | 'dense'>('normal');
+  const [maximizedStudent,  setMaximizedStudent]  = useState<StudentStream | null>(null);
+
+  // Close maximize modal on ESC key
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMaximizedStudent(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // ── Bug 3: exam metadata state ─────────────────────────────────────────────
   const [examMeta, setExamMeta] = useState<ExamMeta | null>(null);
@@ -407,8 +421,24 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
           )}
         </div>
 
-        {/* Right side: connection badge + Finalizar button */}
+        {/* Right side: grid toggle + connection badge + Finalizar button */}
         <div className="flex items-center gap-3 flex-shrink-0">
+
+          {/* Tarea 4: Grid view toggle */}
+          <button
+            title={gridMode === 'normal' ? 'Vista densificada (solo video)' : 'Vista normal (con estadísticas)'}
+            onClick={() => setGridMode(m => m === 'normal' ? 'dense' : 'normal')}
+            className="flex items-center gap-1.5 px-3 h-9 rounded-lg text-sm font-medium border transition-colors"
+            style={
+              gridMode === 'dense'
+                ? { backgroundColor: '#1A1D47', color: '#00D4FF', borderColor: '#00D4FF55' }
+                : { backgroundColor: '#F3F4F6', color: '#374151', borderColor: '#D1D5DB' }
+            }
+          >
+            <LayoutGrid className="h-4 w-4" />
+            {gridMode === 'dense' ? 'Vista Normal' : 'Vista Grid'}
+          </button>
+
           <Badge
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full"
             style={{
@@ -492,31 +522,144 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
 
       {/* ── Student grid ─────────────────────────────────────────────────── */}
       <section>
-        <h2 className="text-base font-bold text-gray-800 mb-3">Monitoreo de estudiantes</h2>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12 text-gray-400">
-              <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mr-3" />
-              Cargando estudiantes...
-            </div>
-          ) : studentsArray.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-              <Video className="h-10 w-10 mb-3 opacity-40" />
-              <p className="text-sm">Esperando conexión de estudiantes...</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {studentsArray.map(student => (
-                <StudentCard
-                  key={student.studentId}
-                  student={student}
-                  onBlock={() => onBlockStudent?.(student.participationId)}
-                />
-              ))}
-            </div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-bold text-gray-800">
+            Monitoreo de estudiantes
+            {studentsArray.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-gray-400">
+                ({studentsArray.length} {studentsArray.length === 1 ? 'estudiante' : 'estudiantes'})
+              </span>
+            )}
+          </h2>
+          {gridMode === 'dense' && (
+            <span className="text-xs text-gray-400 italic">Clic en video para maximizar</span>
           )}
         </div>
+
+        {gridMode === 'dense' ? (
+          <div className="rounded-xl p-3 border border-white/10" style={{ backgroundColor: '#111827' }}>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12 text-gray-500">
+                <div className="animate-spin h-6 w-6 border-2 border-gray-600 border-t-transparent rounded-full mr-3" />
+                Cargando estudiantes...
+              </div>
+            ) : studentsArray.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                <Video className="h-10 w-10 mb-3 opacity-30" />
+                <p className="text-sm">Esperando conexión de estudiantes...</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-2">
+                {studentsArray.map(student => (
+                  <DenseStudentCell
+                    key={student.studentId}
+                    student={student}
+                    onMaximize={() => setMaximizedStudent(student)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12 text-gray-400">
+                <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mr-3" />
+                Cargando estudiantes...
+              </div>
+            ) : studentsArray.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                <Video className="h-10 w-10 mb-3 opacity-40" />
+                <p className="text-sm">Esperando conexión de estudiantes...</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {studentsArray.map(student => (
+                  <StudentCard
+                    key={student.studentId}
+                    student={student}
+                    onBlock={() => onBlockStudent?.(student.participationId)}
+                    onMaximize={() => setMaximizedStudent(student)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </section>
+
+      {/* ── Maximize modal ────────────────────────────────────────────────── */}
+      {maximizedStudent && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.92)' }}
+          onClick={() => setMaximizedStudent(null)}
+        >
+          <div
+            className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 w-full max-w-3xl"
+            style={{ backgroundColor: '#0A0E1A' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10"
+              style={{ backgroundColor: '#111827' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                  style={{ backgroundColor: '#4A5568' }}>
+                  {maximizedStudent.studentName?.[0] ?? '?'}
+                </div>
+                <div>
+                  <p className="text-white font-semibold text-sm">{maximizedStudent.studentName}</p>
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>
+                    ID: {maximizedStudent.studentId.substring(0, 12)}
+                    {maximizedStudent.alertCount > 0 && (
+                      <span className="ml-2 text-red-400 font-semibold">
+                        · {maximizedStudent.alertCount} alerta{maximizedStudent.alertCount !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                  style={{
+                    backgroundColor: maximizedStudent.connected ? '#22C55E22' : '#64748B22',
+                    color: maximizedStudent.connected ? '#4ADE80' : '#94A3B8',
+                  }}>
+                  {maximizedStudent.connected ? '● Activo' : '○ Inactivo'}
+                </span>
+                <button
+                  onClick={() => setMaximizedStudent(null)}
+                  className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/60 hover:text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
+              {maximizedStudent.stream ? (
+                <VideoPlayer stream={maximizedStudent.stream} />
+              ) : maximizedStudent.lastSnapshot ? (
+                <img
+                  src={maximizedStudent.lastSnapshot}
+                  alt={maximizedStudent.studentName}
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white/20">
+                  {maximizedStudent.connected
+                    ? <><Video className="h-16 w-16 mb-3 animate-pulse" /><p className="text-sm">Conectando video...</p></>
+                    : <><VideoOff className="h-16 w-16 mb-3" /><p className="text-sm">Sin video</p></>
+                  }
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-2.5 text-center border-t border-white/10"
+              style={{ backgroundColor: '#111827' }}>
+              <p className="text-xs text-white/25">Haz clic fuera del modal para cerrar</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Alert panel ──────────────────────────────────────────────────── */}
       <section>
@@ -616,7 +759,9 @@ function MetricCard({
 
 // ─── StudentCard ──────────────────────────────────────────────────────────────
 
-function StudentCard({ student, onBlock }: { student: StudentStream; onBlock: () => void }) {
+function StudentCard({
+  student, onBlock, onMaximize,
+}: { student: StudentStream; onBlock: () => void; onMaximize: () => void }) {
   return (
     <div
       className="rounded-xl overflow-hidden flex flex-col border border-white/10 shadow"
@@ -651,8 +796,10 @@ function StudentCard({ student, onBlock }: { student: StudentStream; onBlock: ()
       </div>
 
       <div
-        className="mx-2 rounded-lg overflow-hidden relative flex items-center justify-center"
+        className="mx-2 rounded-lg overflow-hidden relative flex items-center justify-center cursor-pointer group"
         style={{ height: 110, backgroundColor: '#0A1228' }}
+        onClick={onMaximize}
+        title="Clic para maximizar"
       >
         {student.stream ? (
           <VideoPlayer stream={student.stream} />
@@ -676,6 +823,11 @@ function StudentCard({ student, onBlock }: { student: StudentStream; onBlock: ()
             {student.alertCount}
           </span>
         )}
+
+        {/* Maximize overlay on hover */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+          <Maximize2 className="h-5 w-5 text-white opacity-0 group-hover:opacity-70 transition-opacity" />
+        </div>
       </div>
 
       <div className="flex items-center justify-between px-3 py-2">
@@ -691,6 +843,67 @@ function StudentCard({ student, onBlock }: { student: StudentStream; onBlock: ()
           className="w-3 h-3 rounded-full"
           style={{ backgroundColor: student.alertCount > 0 ? '#EF4444' : '#22C55E' }}
         />
+      </div>
+    </div>
+  );
+}
+
+// ─── DenseStudentCell (vista grid densificada) ─────────────────────────────────
+
+function DenseStudentCell({
+  student, onMaximize,
+}: { student: StudentStream; onMaximize: () => void }) {
+  return (
+    <div
+      className="rounded-lg overflow-hidden relative cursor-pointer group border border-white/5"
+      style={{ backgroundColor: '#0A1228', aspectRatio: '4/3' }}
+      onClick={onMaximize}
+      title={`${student.studentName} — clic para maximizar`}
+    >
+      {student.stream ? (
+        <VideoPlayer stream={student.stream} />
+      ) : student.lastSnapshot ? (
+        <img
+          src={student.lastSnapshot}
+          alt={student.studentName}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          {student.connected
+            ? <Video    className="h-6 w-6 text-white/15 animate-pulse" />
+            : <VideoOff className="h-6 w-6 text-white/15" />}
+        </div>
+      )}
+
+      {/* Alert badge */}
+      {student.alertCount > 0 && (
+        <span
+          className="absolute top-1 right-1 text-[9px] font-bold text-white px-1.5 py-0.5 rounded-full z-10"
+          style={{ backgroundColor: '#EF4444' }}
+        >
+          {student.alertCount}
+        </span>
+      )}
+
+      {/* Name overlay — always visible */}
+      <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5"
+        style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.8))' }}>
+        <p className="text-white text-[10px] font-semibold leading-none truncate">
+          {student.studentName}
+        </p>
+        <div className="flex items-center gap-1 mt-0.5">
+          <div className="w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: student.connected ? '#22C55E' : '#64748B' }} />
+          <span className="text-[8px] text-white/50">
+            {student.connected ? 'activo' : 'inactivo'}
+          </span>
+        </div>
+      </div>
+
+      {/* Hover maximize hint */}
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+        <Maximize2 className="h-4 w-4 text-white opacity-0 group-hover:opacity-60 transition-opacity" />
       </div>
     </div>
   );

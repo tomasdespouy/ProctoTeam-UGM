@@ -107,6 +107,17 @@ export function StudentCam({
   useEffect(() => { setupPhaseRef.current = setupPhase; }, [setupPhase]);
   useEffect(() => { onReadyRef.current    = onReady; },    [onReady]);
 
+  // ── TAREA 1 FIX: Re-apply camera stream whenever the <video> mounts ────────
+  // The camera effect runs during 'camera' phase when videoRef.current is null
+  // (no <video> in the DOM yet). When the phase advances to 'screen'/'ready',
+  // a new <video> element appears, but srcObject is never set. This effect
+  // fires on every phase transition and always re-links the stream to the DOM.
+  useEffect(() => {
+    if (videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [setupPhase]);
+
   // ── sendAlert ──────────────────────────────────────────────────────────────
   // Recreates when examId, studentId, or onAlert changes — that is expected.
   // Consumers that must not trigger re-creates call sendAlertRef.current instead.

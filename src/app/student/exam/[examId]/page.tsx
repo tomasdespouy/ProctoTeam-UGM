@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { ExamHeader } from '@/components/student/exam-header';
-import { ExamFooter } from '@/components/student/exam-footer';
 import { RequirementsModal } from '@/components/student/requirements-modal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -37,6 +36,9 @@ import {
   ExternalLink,
   Send,
   Loader2,
+  ShieldCheck,
+  Eye,
+  MonitorCheck,
 } from 'lucide-react';
 import { DocumentTitleHandler } from '@/components/student/document-title-handler';
 import { StudentCam } from '@/components/proctoring/StudentCam';
@@ -54,11 +56,14 @@ interface ExamData {
 // ─── Professional loader ────────────────────────────────────────────────────
 
 const ProfessionalLoader = () => (
-  <div className="flex flex-col min-h-screen items-center justify-center p-8 bg-[#161F45] text-white">
-    <Loader2 className="h-16 w-16 animate-spin text-white mb-6" />
+  <div className="flex flex-col min-h-screen items-center justify-center p-8 bg-[#0D1327] text-white">
+    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6"
+      style={{ background: 'linear-gradient(135deg,#00D4FF22,#00D4FF44)' }}>
+      <ShieldCheck className="h-8 w-8 text-[#00D4FF]" />
+    </div>
     <h1 className="text-2xl font-bold mb-2">Preparando Entorno Seguro</h1>
-    <p className="text-sm text-gray-400">Verificando conexión y cargando datos del examen...</p>
-    <Skeleton className="h-4 w-64 mt-8 bg-gray-600/50" />
+    <p className="text-sm text-white/50 mb-6">Verificando conexión y cargando datos del examen…</p>
+    <Skeleton className="h-1.5 w-48 rounded-full bg-white/10" />
   </div>
 );
 
@@ -71,8 +76,6 @@ export default function StudentExamLivePage() {
 
   const [step,               setStep]               = useState<ExamStep>('requirements');
   const [examData,           setExamData]           = useState<ExamData | null>(null);
-  // Lee el participationId de sessionStorage (guardado por la página de ingreso)
-  // para arrancar StudentCam sin esperar el primer ciclo de polling.
   const [participationId, setParticipationId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return sessionStorage.getItem(`participation_${examId}`) ?? null;
@@ -85,11 +88,6 @@ export default function StudentExamLivePage() {
 
   const { toast } = useToast();
 
-  // ── Stable callbacks for StudentCam props ──────────────────────────────────
-  // Wrapped in useCallback so their reference never changes between renders.
-  // Without this, inline arrow functions recreate on every render, causing
-  // StudentCam's sendAlert → camera-init effect to re-run and stop the stream.
-
   const handleStudentAlert = useCallback((
     _alertType: string,
     _description: string,
@@ -98,11 +96,11 @@ export default function StudentExamLivePage() {
     if (severity === 'critical') {
       setCriticalAlertCount(prev => prev + 1);
     }
-  }, []); // setCriticalAlertCount is stable from useState — no deps needed
+  }, []);
 
   const handleStudentReady = useCallback(() => {
     toast({ title: 'Monitoreo activo', description: 'Cámara y pantalla conectadas con el instructor.' });
-  }, [toast]); // toast from useToast is stable
+  }, [toast]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.navigator.userAgent.includes('Mac')) {
@@ -110,9 +108,6 @@ export default function StudentExamLivePage() {
     }
   }, []);
 
-  // ── Polling: exam status + participationId ─────────────────────────────────
-  // participationId is read via ref so it never appears in the dep array and
-  // never causes the interval to be torn down/re-created on each fetch cycle.
   const participationIdRef = React.useRef(participationId);
   useEffect(() => { participationIdRef.current = participationId; }, [participationId]);
 
@@ -140,7 +135,6 @@ export default function StudentExamLivePage() {
         const data = await response.json();
         setExamData(data.exam);
 
-        // Use ref to avoid participationId being a dep of this interval.
         if (data.participationId && !participationIdRef.current) {
           setParticipationId(data.participationId);
         }
@@ -167,7 +161,6 @@ export default function StudentExamLivePage() {
     fetchExamStatus();
     const interval = setInterval(fetchExamStatus, 5000);
     return () => clearInterval(interval);
-  // participationId intentionally omitted — read via ref to keep interval stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examId, user, userProfile, isTerminated, toast]);
 
@@ -201,43 +194,51 @@ export default function StudentExamLivePage() {
 
   const examStarted = step === 'monitoring';
 
-  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading || !examData) return <ProfessionalLoader />;
 
   // ── Finished / blocked screen ──────────────────────────────────────────────
   if (step === 'finished') {
     return (
-      <div className="fixed inset-0 bg-[#161F45] flex items-center justify-center p-4 z-50">
-        <Card className={`shadow-2xl max-w-lg w-full border-t-8 ${blockReason ? 'border-red-600' : 'border-green-500'}`}>
-          <CardHeader className="bg-white p-6">
-            <CardTitle className={`font-bold flex items-center justify-center gap-3 text-2xl ${blockReason ? 'text-red-700' : 'text-green-600'}`}>
-              {blockReason ? <XCircle size={30} /> : <CheckCircle size={30} />}
-              {blockReason ? 'Sesión Interrumpida' : 'Proceso de Monitoreo Finalizado'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-center space-y-5 pt-8 pb-6">
-            <Alert variant={blockReason ? 'destructive' : 'default'} className="bg-gray-50 border-none text-left">
-              <AlertDescription className="text-base text-gray-700">
-                {blockReason || 'Has completado la sesión de monitoreo exitosamente. Ahora puedes enviar o verificar tus respuestas en la plataforma del examen.'}
-              </AlertDescription>
-            </Alert>
-            <Button onClick={() => window.location.href = '/student'} className="w-full h-12 mt-4 bg-[#161F45] hover:bg-[#0c1223]">
-              <LogOut className="mr-2 h-5 w-5" /> Volver al Portal de Estudiantes
+      <div className="fixed inset-0 bg-[#0D1327] flex items-center justify-center p-4 z-50">
+        <div
+          className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl border border-white/10"
+          style={{ background: 'linear-gradient(160deg,#161F45 0%,#1a2550 100%)' }}
+        >
+          <div className={`px-8 pt-8 pb-6 text-center border-b ${blockReason ? 'border-red-500/30' : 'border-green-500/30'}`}>
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${blockReason ? 'bg-red-500/20' : 'bg-green-500/20'}`}>
+              {blockReason
+                ? <XCircle className="h-8 w-8 text-red-400" />
+                : <CheckCircle className="h-8 w-8 text-green-400" />}
+            </div>
+            <h2 className={`text-xl font-bold text-white mb-1`}>
+              {blockReason ? 'Sesión Interrumpida' : 'Monitoreo Finalizado'}
+            </h2>
+            <p className="text-sm text-white/50">
+              {blockReason || 'Has completado la sesión de monitoreo exitosamente.'}
+            </p>
+          </div>
+          <div className="p-8">
+            <Button
+              onClick={() => window.location.href = '/student'}
+              className="w-full h-12 font-bold text-[#0D1327]"
+              style={{ backgroundColor: '#00D4FF' }}
+            >
+              <LogOut className="mr-2 h-5 w-5" />
+              Volver al Portal de Estudiantes
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!user || !userProfile) return null;
 
-  // IDs para StudentCam
   const studentId   = userProfile.uid ?? user.uid;
   const studentName = userProfile.nombre ?? userProfile.correo ?? user.email ?? 'Estudiante';
 
   return (
-    <div className="flex flex-col min-h-screen bg-secondary">
+    <div className="flex flex-col min-h-screen" style={{ backgroundColor: '#0D1327' }}>
       <DocumentTitleHandler criticalAlertCount={criticalAlertCount} />
 
       <RequirementsModal
@@ -247,12 +248,12 @@ export default function StudentExamLivePage() {
 
       <ExamHeader examStarted={examStarted} examData={examData} />
 
-      <main className="flex-grow mt-16 mb-10 px-4">
+      <main className="flex-grow mt-16 px-4 pb-6">
         {step === 'monitoring' ? (
-          <div className="max-w-5xl mx-auto py-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          <div className="max-w-6xl mx-auto py-6 grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
 
-            {/* ── Left: StudentCam (WebRTC + AI monitoring) ──────────────── */}
-            <div className="lg:col-span-1">
+            {/* ── Left: StudentCam — larger panel ────────────────────────── */}
+            <div className="lg:col-span-2">
               {participationId ? (
                 <StudentCam
                   examId={examId}
@@ -264,60 +265,102 @@ export default function StudentExamLivePage() {
                   onReady={handleStudentReady}
                 />
               ) : (
-                <Card className="p-6 text-center text-sm text-muted-foreground">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-                  Iniciando cámara...
-                </Card>
+                <div
+                  className="rounded-xl border border-white/10 flex flex-col items-center justify-center gap-3 p-8"
+                  style={{ backgroundColor: '#131D3B', minHeight: 220 }}
+                >
+                  <Loader2 className="h-8 w-8 animate-spin text-[#00D4FF]" />
+                  <p className="text-sm text-white/50">Iniciando cámara…</p>
+                </div>
               )}
+
+              {/* ── Status pills ─────────────────────────────────────────── */}
+              <div className="mt-3 flex gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
+                  style={{ backgroundColor: '#0D2E1E', color: '#34D399' }}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  Cámara activa
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
+                  style={{ backgroundColor: '#1E1A2E', color: '#A78BFA' }}>
+                  <Eye className="h-3 w-3" />
+                  IA Monitoreando
+                </span>
+              </div>
             </div>
 
-            {/* ── Right: Exam instructions card ──────────────────────────── */}
-            <div className="lg:col-span-2">
-              <Card className="w-full text-center shadow-2xl border-0">
-                <CardHeader className="bg-[#161F45] text-white rounded-t-lg py-6">
-                  <CardTitle className="text-2xl font-bold flex items-center justify-center gap-3">
-                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_#ef4444]" />
-                    MONITOREO ACTIVO
-                  </CardTitle>
-                  <CardDescription className="text-gray-300">
-                    Tu cámara y pantalla están activas. El audio es monitoreado. No cierres esta pestaña.
-                  </CardDescription>
-                </CardHeader>
+            {/* ── Right: Exam instructions ────────────────────────────────── */}
+            <div className="lg:col-span-3 space-y-4">
 
-                <CardContent className="space-y-6 pt-8">
-                  <div className="p-4 rounded-lg text-left text-sm border border-yellow-300 bg-yellow-50 text-yellow-800">
-                    <p className="font-bold flex items-center gap-2 mb-2">
-                      <AlertTriangle className="h-4 w-4" /> REQUERIMIENTOS DE MONITOREO:
+              {/* Active monitoring card */}
+              <div
+                className="rounded-2xl border border-white/10 overflow-hidden shadow-xl"
+                style={{ backgroundColor: '#131D3B' }}
+              >
+                <div className="px-6 py-5 border-b border-white/10 flex items-center gap-3"
+                  style={{ background: 'linear-gradient(135deg,#1A1D47 0%,#242F62 100%)' }}>
+                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_#ef4444]" />
+                  <div>
+                    <h2 className="text-white font-bold text-lg leading-tight">MONITOREO ACTIVO</h2>
+                    <p className="text-white/50 text-xs">{examData.title}</p>
+                  </div>
+                  <MonitorCheck className="h-5 w-5 text-[#00D4FF] ml-auto" />
+                </div>
+
+                <div className="p-6 space-y-5">
+                  {/* Rules box */}
+                  <div className="rounded-xl border border-yellow-500/30 p-4"
+                    style={{ backgroundColor: '#2A2200' }}>
+                    <p className="font-bold flex items-center gap-2 mb-3 text-yellow-400 text-sm">
+                      <AlertTriangle className="h-4 w-4" />
+                      Requerimientos de Monitoreo
                     </p>
-                    <ul className="list-disc list-inside space-y-1 ml-1">
-                      <li>Mantén la pantalla completa (<code className="bg-yellow-100 px-1 rounded font-mono text-xs text-yellow-900">{fullscreenKey}</code>).</li>
-                      <li>No cambies de pestaña, ni minimices la ventana.</li>
-                      <li>Mantente siempre visible y sin ayuda externa.</li>
+                    <ul className="space-y-2 text-sm text-yellow-200/80">
+                      <li className="flex items-start gap-2">
+                        <span className="mt-0.5 text-yellow-400">•</span>
+                        Mantén la pantalla completa
+                        {' '}(<code className="font-mono text-xs bg-yellow-900/50 px-1.5 py-0.5 rounded text-yellow-300">{fullscreenKey}</code>)
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="mt-0.5 text-yellow-400">•</span>
+                        No cambies de pestaña, ni minimices la ventana
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="mt-0.5 text-yellow-400">•</span>
+                        Mantente siempre visible y sin ayuda externa
+                      </li>
                     </ul>
                   </div>
 
-                  <div className="space-y-4">
-                    <Button
-                      className="w-full h-12 text-lg font-bold shadow-md transition-colors text-white bg-gradient-to-r from-blue-600 to-green-500 hover:from-blue-700 hover:to-green-600"
-                      onClick={() => window.open('https://ugm.blackboard.com/?new_loc=%2Fultra%2Fcourse', '_blank')}
-                    >
-                      <ExternalLink className="mr-2 h-5 w-5" />
-                      Abrir Plataforma de Examen (Blackboard)
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      Se abrirá en una nueva pestaña. No cierres esta ventana de monitoreo.
-                    </p>
-                  </div>
-                </CardContent>
+                  {/* Blackboard button */}
+                  <Button
+                    className="w-full h-13 text-base font-bold shadow-lg text-white border-0"
+                    style={{
+                      background: 'linear-gradient(135deg, #2563EB 0%, #059669 100%)',
+                      height: 52,
+                    }}
+                    onClick={() => window.open('https://ugm.blackboard.com/?new_loc=%2Fultra%2Fcourse', '_blank')}
+                  >
+                    <ExternalLink className="mr-2 h-5 w-5" />
+                    Abrir Plataforma de Examen (Blackboard)
+                  </Button>
+                  <p className="text-xs text-center text-white/30">
+                    Se abrirá en una nueva pestaña · No cierres esta ventana de monitoreo
+                  </p>
+                </div>
 
-                <CardFooter className="bg-gray-100 rounded-b-lg border-t p-6">
+                <div className="px-6 pb-6">
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="destructive" className="w-full h-10 shadow-lg" disabled={isFinishing}>
+                      <Button
+                        variant="outline"
+                        className="w-full h-11 border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300 hover:border-red-400 font-semibold"
+                        disabled={isFinishing}
+                      >
                         {isFinishing
                           ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           : <Send className="mr-2 h-4 w-4" />}
-                        Terminé mi examen / Finalizar Monitoreo
+                        Terminé mi examen — Finalizar Monitoreo
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -335,19 +378,26 @@ export default function StudentExamLivePage() {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-                </CardFooter>
-              </Card>
+                </div>
+              </div>
+
+              {/* Security reminder pill */}
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10"
+                style={{ backgroundColor: '#131D3B' }}>
+                <ShieldCheck className="h-4 w-4 text-[#00D4FF] flex-shrink-0" />
+                <p className="text-xs text-white/40">
+                  Esta sesión está siendo vigilada en tiempo real por el instructor. Tu audio y video son monitoreados.
+                </p>
+              </div>
             </div>
           </div>
         ) : (
-          <div className="w-full max-w-4xl mx-auto p-4 text-center">
-            <Loader2 className="h-10 w-10 animate-spin text-[#161F45] mx-auto mb-4" />
-            <p className="text-muted-foreground font-semibold">Cargando la interfaz de verificación...</p>
+          <div className="w-full max-w-4xl mx-auto p-4 text-center mt-20">
+            <Loader2 className="h-10 w-10 animate-spin text-[#00D4FF] mx-auto mb-4" />
+            <p className="text-white/50 font-semibold">Cargando la interfaz de verificación…</p>
           </div>
         )}
       </main>
-
-      <ExamFooter />
     </div>
   );
 }

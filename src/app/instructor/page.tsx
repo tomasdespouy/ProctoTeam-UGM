@@ -132,7 +132,11 @@ export default function InstructorHome() {
           </p>
           <div className="flex items-center gap-3 flex-wrap">
             <Button
-              onClick={() => router.push('/instructor/live-monitor')}
+              onClick={() => router.push(
+                activeSession
+                  ? `/instructor/live-monitor?examId=${activeSession.id}`
+                  : '/instructor/live-monitor'
+              )}
               className="gap-2 font-semibold text-sm h-10 px-5"
               style={{ backgroundColor: '#00D4FF', color: '#1A1D47' }}
             >
