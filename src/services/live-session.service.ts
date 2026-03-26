@@ -136,12 +136,14 @@ export const liveSessionService = {
         console.log(`💓 Heartbeat OK: ${studentIdPreview}... | ⚠️ Sin imagen`);
     }
 
-    // Solo actualizamos si el alumno no ha finalizado
+    // Usamos finished_at como columna "last_seen" mientras el alumno está activo.
+    // Dado que finished_at solo tiene significado real cuando status='submitted'/'blocked',
+    // es seguro sobreescribirlo con NOW() durante 'joined'/'in-progress' para trazar
+    // cuándo fue el último heartbeat. getExamDashboardState ya usa COALESCE(finished_at, started_at).
     const query = `
       UPDATE exam_participations 
       SET last_snapshot = COALESCE($3, last_snapshot),
-          -- Actualizamos started_at como "last_seen" si no tenemos columna dedicada
-          started_at = started_at 
+          finished_at   = NOW()
       WHERE exam_session_id = $1 AND student_id = $2 AND status IN ('joined', 'in-progress')
       RETURNING id
     `;

@@ -16,10 +16,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, subject, section, duration } = body;
+    const { title, subject, section, duration, accessCode } = body;
 
-    // 3. Validación de campos (accessCode ya no viene del body)
-    if (!title || !subject || !section || !duration) {
+    // 3. Validación de campos
+    if (!title || !subject || !section || !duration || !accessCode) {
       return NextResponse.json(
         { error: 'Faltan campos requeridos' },
         { status: 400 }
@@ -32,23 +32,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Duración inválida' }, { status: 400 });
     }
 
-    // 4. Generación de código único recursivo
-    const generateUniqueCode = async (): Promise<string> => {
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Evitamos I, O, 0, 1 para legibilidad
-        let code = '';
-        for (let i = 0; i < 6; i++) {
-            code += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-
-        // Verificar si existe
-        const exists = await db.query('SELECT 1 FROM exam_sessions WHERE access_code = $1', [code]);
-        if (exists.rowCount && exists.rowCount > 0) {
-            return generateUniqueCode();
-        }
-        return code;
-    };
-
-    const accessCode = await generateUniqueCode();
+    if (typeof accessCode !== 'string' || accessCode.trim().length < 4) {
+      return NextResponse.json({ error: 'Código de acceso inválido' }, { status: 400 });
+    }
 
     // 5. Insertar en PostgreSQL (Nuevo Esquema)
     // Nota: Ya no insertamos 'students' aquí. Los estudiantes se unen después.
