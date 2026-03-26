@@ -127,12 +127,25 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        // ── Severity normalizer ──────────────────────────────────────────
+        // StudentCam uses 4 levels: low | medium | high | critical.
+        // The DB alerts table only accepts: info | warning | critical.
+        // Map at the API boundary so the constraint is never violated.
+        const rawSev = (payload.severity || body.severity || 'medium') as string;
+        const dbSeverity: 'info' | 'warning' | 'critical' =
+          rawSev === 'critical' ? 'critical' :
+          rawSev === 'high'     ? 'critical' :
+          rawSev === 'warning'  ? 'warning'  :
+          rawSev === 'medium'   ? 'warning'  :
+          rawSev === 'info'     ? 'info'     :
+          rawSev === 'low'      ? 'info'     : 'warning';
+
         result = await liveSessionService.reportAlert({
-            examId: alertExamId,
-            studentId: alertStudentId,
-            description: payload.description || 'Alerta sin descripción',
-            severity: payload.severity || 'warning',
-            evidenceUrl: payload.imgSrc || payload.evidenceUrl || body.imgSrc
+            examId:       alertExamId,
+            studentId:    alertStudentId,
+            description:  payload.description || 'Alerta sin descripción',
+            severity:     dbSeverity,
+            evidenceUrl:  payload.imgSrc || payload.evidenceUrl || body.imgSrc,
         });
         break;
       }
