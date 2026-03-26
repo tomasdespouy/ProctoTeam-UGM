@@ -28,16 +28,16 @@ export async function GET(
     // [CORRECCIÓN BACKEND]: Se incluye ep.started_at en el SELECT de ambas queries
     if (isUUID) {
         query = `
-          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status, ep.status as student_status,
-          ep.started_at as student_started_at
+          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status,
+                 ep.id as participation_id, ep.status as student_status, ep.started_at as student_started_at
           FROM exam_sessions es
           LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
           WHERE es.id = $1
         `;
     } else {
         query = `
-          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status, ep.status as student_status,
-          ep.started_at as student_started_at
+          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status,
+                 ep.id as participation_id, ep.status as student_status, ep.started_at as student_started_at
           FROM exam_sessions es
           LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
           WHERE es.access_code = $1
@@ -54,16 +54,16 @@ export async function GET(
 
     return NextResponse.json({
       exam: {
-        id: data.id, // Devolvemos el ID real por si el frontend lo necesita
+        id: data.id,
         title: data.title,
         subject: data.subject,
         section: data.section,
         duration: data.duration,
         status: data.exam_status,
-        // [CORRECCIÓN BACKEND]: Se agrega la hora de inicio persistente
         startedAt: data.student_started_at ? data.student_started_at.toISOString() : null,
       },
-      studentStatus: data.student_status
+      studentStatus:   data.student_status,
+      participationId: data.participation_id ?? null,  // UUID para WebRTC (StudentCam)
     });
 
   } catch (error: any) {

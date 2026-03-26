@@ -55,6 +55,12 @@ export default function StudentHomePage() {
       toast({ title: '¡Éxito!', description: `Uniéndote a: ${data.title || 'Examen'}` });
       setIsModalOpen(false);
       setAccessCode('');
+
+      // Guardamos el participationId para que StudentCam lo use al instante
+      if (data.participationId) {
+        sessionStorage.setItem(`participation_${data.examId}`, data.participationId);
+      }
+
       router.push(`/student/exam/${data.examId}`);
     } catch (error: any) {
       toast({

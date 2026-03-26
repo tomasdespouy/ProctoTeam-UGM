@@ -32,9 +32,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Registrar la intención de participación (IDEMPOTENTE)
-    // Usamos ON CONFLICT para manejar si el estudiante ya se había unido antes
     // IMPORTANTE: NO actualizamos started_at si ya existe para evitar reinicio de tiempo
-    await db.query(
+    // Usamos RETURNING id para obtener el participationId necesario para WebRTC (StudentCam)
+    const participationResult = await db.query(
         `INSERT INTO exam_participations (exam_session_id, student_id, student_name, status, started_at)
          VALUES ($1, $2, $3, 'joined', NOW())
          ON CONFLICT (exam_session_id, student_id) 
@@ -44,25 +44,23 @@ export async function POST(request: NextRequest) {
                 WHEN exam_participations.status = 'blocked' THEN 'blocked'
                 ELSE 'joined' 
             END,
-            updated_at = NOW()`,
+            updated_at = NOW()
+         RETURNING id, status`,
         [exam.id, user.uid, user.email]
     );
 
-    // Verificar si el estudiante está bloqueado
-    const checkStatus = await db.query(
-        `SELECT status FROM exam_participations WHERE exam_session_id = $1 AND student_id = $2`,
-        [exam.id, user.uid]
-    );
+    const participation = participationResult.rows[0];
 
-    if (checkStatus.rows[0].status === 'blocked') {
+    if (participation.status === 'blocked') {
         return NextResponse.json({ error: 'Tu acceso a este examen ha sido bloqueado por el instructor.' }, { status: 403 });
     }
 
-    // 4. Retornar el ID para que el frontend redirija a /student/exam/[id]
+    // 4. Retornar datos necesarios para que el frontend inicie la sesión WebRTC
     return NextResponse.json({ 
-        examId: exam.id, 
-        title: exam.title,
-        success: true 
+        examId:          exam.id, 
+        title:           exam.title,
+        participationId: participation.id,   // UUID requerido por StudentCam para WebRTC
+        success:         true 
     });
 
   } catch (error: any) {
