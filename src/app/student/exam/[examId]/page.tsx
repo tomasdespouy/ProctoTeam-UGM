@@ -288,23 +288,23 @@ export default function StudentExamLivePage() {
 
                 <div className="p-6 space-y-5">
                   {/* Rules box */}
-                  <div className="rounded-xl border border-[#00D4FF]/30 p-4" style={{ backgroundColor: '#1A1D47' }}>
-                    <p className="font-bold flex items-center gap-2 mb-3 text-sm" style={{ color: '#00D4FF' }}>
+                  <div className="rounded-xl border border-[#1A1D47]/30 p-4" style={{ backgroundColor: '#00D4FF' }}>
+                    <p className="font-bold flex items-center gap-2 mb-3 text-sm" style={{ color: '#1A1D47' }}>
                       <AlertTriangle className="h-4 w-4" />
                       Requerimientos de Monitoreo
                     </p>
-                    <ul className="space-y-2 text-sm" style={{ color: '#00D4FF' }}>
+                    <ul className="space-y-2 text-sm" style={{ color: '#1A1D47' }}>
                       <li className="flex items-start gap-2">
-                        <span className="mt-0.5" style={{ color: '#00D4FF' }}>•</span>
+                        <span className="mt-0.5" style={{ color: '#1A1D47' }}>•</span>
                         Mantén la pantalla completa
-                        {' '}(<code className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#242F62', color: '#00D4FF' }}>{fullscreenKey}</code>)
+                        {' '}(<code className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#B3E5FC', color: '#1A1D47' }}>{fullscreenKey}</code>)
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="mt-0.5" style={{ color: '#00D4FF' }}>•</span>
+                        <span className="mt-0.5" style={{ color: '#1A1D47' }}>•</span>
                         No cambies de pestaña, ni minimices la ventana
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="mt-0.5" style={{ color: '#00D4FF' }}>•</span>
+                        <span className="mt-0.5" style={{ color: '#1A1D47' }}>•</span>
                         Mantente siempre visible y sin ayuda externa
                       </li>
                     </ul>

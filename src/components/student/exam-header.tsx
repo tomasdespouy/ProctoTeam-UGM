@@ -88,9 +88,9 @@ export function ExamHeader({ examStarted, examData }: ExamHeaderProps) {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-2 font-bold text-lg tabular-nums bg-white px-3 py-1 rounded-lg border border-gray-200">
-                <Clock className="h-5 w-5 text-[#161F45]" />
-                <span className={`text-[#161F45] ${timeLeft !== null && timeLeft <= 300 ? 'text-red-600 animate-pulse' : ''}`}>
+              <div className="flex items-center gap-2 font-bold text-lg tabular-nums px-3 py-1 rounded-lg border border-[#1A1D47]/20" style={{ backgroundColor: '#00D4FF' }}>
+                <Clock className="h-5 w-5 text-[#1A1D47]" />
+                <span className={`text-[#1A1D47] ${timeLeft !== null && timeLeft <= 300 ? 'text-red-600 animate-pulse' : ''}`}>
                   {formatTime(timeLeft)}
                 </span>
               </div>
