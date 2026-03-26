@@ -19,6 +19,7 @@ Preferred communication style: Simple, everyday language.
 - **Provider**: Azure AD Single Sign-On (SSO) via MSAL
 - **Authentication Flow**: Azure AD redirects to `/auth/callback` with token, then to student/instructor portal.
 - **User Roles**: 'student', 'instructor', and 'super-admin' roles with role-based access control.
+- **Default Role Policy**: All new users are assigned `student` by default regardless of email domain. A super-admin must manually promote to `instructor` or `super-admin` via `/super-admin/instructors`. Existing users' roles are never overwritten on login.
 - **Identity Verification**: AI-powered biometric verification (ID cards vs. live facial recognition).
 - **Token Management**: JWT tokens from Azure AD validated server-side.
 - **Unified Login**: Single entry point with automatic role detection based on email domain.

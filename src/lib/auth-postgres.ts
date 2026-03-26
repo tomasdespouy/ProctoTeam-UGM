@@ -49,12 +49,11 @@ export async function getUserByEmail(email: string): Promise<UserProfile | null>
   }
 }
 
-// Helper para determinar el rol según el dominio del email
-export function determineUserRole(email: string): 'student' | 'instructor' {
-  if (email.toLowerCase().endsWith('@estudiante.ugm.cl')) {
-    return 'student';
-  }
-  return 'instructor';
+// Helper para determinar el rol al crear un usuario nuevo.
+// Todos los usuarios nuevos parten como 'student' por seguridad.
+// El super-admin debe promover manualmente a 'instructor' o 'super-admin' desde el panel.
+export function determineUserRole(_email: string): 'student' {
+  return 'student';
 }
 
 // Crear o actualizar usuario (upsert) con lógica estricta de dominio
