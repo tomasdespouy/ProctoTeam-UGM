@@ -178,9 +178,23 @@ export function StudentCam({
   // ── startScreenShare ──────────────────────────────────────────────────────
   const startScreenShare = useCallback(async () => {
     setScreenError(null);
+
+    // Check API availability (can be unavailable in insecure contexts or iframes
+    // without allow="display-capture")
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setScreenError(
+        'Tu navegador o entorno no permite compartir pantalla. ' +
+        'Abre la aplicación en una pestaña directa del navegador (no en un iframe o vista previa).'
+      );
+      return false;
+    }
+
     try {
+      // Use simple video:true to maximise browser compatibility.
+      // The displaySurface:'monitor' hint is not supported in all browsers and can
+      // cause the dialog to close with an error on some environments.
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: 'monitor' },
+        video: true,
         audio: false,
       });
 
@@ -203,11 +217,19 @@ export function StudentCam({
       return true;
     } catch (error: any) {
       if (error.name === 'NotAllowedError') {
-        setScreenError('Debes seleccionar una pantalla para compartir. Haz clic en el botón e intenta de nuevo.');
+        setScreenError(
+          'Permiso denegado. Debes seleccionar una fuente en el cuadro de diálogo y hacer clic en "Compartir". ' +
+          'Si el cuadro no apareció, asegúrate de abrir la app en una pestaña del navegador (no en una vista previa).'
+        );
       } else if (error.name === 'NotFoundError') {
-        setScreenError('No se encontró ninguna pantalla para compartir.');
+        setScreenError('No se encontró ninguna pantalla disponible para compartir.');
+      } else if (error.name === 'InvalidStateError') {
+        setScreenError('Estado inválido. Por favor recarga la página e intenta de nuevo.');
       } else {
-        setScreenError(error.message || 'Error al compartir pantalla');
+        setScreenError(
+          (error.message || 'Error desconocido al compartir pantalla.') +
+          ' Asegúrate de usar una pestaña directa del navegador con HTTPS.'
+        );
       }
       return false;
     }
@@ -459,6 +481,9 @@ export function StudentCam({
 
   // ── Render: screen sharing setup ──────────────────────────────────────────
   if (setupPhase === 'screen') {
+    const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
+    const canShare   = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
+
     return (
       <Card className="overflow-hidden">
         <div className="aspect-video bg-black relative">
@@ -471,15 +496,37 @@ export function StudentCam({
           <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white p-6">
             <Monitor className="h-16 w-16 mb-4" />
             <h3 className="text-xl font-bold mb-2">Compartir Pantalla Requerido</h3>
-            <p className="text-center text-sm text-gray-300 mb-6 max-w-sm">
-              Para continuar con el examen, debes compartir tu pantalla completa.
+            <p className="text-center text-sm text-gray-300 mb-4 max-w-sm">
+              Para continuar, debes compartir tu pantalla completa.
               Esto es obligatorio para garantizar la integridad del examen.
             </p>
-            <Button onClick={startScreenShare} size="lg" className="bg-blue-600 hover:bg-blue-700">
+
+            {/* Warning when running inside an iframe (e.g. Replit preview) */}
+            {(isInIframe || !canShare) && (
+              <div className="mb-4 px-4 py-3 bg-yellow-600/80 rounded-lg text-yellow-100 text-xs text-center max-w-sm">
+                <AlertTriangle className="h-4 w-4 inline mr-1" />
+                Para compartir pantalla abre la app en una{' '}
+                <span className="font-bold underline">pestaña directa del navegador</span>{' '}
+                (no en una vista previa o iframe).
+              </div>
+            )}
+
+            <Button
+              onClick={startScreenShare}
+              size="lg"
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={!canShare}
+            >
               <Monitor className="h-5 w-5 mr-2" />
               Compartir Pantalla
             </Button>
-            {screenError && <p className="mt-4 text-red-400 text-sm text-center">{screenError}</p>}
+
+            {screenError && (
+              <div className="mt-4 px-4 py-3 bg-red-900/80 rounded-lg text-red-200 text-xs text-center max-w-sm">
+                <AlertTriangle className="h-4 w-4 inline mr-1" />
+                {screenError}
+              </div>
+            )}
           </div>
         </div>
         <CardContent className="p-3">
