@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { ExamHeader } from '@/components/student/exam-header';
@@ -85,6 +85,25 @@ export default function StudentExamLivePage() {
 
   const { toast } = useToast();
 
+  // ── Stable callbacks for StudentCam props ──────────────────────────────────
+  // Wrapped in useCallback so their reference never changes between renders.
+  // Without this, inline arrow functions recreate on every render, causing
+  // StudentCam's sendAlert → camera-init effect to re-run and stop the stream.
+
+  const handleStudentAlert = useCallback((
+    _alertType: string,
+    _description: string,
+    severity: 'low' | 'medium' | 'high' | 'critical',
+  ) => {
+    if (severity === 'critical') {
+      setCriticalAlertCount(prev => prev + 1);
+    }
+  }, []); // setCriticalAlertCount is stable from useState — no deps needed
+
+  const handleStudentReady = useCallback(() => {
+    toast({ title: 'Monitoreo activo', description: 'Cámara y pantalla conectadas con el instructor.' });
+  }, [toast]); // toast from useToast is stable
+
   useEffect(() => {
     if (typeof window !== 'undefined' && window.navigator.userAgent.includes('Mac')) {
       setFullscreenKey('Cmd + Ctrl + F');
@@ -92,6 +111,11 @@ export default function StudentExamLivePage() {
   }, []);
 
   // ── Polling: exam status + participationId ─────────────────────────────────
+  // participationId is read via ref so it never appears in the dep array and
+  // never causes the interval to be torn down/re-created on each fetch cycle.
+  const participationIdRef = React.useRef(participationId);
+  useEffect(() => { participationIdRef.current = participationId; }, [participationId]);
+
   useEffect(() => {
     if (!examId || !user) return;
 
@@ -116,8 +140,8 @@ export default function StudentExamLivePage() {
         const data = await response.json();
         setExamData(data.exam);
 
-        // Guardamos el participationId para conectar StudentCam vía WebRTC
-        if (data.participationId && !participationId) {
+        // Use ref to avoid participationId being a dep of this interval.
+        if (data.participationId && !participationIdRef.current) {
           setParticipationId(data.participationId);
         }
 
@@ -143,7 +167,9 @@ export default function StudentExamLivePage() {
     fetchExamStatus();
     const interval = setInterval(fetchExamStatus, 5000);
     return () => clearInterval(interval);
-  }, [examId, user, userProfile, isTerminated, toast, participationId]);
+  // participationId intentionally omitted — read via ref to keep interval stable.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examId, user, userProfile, isTerminated, toast]);
 
   const handleAcceptRequirements = () => {
     setStep('monitoring');
@@ -234,14 +260,8 @@ export default function StudentExamLivePage() {
                   studentName={studentName}
                   participationId={participationId}
                   enableAI={true}
-                  onAlert={(alertType, description, severity) => {
-                    if (severity === 'critical') {
-                      setCriticalAlertCount(prev => prev + 1);
-                    }
-                  }}
-                  onReady={() => {
-                    toast({ title: 'Monitoreo activo', description: 'Cámara y pantalla conectadas con el instructor.' });
-                  }}
+                  onAlert={handleStudentAlert}
+                  onReady={handleStudentReady}
                 />
               ) : (
                 <Card className="p-6 text-center text-sm text-muted-foreground">
