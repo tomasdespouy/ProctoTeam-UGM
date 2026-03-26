@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
-import { ExamHeader } from '@/components/student/exam-header';
+import StudentHeader from '@/components/student/StudentHeader';
 import { RequirementsModal } from '@/components/student/requirements-modal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -242,8 +242,8 @@ export default function StudentExamLivePage() {
         onAcceptRequirements={handleAcceptRequirements}
       />
 
-      {/* Navy topbar — same style as instructor dashboard */}
-      <ExamHeader examStarted={examStarted} examData={examData} />
+      {/* Global student header */}
+      <StudentHeader />
 
       <main className="flex-grow mt-16 px-4 pb-6">
         {step === 'monitoring' ? (
@@ -312,10 +312,18 @@ export default function StudentExamLivePage() {
 
                   {/* Blackboard button */}
                   <Button
-                    className="w-full text-base font-bold shadow-sm text-white border-0 transition-opacity hover:opacity-90"
+                    className="w-full text-base font-bold shadow-sm text-white border-0 transition-all hover:shadow-lg"
                     style={{
                       background: 'linear-gradient(135deg, #00D4FF 0%, #00B8D4 100%)',
                       height: 52,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.opacity = '0.85';
+                      e.currentTarget.style.filter = 'drop-shadow(0 0 12px rgba(0, 212, 255, 0.4))';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.opacity = '1';
+                      e.currentTarget.style.filter = 'none';
                     }}
                     onClick={() => window.open('https://ugm.blackboard.com/?new_loc=%2Fultra%2Fcourse', '_blank')}
                   >

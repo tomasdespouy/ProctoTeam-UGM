@@ -65,7 +65,7 @@ export function RequirementsModal({ isOpen, onAcceptRequirements }: Requirements
            </div>
         </div>
         <DialogFooter className="px-0">
-          <Button onClick={onAcceptRequirements} className="w-full bg-green-600 hover:bg-green-700 mx-0">
+          <Button onClick={onAcceptRequirements} className="w-full bg-green-600 hover:bg-green-700 text-white mx-0">
             <CheckCircle className="mr-2 h-4 w-4" />
             Acepto los Términos y me Comprometo a Cumplirlos
           </Button>
