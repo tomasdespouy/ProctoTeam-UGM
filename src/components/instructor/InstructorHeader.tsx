@@ -18,17 +18,19 @@ const NAV_ITEMS = [
 // ─── Header ───────────────────────────────────────────────────────────────────
 
 export default function InstructorHeader() {
-  const pathname        = usePathname();
-  const router          = useRouter();
-  const { userProfile } = useAuth();
-
-  const initials = userProfile?.nombre
-    ? userProfile.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
-    : 'IN';
+  const pathname           = usePathname();
+  const router             = useRouter();
+  const { setDevUser }     = useAuth();
 
   const handleSignOut = async () => {
-    const { signOut } = await import('@/lib/azure-auth');
-    await signOut();
+    if (process.env.NODE_ENV === 'development') {
+      // Dev mode: clear local session only — no Microsoft sign-out popup
+      setDevUser(null);
+    } else {
+      // Production: full Microsoft logout
+      const { signOut } = await import('@/lib/azure-auth');
+      await signOut();
+    }
     router.push('/');
   };
 
@@ -39,7 +41,6 @@ export default function InstructorHeader() {
     >
       {/* ── Branding (left) ─────────────────────────────────────────────── */}
       <div className="flex items-center flex-shrink-0">
-        {/* UGM logo — "Logo lineas.png" spans ~120px wide */}
         <Image
           src="/Logo lineas.png"
           alt="Universidad Gabriela Mistral"
@@ -50,13 +51,11 @@ export default function InstructorHeader() {
           style={{ height: '32px', width: 'auto' }}
         />
 
-        {/* Vertical separator */}
         <div
           className="flex-shrink-0 mx-5"
           style={{ width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.25)' }}
         />
 
-        {/* ProctoTeam wordmark */}
         <span className="font-black text-2xl tracking-tight leading-none flex-shrink-0">
           <span style={{ color: '#00bbff' }}>Procto</span>
           <span className="text-white">Team</span>
@@ -89,27 +88,15 @@ export default function InstructorHeader() {
         })}
       </nav>
 
-      {/* ── User area (right) ───────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 flex-shrink-0">
-        {/* User initials avatar — white circle */}
-        <div
-          className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-sm font-bold flex-shrink-0 cursor-default"
-          style={{ color: '#161f45' }}
-          title={userProfile?.nombre ?? 'Instructor'}
-        >
-          {initials}
-        </div>
-
-        {/* Salir button — pill shape, navy-blue fill */}
-        <button
-          onClick={handleSignOut}
-          className="flex items-center gap-2 px-5 h-10 rounded-full text-white text-sm font-bold transition-opacity hover:opacity-80"
-          style={{ backgroundColor: '#394281' }}
-        >
-          <LogOut className="h-4 w-4" />
-          Salir
-        </button>
-      </div>
+      {/* ── Salir button (right) ────────────────────────────────────────── */}
+      <button
+        onClick={handleSignOut}
+        className="flex items-center gap-2 px-5 h-10 rounded-full text-white text-sm font-bold transition-opacity hover:opacity-80 flex-shrink-0"
+        style={{ backgroundColor: '#394281' }}
+      >
+        <LogOut className="h-4 w-4" />
+        Salir
+      </button>
     </header>
   );
 }
