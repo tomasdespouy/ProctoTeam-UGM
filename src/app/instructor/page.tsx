@@ -1,174 +1,286 @@
 'use client';
 
-import { Users, Clock, CheckCircle, Bell, ScanFace } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/auth-context';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
+import { Eye, Copy, Save, Loader2, RefreshCw } from 'lucide-react';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Mock data — se reemplazará por datos reales cuando el backend esté listo
-// ─────────────────────────────────────────────────────────────────────────────
-const MOCK_STUDENTS = [
-  { id: '1', name: 'Lorena', code: 'ID:wenv234' },
-  { id: '2', name: 'Lorena', code: 'ID:wenv234' },
-  { id: '3', name: 'Lorena', code: 'ID:wenv234' },
-  { id: '4', name: 'Lorena', code: 'ID:wenv234' },
-  { id: '5', name: 'Lorena', code: 'ID:wenv234' },
-];
+// ─── Access-code generator ────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MockStudentCard — tarjeta oscura estilo Figma
-// ─────────────────────────────────────────────────────────────────────────────
-function MockStudentCard({ name, code }: { name: string; code: string }) {
-  return (
-    <div
-      className="rounded-xl overflow-hidden flex flex-col border border-white/10 shadow"
-      style={{ backgroundColor: '#1A2744' }}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2">
-        <div className="flex items-center gap-2">
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-            style={{ backgroundColor: '#4A5568' }}
-          >
-            {name[0]}
-          </div>
-          <div className="min-w-0">
-            <p className="text-white text-xs font-semibold leading-tight truncate">{name}</p>
-            <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{code}</p>
-          </div>
-        </div>
-        <span
-          className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ml-1"
-          style={{ backgroundColor: '#22C55E', color: '#fff' }}
-        >
-          Activo
-        </span>
-      </div>
-
-      {/* Video placeholder */}
-      <div className="mx-2 rounded-lg" style={{ height: 110, backgroundColor: '#0A1228' }} />
-
-      {/* Footer */}
-      <div className="flex items-center justify-between px-3 py-2">
-        <ScanFace className="h-4 w-4" style={{ color: '#94A3B8' }} />
-        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#EF4444' }} />
-      </div>
-    </div>
-  );
+function generateCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 6; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+  return result;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Dashboard principal
-// ─────────────────────────────────────────────────────────────────────────────
-export default function InstructorDashboard() {
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function InstructorHome() {
+  const { user, userProfile } = useAuth();
+  const router                = useRouter();
+  const { toast }             = useToast();
+
+  const [title, setTitle]         = useState('');
+  const [subject, setSubject]     = useState('');
+  const [section, setSection]     = useState('');
+  const [duration, setDuration]   = useState<number>(60);
+  const [accessCode, setAccessCode] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => { setAccessCode(generateCode()); }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setIsSubmitting(true);
+    try {
+      const idToken  = await user.getIdToken();
+      const response = await fetch('/api/exam-sessions/create', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body:    JSON.stringify({ title, subject, section, duration, accessCode }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error ?? 'Error al crear la sala');
+      }
+
+      const session = await response.json();
+
+      toast({
+        title:       'Sala creada',
+        description: `Código de acceso: ${accessCode}`,
+      });
+
+      // Navigate directly to live monitor for this exam
+      router.push(`/instructor/live-monitor?examId=${session.id}`);
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.message });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const firstName = userProfile?.nombre?.split(' ')[0] ?? 'Docente';
+
   return (
-    <div className="max-w-screen-2xl mx-auto px-6 py-6 space-y-6">
+    <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-8">
 
-      {/* ── Tarjetas de métricas ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
-        {/* Estudiantes Activos — cyan */}
+      {/* ── Hero Banner ──────────────────────────────────────────────────── */}
+      <div
+        className="relative rounded-2xl overflow-hidden"
+        style={{
+          background: 'linear-gradient(135deg, #1A1D47 0%, #242F62 55%, #2A3A8A 100%)',
+          minHeight: 220,
+        }}
+      >
+        {/* Decorative circles */}
         <div
-          className="rounded-xl p-5 text-white shadow-md"
-          style={{ background: 'linear-gradient(135deg, #00BBFF 0%, #0095FF 100%)' }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <Users className="h-5 w-5 opacity-90" />
-            <span className="text-sm font-semibold">Estudiantes Activos</span>
+          className="absolute -top-16 -right-16 w-72 h-72 rounded-full pointer-events-none"
+          style={{ backgroundColor: '#00D4FF', opacity: 0.06 }}
+        />
+        <div
+          className="absolute bottom-0 left-1/3 w-48 h-48 rounded-full pointer-events-none"
+          style={{ backgroundColor: '#4F5CC0', opacity: 0.12 }}
+        />
+
+        {/* Text content */}
+        <div className="relative z-10 px-8 py-8 pr-[340px] flex flex-col justify-center min-h-[220px]">
+          <p
+            className="text-xs font-bold uppercase tracking-[0.2em] mb-3"
+            style={{ color: '#00D4FF' }}
+          >
+            ProctoTeam — Portal del Docente
+          </p>
+          <h1 className="text-3xl font-extrabold text-white leading-tight mb-2">
+            Bienvenido, {firstName}
+          </h1>
+          <p className="text-sm mb-6 max-w-md leading-relaxed" style={{ color: 'rgba(255,255,255,0.65)' }}>
+            Sistema de vigilancia de exámenes en línea. Crea una sala abajo y empieza a monitorear en tiempo real.
+          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              onClick={() => router.push('/instructor/live-monitor')}
+              className="gap-2 font-semibold text-sm h-10 px-5"
+              style={{ backgroundColor: '#00D4FF', color: '#1A1D47' }}
+            >
+              <Eye className="h-4 w-4" />
+              Monitor en Vivo
+            </Button>
+            <Button
+              onClick={() => router.push('/instructor/historic')}
+              variant="ghost"
+              className="gap-2 font-semibold text-sm h-10 px-5 border border-white/20 text-white hover:bg-white/10"
+            >
+              Ver Histórico
+            </Button>
           </div>
-          <p className="text-4xl font-bold leading-none">0</p>
-          <p className="text-sm opacity-75 mt-1.5">Estudiantes en línea</p>
         </div>
 
-        {/* Tiempo de Monitoreo — blue */}
+        {/* Avatar images — anchored to bottom-right */}
         <div
-          className="rounded-xl p-5 text-white shadow-md"
-          style={{ backgroundColor: '#0095FF' }}
+          className="absolute bottom-0 right-0 flex items-end pointer-events-none select-none"
+          style={{ height: '100%' }}
         >
-          <div className="flex items-center gap-2 mb-3">
-            <Clock className="h-5 w-5 opacity-90" />
-            <span className="text-sm font-semibold">Tiempo de Monitoreo</span>
-          </div>
-          <p className="text-4xl font-bold font-mono leading-none">00:00</p>
-          <p className="text-sm opacity-75 mt-1.5">Esperando inicio</p>
-        </div>
-
-        {/* Estudiantes Finalizados — violet */}
-        <div
-          className="rounded-xl p-5 text-white shadow-md"
-          style={{ backgroundColor: '#4F5CC0' }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <CheckCircle className="h-5 w-5 opacity-90" />
-            <span className="text-sm font-semibold">Estudiantes Finalizados</span>
-          </div>
-          <p className="text-4xl font-bold leading-none">26</p>
-          <p className="text-sm opacity-75 mt-1.5">de 56 en total</p>
-        </div>
-
-        {/* Estudiantes con Alertas — navy */}
-        <div
-          className="rounded-xl p-5 text-white shadow-md"
-          style={{ backgroundColor: '#394281' }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <Bell className="h-5 w-5 opacity-90" />
-            <span className="text-sm font-semibold">Estudiantes con Alertas</span>
-          </div>
-          <p className="text-4xl font-bold leading-none" style={{ color: '#FCA5A5' }}>03</p>
-          <p className="text-sm opacity-75 mt-1.5">de 56 en total</p>
+          <Image
+            src="/avatar-female.png"
+            alt="Profesora"
+            width={160}
+            height={200}
+            className="object-contain object-bottom"
+            style={{ height: '88%', width: 'auto', marginRight: '-12px' }}
+            priority
+          />
+          <Image
+            src="/avatar-male.png"
+            alt="Profesor"
+            width={170}
+            height={210}
+            className="object-contain object-bottom"
+            style={{ height: '100%', width: 'auto' }}
+            priority
+          />
         </div>
       </div>
 
-      {/* ── Estadísticas + Monitor lateral ────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Estadísticas de la Sección (2 columnas) */}
-        <div className="lg:col-span-2 space-y-3">
-          <h2 className="text-base font-bold text-gray-800">Estadísticas de la Sección</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="border border-gray-200 rounded-xl shadow-sm h-52">
-              <CardHeader className="pb-1 pt-4 px-4">
-                <CardTitle className="text-sm font-normal text-gray-500">
-                  Distribución de Alertas
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="h-36" />
-            </Card>
-            <Card className="border border-gray-200 rounded-xl shadow-sm h-52">
-              <CardHeader className="pb-1 pt-4 px-4">
-                <CardTitle className="text-sm font-normal text-gray-500">
-                  Tiempos de Finalización
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="h-36" />
-            </Card>
-          </div>
+      {/* ── Exam creation form ────────────────────────────────────────────── */}
+      <div>
+        <div className="mb-5">
+          <h2 className="text-lg font-bold text-gray-900">Crear Nueva Sala de Examen</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Completa los datos. Cuando crees la sala serás dirigido directamente al monitor.
+          </p>
         </div>
 
-        {/* Monitoreo de estudiantes (placeholder lateral, 1 columna) */}
-        <div className="space-y-3">
-          <h2 className="text-base font-bold text-gray-800">Monitoreo de estudiantes</h2>
-          <Card className="border border-gray-200 rounded-xl shadow-sm h-52">
-            <CardHeader className="pb-1 pt-4 px-4">
-              <CardTitle className="text-sm font-normal text-gray-500">
-                Tiempos de Finalización
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="h-36" />
-          </Card>
-        </div>
-      </div>
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 md:p-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
 
-      {/* ── Monitoreo de estudiantes (grid de tarjetas) ───────────────── */}
-      <div className="space-y-3">
-        <h2 className="text-base font-bold text-gray-800">Monitoreo de estudiantes</h2>
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {MOCK_STUDENTS.map((s) => (
-              <MockStudentCard key={s.id} name={s.name} code={s.code} />
-            ))}
-          </div>
+            {/* Título */}
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-sm font-semibold text-gray-700">
+                Título del Examen
+              </Label>
+              <Input
+                id="title"
+                placeholder="Ej: Evaluación Solemne 1"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                required
+                className="h-11 border-gray-200 focus-visible:ring-[#00D4FF]"
+              />
+            </div>
+
+            {/* Asignatura + Sección */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="subject" className="text-sm font-semibold text-gray-700">
+                  Asignatura
+                </Label>
+                <Input
+                  id="subject"
+                  placeholder="Ej: Cálculo I"
+                  value={subject}
+                  onChange={e => setSubject(e.target.value)}
+                  required
+                  className="h-11 border-gray-200 focus-visible:ring-[#00D4FF]"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="section" className="text-sm font-semibold text-gray-700">
+                  Sección / Grupo
+                </Label>
+                <Input
+                  id="section"
+                  placeholder="Ej: 004D"
+                  value={section}
+                  onChange={e => setSection(e.target.value)}
+                  required
+                  className="h-11 border-gray-200 focus-visible:ring-[#00D4FF]"
+                />
+              </div>
+            </div>
+
+            {/* Duración + Código */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="duration" className="text-sm font-semibold text-gray-700">
+                  Duración (minutos)
+                </Label>
+                <Input
+                  id="duration"
+                  type="number"
+                  min="1"
+                  max="600"
+                  value={duration}
+                  onChange={e => setDuration(Number(e.target.value))}
+                  required
+                  className="h-11 border-gray-200 focus-visible:ring-[#00D4FF]"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-gray-700">
+                  Código de Acceso
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={accessCode}
+                    readOnly
+                    className="h-11 font-mono text-center text-xl tracking-[0.3em] bg-gray-50 border-gray-200 font-extrabold"
+                    style={{ color: '#1A1D47' }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-11 w-11 border-gray-200 flex-shrink-0"
+                    title="Generar nuevo código"
+                    onClick={() => setAccessCode(generateCode())}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-11 w-11 border-gray-200 flex-shrink-0"
+                    title="Copiar código"
+                    onClick={() => {
+                      navigator.clipboard.writeText(accessCode);
+                      toast({ description: 'Código copiado al portapapeles' });
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-400">
+                  Comparte este código con tus estudiantes para que puedan unirse.
+                </p>
+              </div>
+            </div>
+
+            {/* Submit */}
+            <div className="flex justify-end pt-2">
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="h-11 px-8 font-bold gap-2 text-sm"
+                style={{ backgroundColor: '#1A1D47', color: '#fff' }}
+              >
+                {isSubmitting
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Creando sala...</>
+                  : <><Save className="h-4 w-4" /> Crear Sala y Monitorear</>}
+              </Button>
+            </div>
+
+          </form>
         </div>
       </div>
     </div>
