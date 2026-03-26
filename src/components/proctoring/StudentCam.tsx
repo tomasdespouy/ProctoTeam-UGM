@@ -18,7 +18,7 @@ import {
   MonitorOff,
   AlertTriangle
 } from 'lucide-react';
-import { io, Socket } from 'socket.io-client';
+import { supabase } from '@/lib/supabase-client';
 import { 
   initAICoordinator, 
   startDetection, 
@@ -26,6 +26,8 @@ import {
   disposeAICoordinator,
   type AIAlert 
 } from '@/lib/ai';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface StudentCamProps {
   examId: string;
@@ -39,6 +41,14 @@ interface StudentCamProps {
 
 type SetupPhase = 'camera' | 'screen' | 'ready';
 
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+];
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function StudentCam({ 
   examId, 
   studentId, 
@@ -48,53 +58,51 @@ export function StudentCam({
   onAlert,
   onReady
 }: StudentCamProps) {
-  const [isConnected, setIsConnected] = useState(false);
-  const [hasVideo, setHasVideo] = useState(false);
-  const [hasAudio, setHasAudio] = useState(false);
-  const [hasScreen, setHasScreen] = useState(false);
+  const [isConnected, setIsConnected]     = useState(false);
+  const [hasVideo, setHasVideo]           = useState(false);
+  const [hasAudio, setHasAudio]           = useState(false);
+  const [hasScreen, setHasScreen]         = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'failed'>('connecting');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [aiStatus, setAiStatus] = useState<'loading' | 'active' | 'error' | 'disabled'>('loading');
-  const [setupPhase, setSetupPhase] = useState<SetupPhase>('camera');
+  const [errorMessage, setErrorMessage]   = useState<string | null>(null);
+  const [aiStatus, setAiStatus]           = useState<'loading' | 'active' | 'error' | 'disabled'>('loading');
+  const [setupPhase, setSetupPhase]       = useState<SetupPhase>('camera');
   const [screenBlocked, setScreenBlocked] = useState(false);
-  const [screenError, setScreenError] = useState<string | null>(null);
+  const [screenError, setScreenError]     = useState<string | null>(null);
   
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const screenStreamRef = useRef<MediaStream | null>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const videoRef          = useRef<HTMLVideoElement>(null);
+  const streamRef         = useRef<MediaStream | null>(null);
+  const screenStreamRef   = useRef<MediaStream | null>(null);
+  const channelRef        = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const aiInitializedRef = useRef(false);
+  const aiInitializedRef  = useRef(false);
 
+  // Ref to always have the latest sendAlert without re-creating effects
+  const sendAlertRef = useRef<(type: string, desc: string, sev: 'low' | 'medium' | 'high' | 'critical') => void>(
+    () => {}
+  );
+
+  // ── captureSnapshot ───────────────────────────────────────────────────────
   const captureSnapshot = useCallback(() => {
     if (!videoRef.current || !streamRef.current) return null;
-    
     const canvas = document.createElement('canvas');
-    canvas.width = 320;
+    canvas.width  = 320;
     canvas.height = 240;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
-    
     ctx.drawImage(videoRef.current, 0, 0, 320, 240);
     return canvas.toDataURL('image/jpeg', 0.4);
   }, []);
 
-  const sendSnapshotWithReason = useCallback((reason: string) => {
-    const snapshot = captureSnapshot();
-    if (snapshot && socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit('student:snapshot', {
-        examId,
-        studentId,
-        snapshot,
-        reason,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }, [examId, studentId, captureSnapshot]);
+  // ── sendSnapshotWithReason ────────────────────────────────────────────────
+  // Phase 3: snapshot captured locally. Broadcast transport added in Phase 4.
+  const sendSnapshotWithReason = useCallback((_reason: string) => {
+    captureSnapshot(); // keep local capture pipeline active for AI
+  }, [captureSnapshot]);
 
+  // ── sendAlert (persistent via HTTP POST → DB) ─────────────────────────────
   const sendAlert = useCallback((
-    alertType: string, 
-    description: string, 
+    alertType: string,
+    description: string,
     severity: 'low' | 'medium' | 'high' | 'critical' = 'medium'
   ) => {
     fetch('/api/live', {
@@ -109,14 +117,16 @@ export function StudentCam({
       }),
     }).catch(err => console.error('[Alert] No se pudo persistir la alerta:', err));
 
-    if (onAlert) {
-      onAlert(alertType, description, severity);
-    }
+    if (onAlert) onAlert(alertType, description, severity);
   }, [examId, studentId, onAlert]);
 
+  // Keep ref in sync so async callbacks never capture a stale closure
+  useEffect(() => { sendAlertRef.current = sendAlert; }, [sendAlert]);
+
+  // ── sendAlertWithSnapshot ─────────────────────────────────────────────────
   const sendAlertWithSnapshot = useCallback((
-    alertType: string, 
-    description: string, 
+    alertType: string,
+    description: string,
     severity: 'low' | 'medium' | 'high' | 'critical' = 'medium'
   ) => {
     sendAlert(alertType, description, severity);
@@ -134,17 +144,15 @@ export function StudentCam({
   const handleScreenShareEnded = useCallback(() => {
     setHasScreen(false);
     setScreenBlocked(true);
-    
-    sendAlertWithSnapshot(
-      'screen_share_ended', 
-      'El estudiante dejó de compartir pantalla', 
-      'critical'
-    );
+    sendAlertWithSnapshot('screen_share_ended', 'El estudiante dejó de compartir pantalla', 'critical');
   }, [sendAlertWithSnapshot]);
 
+  // ── addScreenTrackToWebRTC ────────────────────────────────────────────────
+  // Called when screen share starts after WebRTC is already established.
   const addScreenTrackToWebRTC = useCallback(async (screenStream: MediaStream) => {
-    const pc = peerConnectionRef.current;
-    if (!pc || !socketRef.current) return;
+    const pc      = peerConnectionRef.current;
+    const channel = channelRef.current;
+    if (!pc || !channel) return;
 
     const screenTrack = screenStream.getVideoTracks()[0];
     if (!screenTrack) return;
@@ -154,46 +162,46 @@ export function StudentCam({
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    socketRef.current.emit('webrtc:offer', {
-      examId,
-      fromStudentId: studentId,
-      offer,
-      isRenegotiation: true,
+    channel.send({
+      type: 'broadcast',
+      event: 'webrtc-signaling',
+      payload: {
+        type:            'offer',
+        fromId:          studentId,
+        toId:            'instructor',
+        data:            { type: offer.type, sdp: offer.sdp },
+        isRenegotiation: true,
+      },
     });
-  }, [examId, studentId]);
+  }, [studentId]);
 
+  // ── startScreenShare ──────────────────────────────────────────────────────
   const startScreenShare = useCallback(async () => {
     setScreenError(null);
-    
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          displaySurface: 'monitor',
-        },
+        video: { displaySurface: 'monitor' },
         audio: false,
       });
-      
+
       screenStreamRef.current = screenStream;
       setHasScreen(true);
       setScreenBlocked(false);
-      
+
       const videoTrack = screenStream.getVideoTracks()[0];
-      
       videoTrack.addEventListener('ended', handleScreenShareEnded);
-      
-      if (peerConnectionRef.current && socketRef.current) {
+
+      if (peerConnectionRef.current && channelRef.current) {
         await addScreenTrackToWebRTC(screenStream);
       }
-      
+
       if (setupPhase === 'screen') {
         setSetupPhase('ready');
         onReady?.();
       }
-      
+
       return true;
     } catch (error: any) {
-      console.error('Error sharing screen:', error);
-      
       if (error.name === 'NotAllowedError') {
         setScreenError('Debes seleccionar una pantalla para compartir. Haz clic en el botón e intenta de nuevo.');
       } else if (error.name === 'NotFoundError') {
@@ -201,56 +209,43 @@ export function StudentCam({
       } else {
         setScreenError(error.message || 'Error al compartir pantalla');
       }
-      
       return false;
     }
   }, [handleScreenShareEnded, setupPhase, onReady, addScreenTrackToWebRTC]);
 
   const restoreScreenShare = useCallback(async () => {
     const success = await startScreenShare();
-    if (success) {
-      setScreenBlocked(false);
-    }
+    if (success) setScreenBlocked(false);
   }, [startScreenShare]);
 
+  // ── Camera + microphone init ──────────────────────────────────────────────
   useEffect(() => {
     const initCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            facingMode: 'user'
-          },
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
           audio: true,
         });
-        
+
         streamRef.current = stream;
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
+        if (videoRef.current) videoRef.current.srcObject = stream;
 
         const videoTrack = stream.getVideoTracks()[0];
         const audioTrack = stream.getAudioTracks()[0];
-        
+
         setHasVideo(videoTrack?.enabled ?? false);
         setHasAudio(audioTrack?.enabled ?? false);
-        
         setSetupPhase('screen');
 
         videoTrack?.addEventListener('ended', () => {
           setHasVideo(false);
           sendAlertWithSnapshot('camera_disabled', 'La cámara fue deshabilitada', 'high');
         });
-
         audioTrack?.addEventListener('ended', () => {
           setHasAudio(false);
           sendAlertWithSnapshot('microphone_disabled', 'El micrófono fue deshabilitado', 'medium');
         });
-
       } catch (error: any) {
-        console.error('Error accessing camera:', error);
         setErrorMessage(error.message || 'No se pudo acceder a la cámara');
         sendAlert('camera_access_denied', 'Acceso a cámara denegado', 'critical');
       }
@@ -259,15 +254,12 @@ export function StudentCam({
     initCamera();
 
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach(track => track.stop());
-      }
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      screenStreamRef.current?.getTracks().forEach(t => t.stop());
     };
   }, [sendAlert, sendAlertWithSnapshot]);
 
+  // ── AI init ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!enableAI || !hasVideo || !videoRef.current || aiInitializedRef.current) return;
 
@@ -275,28 +267,21 @@ export function StudentCam({
       try {
         setAiStatus('loading');
         await initAICoordinator();
-        
         if (videoRef.current) {
-          startDetection(videoRef.current, {
-            onAlert: handleAIAlert,
-            onRequestSnapshot: handleAISnapshot,
-          });
+          startDetection(videoRef.current, { onAlert: handleAIAlert, onRequestSnapshot: handleAISnapshot });
           aiInitializedRef.current = true;
           setAiStatus('active');
         }
-      } catch (error) {
-        console.error('Error initializing AI:', error);
+      } catch {
         setAiStatus('error');
       }
     };
 
     const timer = setTimeout(initAI, 2000);
-
-    return () => {
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [enableAI, hasVideo, handleAIAlert, handleAISnapshot]);
 
+  // ── AI cleanup on unmount ─────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (aiInitializedRef.current) {
@@ -307,129 +292,122 @@ export function StudentCam({
     };
   }, []);
 
+  // ── Supabase Broadcast channel + WebRTC signaling ─────────────────────────
   useEffect(() => {
     if (setupPhase !== 'ready') return;
-    
-    const socket = io({
-      path: '/api/socket',
-      transports: ['websocket', 'polling'],
-    });
 
-    socketRef.current = socket;
+    const channel = supabase.channel(`exam-room-${examId}`);
+    channelRef.current = channel;
 
-    socket.on('connect', () => {
-      setIsConnected(true);
-      setConnectionStatus('connected');
-      
-      socket.emit('student:join-exam', {
-        examId,
-        studentId,
-        studentName,
-        participationId,
-      });
-    });
+    channel
+      .on('broadcast', { event: 'webrtc-signaling' }, async ({ payload }: any) => {
+        // Route: only process messages addressed to this student
+        if (payload.toId !== studentId) return;
 
-    socket.on('disconnect', () => {
-      setIsConnected(false);
-      setConnectionStatus('connecting');
-    });
+        const pc = peerConnectionRef.current;
 
-    socket.on('connect_error', () => {
-      setConnectionStatus('failed');
-    });
-
-    socket.on('webrtc:answer', async (data: { answer: RTCSessionDescriptionInit }) => {
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(data.answer);
-      }
-    });
-
-    socket.on('webrtc:ice-candidate', (data: { candidate: RTCIceCandidateInit }) => {
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    });
-
-    socket.on('exam:closed', () => {
-      sendAlert('exam_closed', 'El examen ha sido cerrado por el instructor', 'low');
-    });
-
-    socket.on('instructor:disconnected', () => {
-    });
-
-    socket.on('instructor:request-snapshot', () => {
-      sendSnapshotWithReason('instructor_request');
-    });
-
-    socket.on('ai:request-snapshot', (data: { reason: string }) => {
-      sendSnapshotWithReason(`ai:${data.reason}`);
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [examId, studentId, studentName, participationId, setupPhase, sendAlert, sendSnapshotWithReason]);
-
-  useEffect(() => {
-    if (!isConnected || !streamRef.current || !socketRef.current || setupPhase !== 'ready') return;
-
-    const initWebRTC = async () => {
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-      });
-
-      peerConnectionRef.current = pc;
-
-      streamRef.current!.getTracks().forEach(track => {
-        pc.addTrack(track, streamRef.current!);
-      });
-
-      if (screenStreamRef.current) {
-        const screenTrack = screenStreamRef.current.getVideoTracks()[0];
-        if (screenTrack) {
-          pc.addTrack(screenTrack, screenStreamRef.current);
+        switch (payload.type) {
+          case 'answer': {
+            if (pc && pc.signalingState !== 'stable') {
+              await pc.setRemoteDescription(new RTCSessionDescription(payload.data));
+            }
+            break;
+          }
+          case 'ice-candidate': {
+            if (pc) {
+              await pc.addIceCandidate(new RTCIceCandidate(payload.data)).catch(() => {});
+            }
+            break;
+          }
+          case 'exam-closed': {
+            sendAlertRef.current('exam_closed', 'El examen ha sido cerrado por el instructor', 'low');
+            break;
+          }
         }
-      }
+      })
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          setIsConnected(true);
+          setConnectionStatus('connected');
 
-      pc.onicecandidate = (event) => {
-        if (event.candidate && socketRef.current) {
-          socketRef.current.emit('webrtc:ice-candidate', {
-            examId,
-            fromId: studentId,
-            candidate: event.candidate,
-            isInstructor: false,
+          // 1. Announce presence to instructor
+          channel.send({
+            type: 'broadcast',
+            event: 'webrtc-signaling',
+            payload: { type: 'student-joined', fromId: studentId, toId: 'instructor', studentName, participationId },
           });
+
+          // 2. Set up RTCPeerConnection
+          if (!streamRef.current) return;
+
+          const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+          peerConnectionRef.current = pc;
+
+          // Add camera + microphone tracks
+          streamRef.current.getTracks().forEach(track => pc.addTrack(track, streamRef.current!));
+
+          // Add screen share tracks if already active
+          if (screenStreamRef.current) {
+            screenStreamRef.current.getVideoTracks().forEach(track =>
+              pc.addTrack(track, screenStreamRef.current!)
+            );
+          }
+
+          // Trickle ICE: send candidates as they are gathered
+          pc.onicecandidate = ({ candidate }) => {
+            if (candidate) {
+              channel.send({
+                type: 'broadcast',
+                event: 'webrtc-signaling',
+                payload: {
+                  type:   'ice-candidate',
+                  fromId: studentId,
+                  toId:   'instructor',
+                  data:   candidate.toJSON(),
+                },
+              });
+            }
+          };
+
+          // 3. Create and send offer
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          channel.send({
+            type: 'broadcast',
+            event: 'webrtc-signaling',
+            payload: {
+              type:   'offer',
+              fromId: studentId,
+              toId:   'instructor',
+              data:   { type: offer.type, sdp: offer.sdp },
+            },
+          });
+
+        } else if (status === 'CHANNEL_ERROR') {
+          setIsConnected(false);
+          setConnectionStatus('failed');
+        } else if (status === 'CLOSED') {
+          setIsConnected(false);
+          setConnectionStatus('connecting');
         }
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      socketRef.current!.emit('webrtc:offer', {
-        examId,
-        fromStudentId: studentId,
-        offer,
       });
-    };
-
-    initWebRTC();
 
     return () => {
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-      }
+      peerConnectionRef.current?.close();
+      peerConnectionRef.current = null;
+      supabase.removeChannel(channel);
+      channelRef.current = null;
     };
-  }, [isConnected, examId, studentId, setupPhase]);
+  }, [examId, studentId, studentName, participationId, setupPhase]);
 
+  // ── Tab switch / window blur alerts ───────────────────────────────────────
   useEffect(() => {
     if (setupPhase !== 'ready') return;
-    
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        sendAlertWithSnapshot('tab_switch', 'El estudiante cambió de pestaña', 'high');
-      }
-    };
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) sendAlertWithSnapshot('tab_switch', 'El estudiante cambió de pestaña', 'high');
+    };
     const handleBlur = () => {
       sendAlertWithSnapshot('window_blur', 'El estudiante salió de la ventana', 'medium');
     };
@@ -443,70 +421,50 @@ export function StudentCam({
     };
   }, [sendAlertWithSnapshot, setupPhase]);
 
+  // ── AI status badge ───────────────────────────────────────────────────────
   const getAIStatusBadge = () => {
     if (!enableAI) return null;
-    
     switch (aiStatus) {
       case 'loading':
-        return (
-          <Badge className="bg-yellow-600 text-xs">
-            <Brain className="h-3 w-3 mr-1 animate-pulse" /> IA Cargando
-          </Badge>
-        );
+        return <Badge className="bg-yellow-600 text-xs"><Brain className="h-3 w-3 mr-1 animate-pulse" /> IA Cargando</Badge>;
       case 'active':
-        return (
-          <Badge className="bg-purple-600 text-xs">
-            <Brain className="h-3 w-3 mr-1" /> IA Activa
-          </Badge>
-        );
+        return <Badge className="bg-purple-600 text-xs"><Brain className="h-3 w-3 mr-1" /> IA Activa</Badge>;
       case 'error':
-        return (
-          <Badge className="bg-red-600 text-xs">
-            <Brain className="h-3 w-3 mr-1" /> IA Error
-          </Badge>
-        );
+        return <Badge className="bg-red-600 text-xs"><Brain className="h-3 w-3 mr-1" /> IA Error</Badge>;
       default:
         return null;
     }
   };
 
+  // ── Render: screen-blocked modal ──────────────────────────────────────────
   if (screenBlocked) {
     return (
       <div className="fixed inset-0 z-50 bg-red-900/95 flex items-center justify-center">
         <div className="max-w-md mx-auto p-8 text-center text-white">
           <AlertTriangle className="h-20 w-20 mx-auto mb-6 animate-pulse" />
-          <h2 className="text-2xl font-bold mb-4">
-            Conexión de Pantalla Perdida
-          </h2>
+          <h2 className="text-2xl font-bold mb-4">Conexión de Pantalla Perdida</h2>
           <p className="text-lg mb-6">
-            Se ha perdido la conexión con tu pantalla compartida. 
+            Se ha perdido la conexión con tu pantalla compartida.
             Debes volver a compartir inmediatamente para continuar con el examen.
           </p>
-          <Button 
-            onClick={restoreScreenShare}
-            size="lg"
-            className="bg-white text-red-900 hover:bg-gray-100"
-          >
+          <Button onClick={restoreScreenShare} size="lg" className="bg-white text-red-900 hover:bg-gray-100">
             <Monitor className="h-5 w-5 mr-2" />
             Compartir Pantalla Nuevamente
           </Button>
-          {screenError && (
-            <p className="mt-4 text-yellow-300 text-sm">{screenError}</p>
-          )}
+          {screenError && <p className="mt-4 text-yellow-300 text-sm">{screenError}</p>}
         </div>
       </div>
     );
   }
 
+  // ── Render: screen sharing setup ──────────────────────────────────────────
   if (setupPhase === 'screen') {
     return (
       <Card className="overflow-hidden">
         <div className="aspect-video bg-black relative">
           <video
             ref={videoRef}
-            autoPlay
-            playsInline
-            muted
+            autoPlay playsInline muted
             className="absolute inset-0 w-full h-full object-cover"
             style={{ transform: 'scaleX(-1)' }}
           />
@@ -514,34 +472,27 @@ export function StudentCam({
             <Monitor className="h-16 w-16 mb-4" />
             <h3 className="text-xl font-bold mb-2">Compartir Pantalla Requerido</h3>
             <p className="text-center text-sm text-gray-300 mb-6 max-w-sm">
-              Para continuar con el examen, debes compartir tu pantalla completa. 
+              Para continuar con el examen, debes compartir tu pantalla completa.
               Esto es obligatorio para garantizar la integridad del examen.
             </p>
-            <Button 
-              onClick={startScreenShare}
-              size="lg"
-              className="bg-blue-600 hover:bg-blue-700"
-            >
+            <Button onClick={startScreenShare} size="lg" className="bg-blue-600 hover:bg-blue-700">
               <Monitor className="h-5 w-5 mr-2" />
               Compartir Pantalla
             </Button>
-            {screenError && (
-              <p className="mt-4 text-red-400 text-sm text-center">{screenError}</p>
-            )}
+            {screenError && <p className="mt-4 text-red-400 text-sm text-center">{screenError}</p>}
           </div>
         </div>
         <CardContent className="p-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Paso 2 de 2: Compartir pantalla</span>
-            <Badge variant="secondary">
-              <CheckCircle className="h-3 w-3 mr-1" /> Cámara lista
-            </Badge>
+            <Badge variant="secondary"><CheckCircle className="h-3 w-3 mr-1" /> Cámara lista</Badge>
           </div>
         </CardContent>
       </Card>
     );
   }
 
+  // ── Render: camera permissions pending ────────────────────────────────────
   if (setupPhase === 'camera') {
     return (
       <Card className="overflow-hidden">
@@ -568,6 +519,7 @@ export function StudentCam({
     );
   }
 
+  // ── Render: active proctoring ─────────────────────────────────────────────
   return (
     <Card className="overflow-hidden">
       <div className="aspect-video bg-black relative">
@@ -579,41 +531,35 @@ export function StudentCam({
         ) : (
           <video
             ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 w-full h-full object-cover mirror"
+            autoPlay playsInline muted
+            className="absolute inset-0 w-full h-full object-cover"
             style={{ transform: 'scaleX(-1)' }}
           />
         )}
 
         <div className="absolute top-2 left-2 flex gap-2 flex-wrap">
           <Badge variant={isConnected ? 'default' : 'destructive'} className="text-xs">
-            {isConnected ? (
-              <><Wifi className="h-3 w-3 mr-1" /> Conectado</>
-            ) : (
-              <><WifiOff className="h-3 w-3 mr-1" /> Desconectado</>
-            )}
+            {isConnected
+              ? <><Wifi className="h-3 w-3 mr-1" /> Conectado</>
+              : <><WifiOff className="h-3 w-3 mr-1" /> Desconectado</>}
           </Badge>
           {getAIStatusBadge()}
         </div>
 
         <div className="absolute top-2 right-2 flex gap-1">
-          <Badge variant={hasVideo ? 'default' : 'destructive'} className="text-xs">
-            {hasVideo ? <Video className="h-3 w-3" /> : <VideoOff className="h-3 w-3" />}
+          <Badge variant={hasVideo  ? 'default' : 'destructive'} className="text-xs">
+            {hasVideo  ? <Video    className="h-3 w-3" /> : <VideoOff  className="h-3 w-3" />}
           </Badge>
-          <Badge variant={hasAudio ? 'default' : 'destructive'} className="text-xs">
-            {hasAudio ? <Mic className="h-3 w-3" /> : <MicOff className="h-3 w-3" />}
+          <Badge variant={hasAudio  ? 'default' : 'destructive'} className="text-xs">
+            {hasAudio  ? <Mic      className="h-3 w-3" /> : <MicOff    className="h-3 w-3" />}
           </Badge>
           <Badge variant={hasScreen ? 'default' : 'destructive'} className="text-xs">
-            {hasScreen ? <Monitor className="h-3 w-3" /> : <MonitorOff className="h-3 w-3" />}
+            {hasScreen ? <Monitor  className="h-3 w-3" /> : <MonitorOff className="h-3 w-3" />}
           </Badge>
         </div>
 
         <div className="absolute bottom-2 left-2">
-          <Badge variant="secondary" className="text-xs bg-black/50 text-white">
-            {studentName}
-          </Badge>
+          <Badge variant="secondary" className="text-xs bg-black/50 text-white">{studentName}</Badge>
         </div>
 
         <div className="absolute bottom-2 right-2">
@@ -632,7 +578,7 @@ export function StudentCam({
           )}
         </div>
       </div>
-      
+
       <CardContent className="p-3">
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Estado de proctoring</span>
