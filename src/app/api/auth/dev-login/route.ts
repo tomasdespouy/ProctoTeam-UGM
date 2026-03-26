@@ -17,7 +17,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { email } = await request.json();
+    const body = await request.json();
+    const { email, role: forceRole } = body;
 
     if (!email || typeof email !== 'string') {
       return NextResponse.json(
@@ -46,6 +47,17 @@ export async function POST(request: NextRequest) {
         email: emailLower,
         nombre: nombre.charAt(0).toUpperCase() + nombre.slice(1)
       });
+    }
+
+    // In development only: allow forcing a specific role (e.g. super-admin)
+    const validRoles = ['student', 'instructor', 'super-admin'];
+    if (forceRole && validRoles.includes(forceRole) && user.role !== forceRole) {
+      const { query } = await import('@/lib/db');
+      await query(
+        `UPDATE users SET role = $1, updated_at = NOW() WHERE uid = $2`,
+        [forceRole, user.uid]
+      );
+      user = { ...user, role: forceRole as 'student' | 'instructor' | 'super-admin' };
     }
 
     // Generate a properly-structured JWT so that auth-middleware.ts can decode it.

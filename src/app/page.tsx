@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Bug, GraduationCap, BookOpen } from 'lucide-react';
+import { Loader2, Bug, GraduationCap, BookOpen, ShieldCheck } from 'lucide-react';
 import { signInWithAzurePopup, signInWithAzureRedirect } from '@/lib/azure-auth';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, UserProfile } from '@/context/auth-context';
@@ -40,14 +40,14 @@ export default function HomePage() {
     }
   };
 
-  const handleDevLogin = async (email: string) => {
+  const handleDevLogin = async (email: string, forceRole?: string) => {
     if (devLoading) return;
     setDevLoading(true);
     try {
       const response = await fetch('/api/auth/dev-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, ...(forceRole ? { role: forceRole } : {}) }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Error en dev login');
@@ -62,7 +62,14 @@ export default function HomePage() {
       };
       setDevUser(profile, data.devToken);
       toast({ title: "Dev Login exitoso", description: `Entrando como ${profile.role}: ${profile.correo}` });
-      router.push(profile.role === 'student' ? '/student' : '/instructor');
+
+      if (profile.role === 'student') {
+        router.push('/student');
+      } else if (profile.role === 'super-admin') {
+        router.push('/super-admin/dashboard');
+      } else {
+        router.push('/instructor');
+      }
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
@@ -227,6 +234,14 @@ export default function HomePage() {
                 className="flex-1 h-8 text-xs border-green-400/50 text-green-300 bg-transparent hover:bg-green-400/10"
               >
                 <BookOpen className="h-3 w-3 mr-1" /> Instructor
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                onClick={() => { setDevEmail('admin@ugm.cl'); handleDevLogin('admin@ugm.cl', 'super-admin'); }}
+                disabled={devLoading}
+                className="flex-1 h-8 text-xs border-purple-400/50 text-purple-300 bg-transparent hover:bg-purple-400/10"
+              >
+                <ShieldCheck className="h-3 w-3 mr-1" /> Admin
               </Button>
             </div>
             <Button
