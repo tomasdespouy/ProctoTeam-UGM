@@ -95,82 +95,87 @@ export default function HomePage() {
   return (
     <main className="min-h-screen flex flex-col relative overflow-hidden bg-[#0D1240]">
 
-      {/* ── Background: navy gradient + portrait image ── */}
+      {/* ── Background base gradient ── */}
       <div
         className="absolute inset-0"
         style={{
-          background: 'linear-gradient(135deg, #0D1240 0%, #1A1D6E 40%, #1E3A8A 100%)',
+          background: 'linear-gradient(135deg, #0D1240 0%, #1A1D6E 50%, #0D1240 100%)',
         }}
       />
 
-      {/* UGM large watermark text — left side */}
+      {/* ── LEFT: UGM letters — vertically stacked U·G·M sketch ── */}
       <div
-        className="absolute left-0 top-0 bottom-0 flex items-center pointer-events-none select-none"
-        style={{ zIndex: 1 }}
+        className="absolute left-0 top-0 bottom-0 pointer-events-none select-none overflow-hidden"
+        style={{ zIndex: 1, width: '42%' }}
       >
-        <span
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/ugm-letters.png"
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover object-left-top"
           style={{
-            fontSize: 'clamp(180px, 28vw, 340px)',
-            fontWeight: 900,
-            color: 'transparent',
-            WebkitTextStroke: '2px rgba(255,255,255,0.08)',
-            lineHeight: 1,
-            letterSpacing: '-0.02em',
-            marginLeft: '-2vw',
-            fontFamily: "'Space Grotesk', sans-serif",
+            opacity: 0.55,
+            mixBlendMode: 'screen',
+            filter: 'invert(1)',
           }}
-        >
-          UGM
-        </span>
+        />
+        {/* Fade right edge to blend seamlessly with center */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: 'linear-gradient(to right, transparent 60%, #0D1240 100%)',
+          }}
+        />
       </div>
 
-      {/* Portrait decorative image — right side */}
+      {/* ── RIGHT: Gabriela Mistral portrait with left fade ── */}
       <div
-        className="absolute right-0 top-0 bottom-0 w-1/2 pointer-events-none"
-        style={{ zIndex: 1 }}
+        className="absolute right-0 top-0 bottom-0 pointer-events-none overflow-hidden"
+        style={{ zIndex: 1, width: '65%' }}
       >
-        <Image
-          src="/UGM.png"
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/gabriela-mistral-sketch.png"
           alt=""
-          fill
-          sizes="50vw"
-          className="object-cover object-left opacity-20"
-          priority
+          className="absolute inset-0 w-full h-full object-cover object-top"
+          style={{
+            opacity: 0.65,
+            mixBlendMode: 'screen',
+            filter: 'invert(1)',
+          }}
+        />
+        {/* Gradient fade: solid navy left → transparent right (the "efecto de fade") */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: 'linear-gradient(to right, #0D1240 0%, rgba(13,18,64,0.92) 18%, rgba(13,18,64,0.65) 40%, rgba(13,18,64,0.2) 65%, transparent 100%)',
+          }}
         />
       </div>
 
       {/* ── Page content ── */}
       <div className="relative flex flex-col min-h-screen" style={{ zIndex: 2 }}>
 
-        {/* UGM Logo — top center */}
+        {/* UGM University Logo — top center */}
         <div className="flex justify-center pt-8 pb-2">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/10 border border-white/30 flex items-center justify-center">
-              <svg viewBox="0 0 24 24" className="w-6 h-6 fill-white" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-              </svg>
-            </div>
-            <div className="text-left">
-              <p className="text-white text-[11px] font-semibold leading-tight tracking-wide uppercase">
-                Universidad
-              </p>
-              <p className="text-white text-[15px] font-bold leading-tight">
-                Gabriela Mistral
-              </p>
-              <p className="text-white/60 text-[9px] italic leading-tight">
-                Juntos escribimos tu futuro
-              </p>
-            </div>
-          </div>
+          <Image
+            src="/ugm-logo.png"
+            alt="Universidad Gabriela Mistral"
+            width={220}
+            height={44}
+            className="object-contain"
+            style={{ filter: 'brightness(0) invert(1)', opacity: 0.9, width: 'auto', height: '44px' }}
+            priority
+          />
         </div>
 
         {/* Title */}
         <div className="text-center mt-6 mb-8">
           <h1 className="font-headline font-black leading-none" style={{ fontSize: 'clamp(40px, 6vw, 72px)' }}>
-            <span className="text-[#00BBFF]">UGM </span>
-            <span className="text-white">Proctor</span>
+            <span className="text-[#00BBFF]">Procto</span>
+            <span className="text-white">Team</span>
           </h1>
-          <p className="text-white/80 mt-2 text-base font-light tracking-wide">
+          <p className="text-white/70 mt-2 text-base font-light tracking-wide">
             Sistema de Vigilancia de Exámenes en Línea
           </p>
         </div>
@@ -179,15 +184,14 @@ export default function HomePage() {
         <div className="flex flex-col items-center px-4 pb-24">
           <div
             className="bg-white w-full max-w-sm rounded-2xl overflow-hidden"
-            style={{ boxShadow: '0px 8px 32px rgba(0,0,0,0.45)' }}
+            style={{ boxShadow: '0px 8px 40px rgba(0,0,0,0.55)' }}
           >
-            {/* Card top: avatar */}
+            {/* Card top */}
             <div className="flex flex-col items-center pt-8 pb-4 px-8">
               <div
                 className="w-20 h-20 rounded-full flex items-center justify-center mb-4"
                 style={{ background: 'linear-gradient(135deg, #1A1D47 0%, #242F62 100%)' }}
               >
-                {/* Graduation cap icon */}
                 <svg viewBox="0 0 40 40" className="w-11 h-11" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M20 8L4 16L20 24L36 16L20 8Z" fill="white"/>
                   <path d="M8 18.5V27C8 27 12 31 20 31C28 31 32 27 32 27V18.5L20 24.5L8 18.5Z" fill="white" opacity="0.85"/>
@@ -203,16 +207,13 @@ export default function HomePage() {
                 Accede para rendir tu examen
               </p>
 
-              {/* Divider */}
               <div className="w-full h-px bg-gray-200 mb-6" />
 
-              {/* Iniciar sesión section */}
               <div className="w-full">
                 <p className="text-[#1A1D47] font-bold text-base mb-5">
                   Iniciar sesión
                 </p>
 
-                {/* Visual-only fields matching Figma aesthetic */}
                 <div className="mb-3">
                   <label className="block text-[#1A1D47] text-xs font-medium mb-1">
                     E-mail institucional
@@ -239,7 +240,6 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Main SSO button */}
                 <Button
                   onClick={handleLogin}
                   disabled={isLoading}
@@ -268,7 +268,7 @@ export default function HomePage() {
             <div className="h-2 w-full" style={{ background: '#00BBFF' }} />
           </div>
 
-          {/* ── Dev Login Panel (discrete) ── */}
+          {/* ── Dev Login Panel ── */}
           {SHOW_DEV_LOGIN && (
             <div
               className="mt-4 w-full max-w-sm rounded-xl p-4 border"
