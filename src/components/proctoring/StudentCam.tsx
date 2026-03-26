@@ -121,10 +121,8 @@ export function StudentCam({
   // Keep mirrors in sync on every render (cheap — no effect teardown/setup).
   useEffect(() => { setupPhaseRef.current = setupPhase; }, [setupPhase]);
   useEffect(() => { onReadyRef.current    = onReady; },    [onReady]);
-  // Keep AI callbacks ref in sync — interval always reads the freshest version.
-  useEffect(() => {
-    aiCallbacksRef.current = { onAlert: handleAIAlert, onRequestSnapshot: handleAISnapshot };
-  }, [handleAIAlert, handleAISnapshot]);
+  // NOTE: aiCallbacksRef sync useEffect is declared AFTER handleAIAlert /
+  // handleAISnapshot to avoid a Temporal Dead Zone crash (const TDZ).
 
   // ── Re-apply streams whenever <video> elements mount (phase transitions) ────
   // • videoRef      → camera  (webcam)   — AI always reads this element
@@ -210,6 +208,12 @@ export function StudentCam({
   const handleAISnapshot = useCallback((reason: string) => {
     sendSnapshotWithReason(`ai:${reason}`);
   }, [sendSnapshotWithReason]);
+
+  // Keep AI callbacks ref in sync — declared HERE (after handleAIAlert /
+  // handleAISnapshot) so the dependency array does not hit the TDZ.
+  useEffect(() => {
+    aiCallbacksRef.current = { onAlert: handleAIAlert, onRequestSnapshot: handleAISnapshot };
+  }, [handleAIAlert, handleAISnapshot]);
 
   // ── addScreenTrackToWebRTC ─────────────────────────────────────────────────
   // Only dep is studentId (stable prop).
