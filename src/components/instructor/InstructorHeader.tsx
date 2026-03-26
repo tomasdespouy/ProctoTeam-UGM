@@ -5,15 +5,14 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { cn } from '@/lib/utils';
-import { LogOut, Home, Eye, History, HelpCircle } from 'lucide-react';
+import { LogOut, Home, Eye, History } from 'lucide-react';
 
 // ─── Navigation items ─────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
-  { href: '/instructor',              label: 'Inicio',          icon: Home       },
-  { href: '/instructor/live-monitor', label: 'Monitor en Vivo', icon: Eye        },
-  { href: '/instructor/historic',     label: 'Histórico',       icon: History    },
-  { href: '/instructor/help',         label: 'Ayuda',           icon: HelpCircle },
+  { href: '/instructor',              label: 'Inicio',          icon: Home    },
+  { href: '/instructor/live-monitor', label: 'Monitor en Vivo', icon: Eye     },
+  { href: '/instructor/historic',     label: 'Histórico',       icon: History },
 ];
 
 // ─── Header ───────────────────────────────────────────────────────────────────
@@ -48,7 +47,7 @@ export default function InstructorHeader() {
           height={32}
           className="object-contain flex-shrink-0"
           priority
-          style={{ height: 32, width: 'auto' }}
+          style={{ height: '32px', width: 'auto' }}
         />
 
         {/* Vertical separator */}
