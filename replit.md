@@ -55,6 +55,10 @@ Preferred communication style: Simple, everyday language.
 - **Unified Login**: Authenticates via instructor login, then redirects based on role.
 - **Enhanced Historic View**: System-wide exam history with student counts, instructor details, and cross-instructor analytics.
 - **Supervisory Function**: Administrative oversight without exam creation privileges.
+- **Ghost Monitor (Modo Fantasma)**: `/super-admin/live-monitor?examId=X` embeds `ProctorView` with `readOnly=true`. Hides "Finalizar Examen" button; shows amber "Modo Lectura" badge. Eye button in dashboard navigates here (only enabled for active exams).
+- **User Management**: `/super-admin/instructors` — full user directory with role summary pills, searchable table, and per-user role dropdown (PATCH `/api/admin/users`). Guards against removing last admin.
+- **AI Audit**: `/super-admin/alerts` — global alert feed with KPI cards (total today, top alert type, evidence count), searchable table with severity badges and one-click evidence preview.
+- **APIs**: `/api/admin/users` (GET list + PATCH role), `/api/admin/alerts` (GET metrics + last 100 masked alerts).
 
 ## Security Features
 - **Permission Controls**: Camera/microphone access management.

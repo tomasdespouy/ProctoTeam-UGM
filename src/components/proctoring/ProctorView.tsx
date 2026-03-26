@@ -72,6 +72,8 @@ interface ProctorViewProps {
   examId:            string;
   instructorId:      string;
   onBlockStudent?:   (participationId: string) => void;
+  /** When true: hides Finalizar Examen + Ban buttons. Used by Super Admin ghost view. */
+  readOnly?:         boolean;
 }
 
 type AlertFilter = 'all' | 'critical' | 'warning' | 'info';
@@ -108,7 +110,7 @@ function formatDuration(seconds: number): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorViewProps) {
+export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = false }: ProctorViewProps) {
   const router      = useRouter();
   const { toast }   = useToast();
 
@@ -470,8 +472,13 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
               : <><WifiOff className="h-3.5 w-3.5" /> Conectando...</>}
           </Badge>
 
-          {/* Bug 5: Finalizar Examen with confirmation dialog */}
-          <AlertDialog>
+          {/* Finalizar Examen — hidden in readOnly (Super Admin ghost view) */}
+          {readOnly && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold tracking-wide border border-amber-400/50 text-amber-400 bg-amber-400/10">
+              👁 Modo Lectura
+            </span>
+          )}
+          {!readOnly && <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
                 variant="destructive"
@@ -502,7 +509,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
-          </AlertDialog>
+          </AlertDialog>}
         </div>
       </div>
 

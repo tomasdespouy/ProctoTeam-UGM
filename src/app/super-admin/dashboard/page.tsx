@@ -328,8 +328,10 @@ export default function SuperAdminDashboard() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 w-7 p-0 border-blue-200 text-blue-500 hover:bg-blue-50 hover:border-blue-400"
-                      title="Ver detalle"
+                      className="h-7 w-7 p-0 border-blue-200 text-blue-500 hover:bg-blue-50 hover:border-blue-400 disabled:opacity-30"
+                      title={exam.status === 'active' ? 'Monitorear en vivo (modo fantasma)' : 'Sólo disponible durante exámenes activos'}
+                      disabled={exam.status !== 'active'}
+                      onClick={() => router.push(`/super-admin/live-monitor?examId=${exam.id}`)}
                     >
                       <Eye className="h-3.5 w-3.5" />
                     </Button>
