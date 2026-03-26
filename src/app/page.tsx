@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Bug, GraduationCap, BookOpen, CheckCircle, Settings } from 'lucide-react';
+import { Loader2, Bug, GraduationCap, BookOpen } from 'lucide-react';
 import { signInWithAzurePopup, signInWithAzureRedirect } from '@/lib/azure-auth';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, UserProfile } from '@/context/auth-context';
@@ -23,10 +23,8 @@ export default function HomePage() {
   const handleLogin = async () => {
     if (isLoading) return;
     setIsLoading(true);
-
     try {
       const result = await signInWithAzurePopup();
-
       if (result.error) {
         console.warn("Popup falló, intentando redirección...", result.error);
         await signInWithAzureRedirect();
@@ -45,19 +43,14 @@ export default function HomePage() {
   const handleDevLogin = async (email: string) => {
     if (devLoading) return;
     setDevLoading(true);
-
     try {
       const response = await fetch('/api/auth/dev-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Error en dev login');
-      }
+      if (!response.ok) throw new Error(data.error || 'Error en dev login');
 
       const profile: UserProfile = {
         id: data.user.id,
@@ -67,304 +60,179 @@ export default function HomePage() {
         role: data.user.role,
         photoURL: data.user.photo_url,
       };
-
       setDevUser(profile, data.devToken);
-
-      toast({
-        title: "Dev Login exitoso",
-        description: `Entrando como ${profile.role}: ${profile.correo}`,
-      });
-
-      if (profile.role === 'student') {
-        router.push('/student');
-      } else {
-        router.push('/instructor');
-      }
+      toast({ title: "Dev Login exitoso", description: `Entrando como ${profile.role}: ${profile.correo}` });
+      router.push(profile.role === 'student' ? '/student' : '/instructor');
     } catch (error: any) {
-      console.error("Error en dev login:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "No se pudo iniciar sesión de desarrollo.",
-      });
+      toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
       setDevLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen flex flex-col relative overflow-hidden" style={{ background: '#0B1547' }}>
+    <main
+      className="min-h-screen relative flex flex-col items-center justify-center overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #1B2A6B 0%, #0E1845 40%, #080E28 100%)' }}
+    >
 
-      {/* ── Background: vivid blue radial gradient ── */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: 'radial-gradient(ellipse 80% 70% at 55% 50%, #1A3A9E 0%, #0F2070 40%, #0B1547 75%, #080E2E 100%)',
-        }}
+      {/* ── LEFT: UGM letters ── */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/ugm-letters.png"
+        alt=""
+        aria-hidden="true"
+        className="absolute left-[-5%] top-0 h-full w-auto object-cover pointer-events-none select-none"
+        style={{ opacity: 0.18, mixBlendMode: 'overlay', zIndex: 0 }}
       />
 
-      {/* ── LEFT: UGM letters — multiply blend keeps blue tones ── */}
-      <div
-        className="absolute left-0 top-0 bottom-0 pointer-events-none select-none overflow-hidden"
-        style={{ zIndex: 1, width: '44%' }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/ugm-letters.png"
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover object-left-top"
-          style={{
-            opacity: 0.45,
-            mixBlendMode: 'multiply',
-          }}
-        />
-        {/* Soft right-edge fade */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'linear-gradient(to right, transparent 50%, #0F2070 90%, #0B1547 100%)',
-          }}
-        />
-      </div>
+      {/* ── RIGHT: Gabriela Mistral portrait ── */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/gabriela-mistral-sketch.png"
+        alt=""
+        aria-hidden="true"
+        className="absolute right-[-5%] top-0 h-full w-auto object-cover pointer-events-none select-none"
+        style={{ opacity: 0.28, mixBlendMode: 'overlay', zIndex: 0 }}
+      />
 
-      {/* ── RIGHT: Gabriela Mistral portrait — blue-tinted ghost ── */}
-      <div
-        className="absolute right-0 top-0 bottom-0 pointer-events-none overflow-hidden"
-        style={{ zIndex: 1, width: '65%' }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/gabriela-mistral-sketch.png"
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover object-top"
-          style={{
-            opacity: 0.55,
-            mixBlendMode: 'screen',
-            filter: 'sepia(1) hue-rotate(195deg) saturate(2.5) brightness(1.5)',
-          }}
-        />
-        {/* Left fade: solid → transparent */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'linear-gradient(to right, #0B1547 0%, rgba(11,21,71,0.88) 20%, rgba(11,21,71,0.55) 42%, rgba(11,21,71,0.18) 65%, transparent 100%)',
-          }}
-        />
-      </div>
+      {/* ── Centre content ── */}
+      <div className="relative z-10 flex flex-col items-center w-full px-4">
 
-      {/* ── Page content ── */}
-      <div className="relative flex flex-col min-h-screen" style={{ zIndex: 2 }}>
-
-        {/* Logo — top center */}
-        <div className="flex justify-center pt-8 pb-1">
-          <div className="flex flex-col items-center gap-1">
-            <Image
-              src="/ugm-logo.png"
-              alt="Universidad Gabriela Mistral"
-              width={220}
-              height={44}
-              style={{ filter: 'brightness(0) invert(1)', opacity: 0.95, width: 'auto', height: '40px' }}
-              priority
-            />
-            <p className="text-white/50 text-[11px] italic tracking-wide">
-              Juntos escribimos tu futuro
-            </p>
-          </div>
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-6">
+          <Image
+            src="/ugm-logo.png"
+            alt="Universidad Gabriela Mistral"
+            width={220}
+            height={44}
+            style={{ filter: 'brightness(0) invert(1)', opacity: 0.95, width: 'auto', height: '44px' }}
+            priority
+          />
+          <p className="text-white/50 text-[11px] italic tracking-wide mt-1">
+            Juntos escribimos tu futuro
+          </p>
         </div>
 
         {/* Title */}
-        <div className="text-center mt-5 mb-8">
-          <h1 className="font-headline font-black leading-none" style={{ fontSize: 'clamp(42px, 6vw, 76px)' }}>
-            <span className="text-[#00CCFF]">UGM </span>
-            <span className="text-white">Proctor</span>
-          </h1>
-          <p className="text-white/75 mt-2 text-base font-light tracking-wide">
-            Sistema de Vigilancia de Exámenes en Línea
+        <h1 className="font-headline font-black leading-none mb-2 text-center"
+            style={{ fontSize: 'clamp(40px, 5.5vw, 72px)' }}>
+          <span style={{ color: '#00D4FF' }}>UGM </span>
+          <span className="text-white">Proctor</span>
+        </h1>
+        <p className="text-white/80 text-base font-light tracking-wide mb-10 text-center">
+          Sistema de Vigilancia de Exámenes en Línea
+        </p>
+
+        {/* ── SSO Card ── */}
+        <div
+          className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 flex flex-col items-center text-center relative overflow-hidden"
+        >
+          {/* Icon */}
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center mb-5 shadow-lg"
+            style={{ background: 'linear-gradient(135deg, #1A2242 0%, #2A3B7A 100%)' }}
+          >
+            <GraduationCap className="w-9 h-9 text-white" />
+          </div>
+
+          {/* Card title & description */}
+          <h2 className="text-2xl font-bold mb-1" style={{ color: '#1A2242' }}>
+            Acceso Institucional
+          </h2>
+          <p className="text-gray-500 text-sm mt-1 mb-8 leading-relaxed max-w-xs">
+            Ingresa con tu cuenta de la Universidad Gabriela Mistral para acceder al sistema de exámenes.
           </p>
+
+          {/* SSO button */}
+          <Button
+            onClick={handleLogin}
+            disabled={isLoading}
+            className="w-full rounded-full py-6 text-base font-semibold text-white transition-all shadow-md hover:shadow-lg"
+            style={{
+              background: isLoading
+                ? '#8892AA'
+                : 'linear-gradient(135deg, #1A2242 0%, #263580 100%)',
+            }}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Conectando…
+              </>
+            ) : (
+              'Iniciar Sesión con UGM'
+            )}
+          </Button>
+
+          <p className="text-gray-400 text-xs mt-4">
+            El rol se asigna automáticamente según tu correo institucional
+          </p>
+
+          {/* Cyan bottom stripe */}
+          <div
+            className="absolute bottom-0 left-0 w-full h-2"
+            style={{ background: '#00D4FF' }}
+          />
         </div>
 
-        {/* ── Role selection area ── */}
-        <div className="flex flex-col items-center px-4 pb-24">
-
-          <h2 className="text-white font-semibold text-xl mb-6 tracking-wide">
-            ¿Cómo deseas ingresar?
-          </h2>
-
-          {/* Two informational cards */}
-          <div className="flex gap-5 w-full max-w-xl mb-8">
-
-            {/* Card: Portal de Estudiante */}
-            <div
-              className="flex-1 rounded-2xl p-6 flex flex-col items-center text-center relative"
-              style={{
-                background: 'rgba(255,255,255,0.97)',
-                border: '2px solid #00CCFF',
-                boxShadow: '0 4px 24px rgba(0,204,255,0.25)',
-              }}
-            >
-              <div className="absolute top-3 right-3">
-                <CheckCircle className="w-5 h-5 text-[#00CCFF]" />
-              </div>
-              <div
-                className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
-                style={{ background: 'linear-gradient(135deg, #00CCFF 0%, #007BCC 100%)' }}
-              >
-                <GraduationCap className="w-8 h-8 text-white" />
-              </div>
-              <h3 className="text-[#1A1D47] font-bold text-base mb-1">
-                Portal de Estudiante
-              </h3>
-              <p className="text-gray-500 text-sm mb-3">
-                Accede para rendir tu examen
-              </p>
-              <div className="w-8 h-0.5 bg-[#1A1D47] mb-3" />
-              <p className="text-gray-400 text-xs leading-relaxed">
-                Ingresa con tu cuenta institucional UGM para acceder a tus exámenes en línea bajo vigilancia.
-              </p>
+        {/* ── Dev login panel ── */}
+        {SHOW_DEV_LOGIN && (
+          <div
+            className="mt-6 w-full max-w-md rounded-2xl p-4 border"
+            style={{
+              background: 'rgba(255,255,255,0.07)',
+              borderColor: 'rgba(255,200,50,0.35)',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Bug className="h-4 w-4 text-amber-400" />
+              <span className="text-amber-300 text-xs font-semibold tracking-wide uppercase">
+                Modo Desarrollo
+              </span>
             </div>
-
-            {/* Card: Panel del Docente */}
-            <div
-              className="flex-1 rounded-2xl p-6 flex flex-col items-center text-center relative"
-              style={{
-                background: 'rgba(255,255,255,0.97)',
-                border: '2px solid rgba(200,210,230,0.6)',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-                opacity: 0.85,
-              }}
-            >
-              <div className="absolute top-3 right-3">
-                <CheckCircle className="w-5 h-5 text-gray-300" />
-              </div>
-              <div
-                className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
-                style={{ background: 'linear-gradient(135deg, #C8D2E6 0%, #A0AABF 100%)' }}
-              >
-                <Settings className="w-8 h-8 text-white" />
-              </div>
-              <h3 className="text-[#1A1D47] font-bold text-base mb-1">
-                Panel del Docente
-              </h3>
-              <p className="text-gray-500 text-sm mb-3">
-                Monitorea el progreso del examen
-              </p>
-              <div className="w-8 h-0.5 bg-gray-300 mb-3" />
-              <p className="text-gray-400 text-xs leading-relaxed">
-                Supervisa en tiempo real el estado de tus estudiantes durante el examen.
-              </p>
-            </div>
-          </div>
-
-          {/* SSO entry button */}
-          <div className="flex flex-col items-center gap-3 w-full max-w-xs">
-            <Button
-              onClick={handleLogin}
-              disabled={isLoading}
-              className="w-full h-12 text-white font-bold text-base rounded-xl transition-all duration-200 shadow-lg"
-              style={{
-                background: isLoading
-                  ? 'rgba(255,255,255,0.15)'
-                  : 'linear-gradient(135deg, #0055AA 0%, #0077DD 100%)',
-                boxShadow: '0 4px 20px rgba(0,119,221,0.45)',
-              }}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Conectando…
-                </>
-              ) : (
-                <>Entrar &nbsp;→</>
-              )}
-            </Button>
-            <p className="text-white/45 text-[11px] text-center">
-              El portal se asigna automáticamente según tu correo institucional
-            </p>
-          </div>
-
-          {/* ── Dev Login Panel ── */}
-          {SHOW_DEV_LOGIN && (
-            <div
-              className="mt-6 w-full max-w-sm rounded-xl p-4 border"
-              style={{
-                background: 'rgba(255,255,255,0.06)',
-                borderColor: 'rgba(255,200,50,0.4)',
-                backdropFilter: 'blur(8px)',
-              }}
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <Bug className="h-4 w-4 text-amber-400" />
-                <span className="text-amber-300 text-xs font-semibold tracking-wide uppercase">
-                  Modo Desarrollo
-                </span>
-              </div>
-
-              <Input
-                type="email"
-                placeholder="Email de prueba..."
-                value={devEmail}
-                onChange={(e) => setDevEmail(e.target.value)}
-                className="mb-2 h-9 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-amber-400"
-              />
-
-              <div className="flex gap-2 mb-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setDevEmail('test@estudiante.ugm.cl');
-                    handleDevLogin('test@estudiante.ugm.cl');
-                  }}
-                  disabled={devLoading}
-                  className="flex-1 h-8 text-xs border-blue-400/50 text-blue-300 bg-transparent hover:bg-blue-400/10"
-                >
-                  <GraduationCap className="h-3 w-3 mr-1" />
-                  Estudiante
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setDevEmail('test@ugm.cl');
-                    handleDevLogin('test@ugm.cl');
-                  }}
-                  disabled={devLoading}
-                  className="flex-1 h-8 text-xs border-green-400/50 text-green-300 bg-transparent hover:bg-green-400/10"
-                >
-                  <BookOpen className="h-3 w-3 mr-1" />
-                  Instructor
-                </Button>
-              </div>
-
+            <Input
+              type="email"
+              placeholder="Email de prueba..."
+              value={devEmail}
+              onChange={(e) => setDevEmail(e.target.value)}
+              className="mb-2 h-9 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-amber-400"
+            />
+            <div className="flex gap-2 mb-2">
               <Button
-                onClick={() => handleDevLogin(devEmail)}
-                disabled={devLoading || !devEmail}
-                size="sm"
-                className="w-full h-8 text-xs bg-amber-500/80 hover:bg-amber-500 text-white"
+                variant="outline" size="sm"
+                onClick={() => { setDevEmail('test@estudiante.ugm.cl'); handleDevLogin('test@estudiante.ugm.cl'); }}
+                disabled={devLoading}
+                className="flex-1 h-8 text-xs border-blue-400/50 text-blue-300 bg-transparent hover:bg-blue-400/10"
               >
-                {devLoading ? (
-                  <>
-                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                    Entrando...
-                  </>
-                ) : (
-                  'Entrar con email personalizado'
-                )}
+                <GraduationCap className="h-3 w-3 mr-1" /> Estudiante
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                onClick={() => { setDevEmail('test@ugm.cl'); handleDevLogin('test@ugm.cl'); }}
+                disabled={devLoading}
+                className="flex-1 h-8 text-xs border-green-400/50 text-green-300 bg-transparent hover:bg-green-400/10"
+              >
+                <BookOpen className="h-3 w-3 mr-1" /> Instructor
               </Button>
             </div>
-          )}
-        </div>
-
-        {/* ── Footer ── */}
-        <footer
-          className="absolute bottom-0 left-0 right-0 py-3 text-center"
-          style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)' }}
-        >
-          <p className="text-white/40 text-xs">
-            Universidad Gabriela Mistral — 2025. Todos los derechos reservados.
-          </p>
-        </footer>
+            <Button
+              onClick={() => handleDevLogin(devEmail)}
+              disabled={devLoading || !devEmail}
+              size="sm"
+              className="w-full h-8 text-xs bg-amber-500/80 hover:bg-amber-500 text-white"
+            >
+              {devLoading ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Entrando...</> : 'Entrar con email personalizado'}
+            </Button>
+          </div>
+        )}
       </div>
+
+      {/* ── Footer ── */}
+      <p className="absolute bottom-4 z-10 text-xs text-white/40 text-center w-full">
+        Universidad Gabriela Mistral — 2026. Todos los derechos reservados.
+      </p>
     </main>
   );
 }
