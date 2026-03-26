@@ -267,18 +267,6 @@ export default function StudentExamLivePage() {
                   <p className="text-sm text-slate-400">Iniciando cámara…</p>
                 </div>
               )}
-
-              {/* ── Status pills ─────────────────────────────────────────── */}
-              <div className="mt-3 flex gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-100">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  Cámara activa
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100">
-                  <Eye className="h-3 w-3" />
-                  IA Monitoreando
-                </span>
-              </div>
             </div>
 
             {/* ── Right: Exam instructions ─────────────────────────────────── */}

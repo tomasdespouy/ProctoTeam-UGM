@@ -740,9 +740,6 @@ export function StudentCam({
           <Badge variant={hasVideo  ? 'default' : 'destructive'} className="text-xs">
             {hasVideo  ? <Video      className="h-3 w-3" /> : <VideoOff   className="h-3 w-3" />}
           </Badge>
-          <Badge variant={hasAudio  ? 'default' : 'destructive'} className="text-xs">
-            {hasAudio  ? <Mic        className="h-3 w-3" /> : <MicOff     className="h-3 w-3" />}
-          </Badge>
           <Badge variant={hasScreen ? 'default' : 'destructive'} className="text-xs">
             {hasScreen ? <Monitor    className="h-3 w-3" /> : <MonitorOff className="h-3 w-3" />}
           </Badge>
