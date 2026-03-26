@@ -71,7 +71,8 @@ export function StudentCam({
   const [screenError,      setScreenError]      = useState<string | null>(null);
 
   // ── Media / WebRTC refs ────────────────────────────────────────────────────
-  const videoRef          = useRef<HTMLVideoElement>(null);
+  const videoRef          = useRef<HTMLVideoElement>(null); // ← camera (webcam) — AI always reads this
+  const screenVideoRef    = useRef<HTMLVideoElement>(null); // ← screen share (PiP background)
   const streamRef         = useRef<MediaStream | null>(null);
   const screenStreamRef   = useRef<MediaStream | null>(null);
   const channelRef        = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -107,14 +108,17 @@ export function StudentCam({
   useEffect(() => { setupPhaseRef.current = setupPhase; }, [setupPhase]);
   useEffect(() => { onReadyRef.current    = onReady; },    [onReady]);
 
-  // ── TAREA 1 FIX: Re-apply camera stream whenever the <video> mounts ────────
-  // The camera effect runs during 'camera' phase when videoRef.current is null
-  // (no <video> in the DOM yet). When the phase advances to 'screen'/'ready',
-  // a new <video> element appears, but srcObject is never set. This effect
-  // fires on every phase transition and always re-links the stream to the DOM.
+  // ── Re-apply streams whenever <video> elements mount (phase transitions) ────
+  // • videoRef      → camera  (webcam)   — AI always reads this element
+  // • screenVideoRef→ screen share       — shown as PiP background in 'ready'
+  // Both assignments run on every phase change so neither element ever loses
+  // its srcObject when React replaces the DOM node during a phase transition.
   useEffect(() => {
     if (videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
+    }
+    if (screenVideoRef.current && screenStreamRef.current) {
+      screenVideoRef.current.srcObject = screenStreamRef.current;
     }
   }, [setupPhase]);
 
@@ -613,60 +617,69 @@ export function StudentCam({
     );
   }
 
-  // ── Render: active proctoring ──────────────────────────────────────────────
+  // ── Render: active proctoring — Picture-in-Picture ────────────────────────
+  // Background: screen share (screenVideoRef / screenStreamRef)
+  // Floating PiP: webcam (videoRef / streamRef) — AI reads this element
   return (
     <Card className="overflow-hidden">
       <div className="aspect-video bg-black relative">
-        {errorMessage ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-red-900/50">
+        {errorMessage && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-red-900/50 z-20">
             <VideoOff className="h-12 w-12 mb-2" />
             <p className="text-sm text-center px-4">{errorMessage}</p>
           </div>
-        ) : (
-          <video
-            ref={videoRef}
-            autoPlay playsInline muted
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{ transform: 'scaleX(-1)' }}
-          />
         )}
 
-        <div className="absolute top-2 left-2 flex gap-2 flex-wrap">
+        {/* ── Main background: screen share ── */}
+        <video
+          ref={screenVideoRef}
+          autoPlay playsInline muted
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+
+        {/* ── PiP overlay: webcam (top-right) — AI target ── */}
+        <video
+          ref={videoRef}
+          autoPlay playsInline muted
+          className="absolute top-3 right-3 w-40 aspect-video rounded-lg shadow-xl border-2 border-white/20 object-cover z-10"
+          style={{ transform: 'scaleX(-1)' }}
+        />
+
+        {/* ── Status badges — bottom-left ── */}
+        <div className="absolute bottom-2 left-2 flex gap-1 z-10">
           <Badge variant={isConnected ? 'default' : 'destructive'} className="text-xs">
             {isConnected
-              ? <><Wifi    className="h-3 w-3 mr-1" /> Conectado</>
-              : <><WifiOff className="h-3 w-3 mr-1" /> Desconectado</>}
+              ? <><Wifi    className="h-3 w-3 mr-1" /> En vivo</>
+              : <><WifiOff className="h-3 w-3 mr-1" /> Sin red</>}
           </Badge>
           {getAIStatusBadge()}
         </div>
 
-        <div className="absolute top-2 right-2 flex gap-1">
+        {/* ── Device icons — bottom-right ── */}
+        <div className="absolute bottom-2 right-2 flex gap-1 z-10">
           <Badge variant={hasVideo  ? 'default' : 'destructive'} className="text-xs">
-            {hasVideo  ? <Video     className="h-3 w-3" /> : <VideoOff  className="h-3 w-3" />}
+            {hasVideo  ? <Video      className="h-3 w-3" /> : <VideoOff   className="h-3 w-3" />}
           </Badge>
           <Badge variant={hasAudio  ? 'default' : 'destructive'} className="text-xs">
-            {hasAudio  ? <Mic       className="h-3 w-3" /> : <MicOff    className="h-3 w-3" />}
+            {hasAudio  ? <Mic        className="h-3 w-3" /> : <MicOff     className="h-3 w-3" />}
           </Badge>
           <Badge variant={hasScreen ? 'default' : 'destructive'} className="text-xs">
-            {hasScreen ? <Monitor   className="h-3 w-3" /> : <MonitorOff className="h-3 w-3" />}
+            {hasScreen ? <Monitor    className="h-3 w-3" /> : <MonitorOff className="h-3 w-3" />}
           </Badge>
         </div>
 
-        <div className="absolute bottom-2 left-2">
-          <Badge variant="secondary" className="text-xs bg-black/50 text-white">{studentName}</Badge>
-        </div>
-
-        <div className="absolute bottom-2 right-2">
+        {/* ── Connection status — top-left ── */}
+        <div className="absolute top-2 left-2 z-10">
           {connectionStatus === 'connected' ? (
-            <Badge className="bg-green-600 text-xs">
+            <Badge className="bg-green-600/90 text-xs">
               <CheckCircle className="h-3 w-3 mr-1" /> Transmitiendo
             </Badge>
           ) : connectionStatus === 'connecting' ? (
-            <Badge className="bg-yellow-600 text-xs">
+            <Badge className="bg-yellow-600/90 text-xs">
               <AlertCircle className="h-3 w-3 mr-1 animate-pulse" /> Conectando...
             </Badge>
           ) : (
-            <Badge className="bg-red-600 text-xs">
+            <Badge className="bg-red-600/90 text-xs">
               <WifiOff className="h-3 w-3 mr-1" /> Sin conexión
             </Badge>
           )}
@@ -677,7 +690,7 @@ export function StudentCam({
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>Monitoreo activo — {studentName}</span>
           <span className="flex items-center gap-2">
-            {hasScreen && <span className="text-green-600 font-medium flex items-center gap-1"><Monitor className="h-3 w-3" /> Pantalla</span>}
+            {hasScreen && <span className="text-green-600 font-medium flex items-center gap-1"><Monitor className="h-3 w-3" /> Pantalla compartida</span>}
           </span>
         </div>
       </CardContent>

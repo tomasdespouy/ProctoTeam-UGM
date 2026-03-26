@@ -56,14 +56,13 @@ interface ExamData {
 // ─── Professional loader ────────────────────────────────────────────────────
 
 const ProfessionalLoader = () => (
-  <div className="flex flex-col min-h-screen items-center justify-center p-8 bg-[#0D1327] text-white">
-    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6"
-      style={{ background: 'linear-gradient(135deg,#00D4FF22,#00D4FF44)' }}>
-      <ShieldCheck className="h-8 w-8 text-[#00D4FF]" />
+  <div className="flex flex-col min-h-screen items-center justify-center p-8 bg-slate-50">
+    <div className="w-16 h-16 rounded-2xl bg-[#1A1D47]/10 flex items-center justify-center mb-6">
+      <ShieldCheck className="h-8 w-8 text-[#1A1D47]" />
     </div>
-    <h1 className="text-2xl font-bold mb-2">Preparando Entorno Seguro</h1>
-    <p className="text-sm text-white/50 mb-6">Verificando conexión y cargando datos del examen…</p>
-    <Skeleton className="h-1.5 w-48 rounded-full bg-white/10" />
+    <h1 className="text-2xl font-bold mb-2 text-slate-800">Preparando Entorno Seguro</h1>
+    <p className="text-sm text-slate-500 mb-6">Verificando conexión y cargando datos del examen…</p>
+    <Skeleton className="h-1.5 w-48 rounded-full bg-slate-200" />
   </div>
 );
 
@@ -199,29 +198,26 @@ export default function StudentExamLivePage() {
   // ── Finished / blocked screen ──────────────────────────────────────────────
   if (step === 'finished') {
     return (
-      <div className="fixed inset-0 bg-[#0D1327] flex items-center justify-center p-4 z-50">
-        <div
-          className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl border border-white/10"
-          style={{ background: 'linear-gradient(160deg,#161F45 0%,#1a2550 100%)' }}
-        >
-          <div className={`px-8 pt-8 pb-6 text-center border-b ${blockReason ? 'border-red-500/30' : 'border-green-500/30'}`}>
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${blockReason ? 'bg-red-500/20' : 'bg-green-500/20'}`}>
+      <div className="fixed inset-0 bg-slate-100 flex items-center justify-center p-4 z-50">
+        <div className="w-full max-w-lg rounded-2xl overflow-hidden shadow-xl border border-slate-200 bg-white">
+          <div className={`px-8 pt-8 pb-6 text-center border-b ${blockReason ? 'border-red-100' : 'border-green-100'}`}>
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${blockReason ? 'bg-red-50' : 'bg-green-50'}`}>
               {blockReason
-                ? <XCircle className="h-8 w-8 text-red-400" />
-                : <CheckCircle className="h-8 w-8 text-green-400" />}
+                ? <XCircle className="h-8 w-8 text-red-500" />
+                : <CheckCircle className="h-8 w-8 text-green-500" />}
             </div>
-            <h2 className={`text-xl font-bold text-white mb-1`}>
+            <h2 className="text-xl font-bold text-slate-800 mb-1">
               {blockReason ? 'Sesión Interrumpida' : 'Monitoreo Finalizado'}
             </h2>
-            <p className="text-sm text-white/50">
+            <p className="text-sm text-slate-500">
               {blockReason || 'Has completado la sesión de monitoreo exitosamente.'}
             </p>
           </div>
           <div className="p-8">
             <Button
               onClick={() => window.location.href = '/student'}
-              className="w-full h-12 font-bold text-[#0D1327]"
-              style={{ backgroundColor: '#00D4FF' }}
+              className="w-full h-12 font-bold text-white"
+              style={{ backgroundColor: '#1A1D47' }}
             >
               <LogOut className="mr-2 h-5 w-5" />
               Volver al Portal de Estudiantes
@@ -238,7 +234,7 @@ export default function StudentExamLivePage() {
   const studentName = userProfile.nombre ?? userProfile.correo ?? user.email ?? 'Estudiante';
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ backgroundColor: '#0D1327' }}>
+    <div className="flex flex-col min-h-screen bg-slate-50">
       <DocumentTitleHandler criticalAlertCount={criticalAlertCount} />
 
       <RequirementsModal
@@ -246,13 +242,14 @@ export default function StudentExamLivePage() {
         onAcceptRequirements={handleAcceptRequirements}
       />
 
+      {/* Navy topbar — same style as instructor dashboard */}
       <ExamHeader examStarted={examStarted} examData={examData} />
 
       <main className="flex-grow mt-16 px-4 pb-6">
         {step === 'monitoring' ? (
           <div className="max-w-6xl mx-auto py-6 grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
 
-            {/* ── Left: StudentCam — larger panel ────────────────────────── */}
+            {/* ── Left: StudentCam — Picture-in-Picture panel ─────────────── */}
             <div className="lg:col-span-2">
               {participationId ? (
                 <StudentCam
@@ -265,68 +262,61 @@ export default function StudentExamLivePage() {
                   onReady={handleStudentReady}
                 />
               ) : (
-                <div
-                  className="rounded-xl border border-white/10 flex flex-col items-center justify-center gap-3 p-8"
-                  style={{ backgroundColor: '#131D3B', minHeight: 220 }}
-                >
-                  <Loader2 className="h-8 w-8 animate-spin text-[#00D4FF]" />
-                  <p className="text-sm text-white/50">Iniciando cámara…</p>
+                <div className="rounded-xl border border-slate-200 bg-white flex flex-col items-center justify-center gap-3 p-8 shadow-sm" style={{ minHeight: 220 }}>
+                  <Loader2 className="h-8 w-8 animate-spin text-[#1A1D47]" />
+                  <p className="text-sm text-slate-400">Iniciando cámara…</p>
                 </div>
               )}
 
               {/* ── Status pills ─────────────────────────────────────────── */}
               <div className="mt-3 flex gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
-                  style={{ backgroundColor: '#0D2E1E', color: '#34D399' }}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-100">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                   Cámara activa
                 </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
-                  style={{ backgroundColor: '#1E1A2E', color: '#A78BFA' }}>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100">
                   <Eye className="h-3 w-3" />
                   IA Monitoreando
                 </span>
               </div>
             </div>
 
-            {/* ── Right: Exam instructions ────────────────────────────────── */}
+            {/* ── Right: Exam instructions ─────────────────────────────────── */}
             <div className="lg:col-span-3 space-y-4">
 
               {/* Active monitoring card */}
-              <div
-                className="rounded-2xl border border-white/10 overflow-hidden shadow-xl"
-                style={{ backgroundColor: '#131D3B' }}
-              >
-                <div className="px-6 py-5 border-b border-white/10 flex items-center gap-3"
+              <div className="rounded-2xl border border-slate-200 overflow-hidden shadow-sm bg-white">
+
+                {/* Card header — navy topbar style */}
+                <div className="px-6 py-5 border-b border-slate-100 flex items-center gap-3"
                   style={{ background: 'linear-gradient(135deg,#1A1D47 0%,#242F62 100%)' }}>
                   <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_#ef4444]" />
                   <div>
                     <h2 className="text-white font-bold text-lg leading-tight">MONITOREO ACTIVO</h2>
-                    <p className="text-white/50 text-xs">{examData.title}</p>
+                    <p className="text-white/60 text-xs">{examData.title}</p>
                   </div>
-                  <MonitorCheck className="h-5 w-5 text-[#00D4FF] ml-auto" />
+                  <MonitorCheck className="h-5 w-5 text-sky-300 ml-auto" />
                 </div>
 
                 <div className="p-6 space-y-5">
                   {/* Rules box */}
-                  <div className="rounded-xl border border-yellow-500/30 p-4"
-                    style={{ backgroundColor: '#2A2200' }}>
-                    <p className="font-bold flex items-center gap-2 mb-3 text-yellow-400 text-sm">
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="font-bold flex items-center gap-2 mb-3 text-amber-700 text-sm">
                       <AlertTriangle className="h-4 w-4" />
                       Requerimientos de Monitoreo
                     </p>
-                    <ul className="space-y-2 text-sm text-yellow-200/80">
+                    <ul className="space-y-2 text-sm text-amber-800">
                       <li className="flex items-start gap-2">
-                        <span className="mt-0.5 text-yellow-400">•</span>
+                        <span className="mt-0.5 text-amber-500">•</span>
                         Mantén la pantalla completa
-                        {' '}(<code className="font-mono text-xs bg-yellow-900/50 px-1.5 py-0.5 rounded text-yellow-300">{fullscreenKey}</code>)
+                        {' '}(<code className="font-mono text-xs bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded text-amber-700">{fullscreenKey}</code>)
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="mt-0.5 text-yellow-400">•</span>
+                        <span className="mt-0.5 text-amber-500">•</span>
                         No cambies de pestaña, ni minimices la ventana
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="mt-0.5 text-yellow-400">•</span>
+                        <span className="mt-0.5 text-amber-500">•</span>
                         Mantente siempre visible y sin ayuda externa
                       </li>
                     </ul>
@@ -334,9 +324,9 @@ export default function StudentExamLivePage() {
 
                   {/* Blackboard button */}
                   <Button
-                    className="w-full h-13 text-base font-bold shadow-lg text-white border-0"
+                    className="w-full text-base font-bold shadow-sm text-white border-0"
                     style={{
-                      background: 'linear-gradient(135deg, #2563EB 0%, #059669 100%)',
+                      background: 'linear-gradient(135deg, #1A1D47 0%, #242F62 100%)',
                       height: 52,
                     }}
                     onClick={() => window.open('https://ugm.blackboard.com/?new_loc=%2Fultra%2Fcourse', '_blank')}
@@ -344,7 +334,7 @@ export default function StudentExamLivePage() {
                     <ExternalLink className="mr-2 h-5 w-5" />
                     Abrir Plataforma de Examen (Blackboard)
                   </Button>
-                  <p className="text-xs text-center text-white/30">
+                  <p className="text-xs text-center text-slate-400">
                     Se abrirá en una nueva pestaña · No cierres esta ventana de monitoreo
                   </p>
                 </div>
@@ -354,7 +344,7 @@ export default function StudentExamLivePage() {
                     <AlertDialogTrigger asChild>
                       <Button
                         variant="outline"
-                        className="w-full h-11 border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300 hover:border-red-400 font-semibold"
+                        className="w-full h-11 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 font-semibold"
                         disabled={isFinishing}
                       >
                         {isFinishing
@@ -382,10 +372,9 @@ export default function StudentExamLivePage() {
               </div>
 
               {/* Security reminder pill */}
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10"
-                style={{ backgroundColor: '#131D3B' }}>
-                <ShieldCheck className="h-4 w-4 text-[#00D4FF] flex-shrink-0" />
-                <p className="text-xs text-white/40">
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white shadow-sm">
+                <ShieldCheck className="h-4 w-4 text-[#1A1D47] flex-shrink-0" />
+                <p className="text-xs text-slate-500">
                   Esta sesión está siendo vigilada en tiempo real por el instructor. Tu audio y video son monitoreados.
                 </p>
               </div>
@@ -393,8 +382,8 @@ export default function StudentExamLivePage() {
           </div>
         ) : (
           <div className="w-full max-w-4xl mx-auto p-4 text-center mt-20">
-            <Loader2 className="h-10 w-10 animate-spin text-[#00D4FF] mx-auto mb-4" />
-            <p className="text-white/50 font-semibold">Cargando la interfaz de verificación…</p>
+            <Loader2 className="h-10 w-10 animate-spin text-[#1A1D47] mx-auto mb-4" />
+            <p className="text-slate-500 font-semibold">Cargando la interfaz de verificación…</p>
           </div>
         )}
       </main>

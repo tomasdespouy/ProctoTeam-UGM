@@ -28,7 +28,6 @@ import {
   Copy,
   Square,
   Loader2,
-  LayoutGrid,
   Maximize2,
   X,
 } from 'lucide-react';
@@ -116,7 +115,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
   const [isConnected,       setIsConnected]       = useState(false);
   const [isLoading,         setIsLoading]         = useState(true);
   const [isClosing,         setIsClosing]         = useState(false);
-  const [gridMode,          setGridMode]          = useState<'normal' | 'dense'>('normal');
+  const [gridMode,          setGridMode]          = useState<'normal' | 'dense'>('dense');
   const [maximizedStudent,  setMaximizedStudent]  = useState<StudentStream | null>(null);
 
   // Close maximize modal on ESC key
@@ -424,21 +423,6 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
         {/* Right side: grid toggle + connection badge + Finalizar button */}
         <div className="flex items-center gap-3 flex-shrink-0">
 
-          {/* Tarea 4: Grid view toggle */}
-          <button
-            title={gridMode === 'normal' ? 'Vista densificada (solo video)' : 'Vista normal (con estadísticas)'}
-            onClick={() => setGridMode(m => m === 'normal' ? 'dense' : 'normal')}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-lg text-sm font-medium border transition-colors"
-            style={
-              gridMode === 'dense'
-                ? { backgroundColor: '#1A1D47', color: '#00D4FF', borderColor: '#00D4FF55' }
-                : { backgroundColor: '#F3F4F6', color: '#374151', borderColor: '#D1D5DB' }
-            }
-          >
-            <LayoutGrid className="h-4 w-4" />
-            {gridMode === 'dense' ? 'Vista Normal' : 'Vista Grid'}
-          </button>
-
           <Badge
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full"
             style={{
@@ -536,56 +520,29 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
           )}
         </div>
 
-        {gridMode === 'dense' ? (
-          <div className="rounded-xl p-3 border border-white/10" style={{ backgroundColor: '#111827' }}>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12 text-gray-500">
-                <div className="animate-spin h-6 w-6 border-2 border-gray-600 border-t-transparent rounded-full mr-3" />
-                Cargando estudiantes...
-              </div>
-            ) : studentsArray.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                <Video className="h-10 w-10 mb-3 opacity-30" />
-                <p className="text-sm">Esperando conexión de estudiantes...</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-2">
-                {studentsArray.map(student => (
-                  <DenseStudentCell
-                    key={student.studentId}
-                    student={student}
-                    onMaximize={() => setMaximizedStudent(student)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12 text-gray-400">
-                <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mr-3" />
-                Cargando estudiantes...
-              </div>
-            ) : studentsArray.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-                <Video className="h-10 w-10 mb-3 opacity-40" />
-                <p className="text-sm">Esperando conexión de estudiantes...</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {studentsArray.map(student => (
-                  <StudentCard
-                    key={student.studentId}
-                    student={student}
-                    onBlock={() => onBlockStudent?.(student.participationId)}
-                    onMaximize={() => setMaximizedStudent(student)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        <div className="rounded-xl p-3 border border-white/10" style={{ backgroundColor: '#111827' }}>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12 text-gray-500">
+              <div className="animate-spin h-6 w-6 border-2 border-gray-600 border-t-transparent rounded-full mr-3" />
+              Cargando estudiantes...
+            </div>
+          ) : studentsArray.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+              <Video className="h-10 w-10 mb-3 opacity-30" />
+              <p className="text-sm">Esperando conexión de estudiantes...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+              {studentsArray.map(student => (
+                <DenseStudentCell
+                  key={student.studentId}
+                  student={student}
+                  onMaximize={() => setMaximizedStudent(student)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       {/* ── Maximize modal ────────────────────────────────────────────────── */}
