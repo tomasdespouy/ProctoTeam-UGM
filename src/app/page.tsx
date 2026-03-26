@@ -77,13 +77,23 @@ export default function HomePage() {
     >
 
       {/* ── LEFT: UGM letters ── */}
+      {/*
+        Images have a white background + pencil-style lines.
+        filter:invert(1) flips: white→black (transparent with screen),
+        dark pencil lines → bright white → show as light-blue glows on the navy background.
+      */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/ugm-letters.png"
         alt=""
         aria-hidden="true"
         className="absolute left-[-5%] top-0 h-full w-auto object-cover pointer-events-none select-none"
-        style={{ opacity: 0.18, mixBlendMode: 'overlay', zIndex: 0 }}
+        style={{
+          opacity: 0.55,
+          mixBlendMode: 'screen',
+          filter: 'invert(1)',
+          zIndex: 0,
+        }}
       />
 
       {/* ── RIGHT: Gabriela Mistral portrait ── */}
@@ -93,7 +103,12 @@ export default function HomePage() {
         alt=""
         aria-hidden="true"
         className="absolute right-[-5%] top-0 h-full w-auto object-cover pointer-events-none select-none"
-        style={{ opacity: 0.28, mixBlendMode: 'overlay', zIndex: 0 }}
+        style={{
+          opacity: 0.45,
+          mixBlendMode: 'screen',
+          filter: 'invert(1)',
+          zIndex: 0,
+        }}
       />
 
       {/* ── Centre content ── */}
