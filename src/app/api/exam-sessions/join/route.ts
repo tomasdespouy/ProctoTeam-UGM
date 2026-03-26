@@ -43,8 +43,7 @@ export async function POST(request: NextRequest) {
                 WHEN exam_participations.status = 'submitted' THEN 'submitted'
                 WHEN exam_participations.status = 'blocked' THEN 'blocked'
                 ELSE 'joined' 
-            END,
-            updated_at = NOW()
+            END
          RETURNING id, status`,
         [exam.id, user.uid, user.email]
     );
