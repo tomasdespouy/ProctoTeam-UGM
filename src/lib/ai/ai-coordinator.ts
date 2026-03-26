@@ -1,7 +1,7 @@
 import { initFaceDetector, detectFaces, disposeFaceDetector, FaceDetectionResult } from './face-detector';
 import { initObjectDetector, detectObjects, disposeObjectDetector, ObjectDetectionResult } from './object-detector';
 
-export type AlertType = 
+export type AlertType =
   | 'multiple_faces'
   | 'no_face'
   | 'looking_away'
@@ -29,20 +29,44 @@ interface ViolationState {
 }
 
 const LOOKING_AWAY_THRESHOLD_MS = 5000;
-const NO_FACE_THRESHOLD_MS = 5000;
-const DETECTION_INTERVAL_MS = 500;
-const ALERT_COOLDOWN_MS = 30000;
+const NO_FACE_THRESHOLD_MS      = 5000;
+const DETECTION_INTERVAL_MS     = 500;
+const ALERT_COOLDOWN_MS         = 30000;
 
-let isRunning = false;
+// ─── Module-level singleton state ────────────────────────────────────────────
+// FIX (Bug #2): `isRunning` and `detectionIntervalId` are module-level
+// singletons. In React StrictMode, effects run twice (mount → cleanup → mount).
+// If a previous detection cycle was not fully stopped before the second mount
+// (e.g., initAICoordinator() threw mid-way so aiInitializedRef was never set,
+// leaving isRunning=true uncleared), startDetection() would silently bail out
+// on every subsequent call.
+//
+// Resolution:
+//   1. stopDetection() always resets isRunning + clears the interval — order
+//      matters: set isRunning=false FIRST so any in-flight tick sees it.
+//   2. startDetection() calls stopDetection() defensively before starting so a
+//      zombie interval from a previous cycle is always killed first.
+//   3. StudentCam.tsx's AI-cleanup useEffect was updated to call stopDetection()
+//      unconditionally (not gated by aiInitializedRef) to prevent leaving a
+//      partially-initialised module in a bad state.
+
+let isRunning        = false;
 let detectionIntervalId: NodeJS.Timeout | null = null;
-let violationState: ViolationState = {
-  lookingAwayStartTime: null,
-  noFaceStartTime: null,
-  lookingAwayAlertSent: false,
-  noFaceAlertSent: false,
-  multipleFacesLastAlert: 0,
-  prohibitedObjectLastAlert: 0,
-};
+
+let violationState: ViolationState = createViolationState();
+
+function createViolationState(): ViolationState {
+  return {
+    lookingAwayStartTime:    null,
+    noFaceStartTime:         null,
+    lookingAwayAlertSent:    false,
+    noFaceAlertSent:         false,
+    multipleFacesLastAlert:  0,
+    prohibitedObjectLastAlert: 0,
+  };
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function initAICoordinator(): Promise<void> {
   await Promise.all([
@@ -55,12 +79,17 @@ export function startDetection(
   videoElement: HTMLVideoElement,
   callbacks: AICoordinatorCallbacks
 ): void {
-  if (isRunning) return;
+  // Defensive stop: kill any zombie interval left from a previous (partial)
+  // cycle before starting a fresh one.  This guarantees the module always
+  // enters a known-clean state regardless of how the previous cycle ended.
+  stopDetection();
 
-  isRunning = true;
-  resetViolationState();
+  isRunning      = true;
+  violationState = createViolationState();
 
   detectionIntervalId = setInterval(async () => {
+    // Re-check isRunning inside the tick so a stopDetection() call that
+    // happens between tick scheduling and tick execution is honoured.
     if (!isRunning) return;
 
     try {
@@ -69,6 +98,7 @@ export function startDetection(
         detectObjects(videoElement),
       ]);
 
+      if (!isRunning) return; // guard against late resolution after stop
       processDetectionResults(faceResult, objectResult, callbacks);
     } catch (error) {
       console.error('[AI Coordinator] Detection error:', error);
@@ -77,12 +107,16 @@ export function startDetection(
 }
 
 export function stopDetection(): void {
+  // Set isRunning FIRST so in-flight async ticks see the stop signal before
+  // we clear the interval handle.
   isRunning = false;
-  if (detectionIntervalId) {
+
+  if (detectionIntervalId !== null) {
     clearInterval(detectionIntervalId);
     detectionIntervalId = null;
   }
-  resetViolationState();
+
+  violationState = createViolationState();
 }
 
 export function disposeAICoordinator(): void {
@@ -91,16 +125,7 @@ export function disposeAICoordinator(): void {
   disposeObjectDetector();
 }
 
-function resetViolationState(): void {
-  violationState = {
-    lookingAwayStartTime: null,
-    noFaceStartTime: null,
-    lookingAwayAlertSent: false,
-    noFaceAlertSent: false,
-    multipleFacesLastAlert: 0,
-    prohibitedObjectLastAlert: 0,
-  };
-}
+// ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function processDetectionResults(
   faceResult: FaceDetectionResult,
@@ -109,19 +134,21 @@ function processDetectionResults(
 ): void {
   const now = Date.now();
 
+  // ── Multiple faces ──────────────────────────────────────────────────────────
   if (faceResult.faceCount > 1) {
     if (now - violationState.multipleFacesLastAlert >= ALERT_COOLDOWN_MS) {
       callbacks.onAlert({
-        type: 'multiple_faces',
-        severity: 'critical',
+        type:        'multiple_faces',
+        severity:    'critical',
         description: `Se detectaron ${faceResult.faceCount} personas en la cámara`,
-        details: { faceCount: faceResult.faceCount },
+        details:     { faceCount: faceResult.faceCount },
       });
       callbacks.onRequestSnapshot('multiple_faces_detected');
       violationState.multipleFacesLastAlert = now;
     }
   }
 
+  // ── No face ─────────────────────────────────────────────────────────────────
   if (faceResult.faceCount === 0) {
     if (violationState.noFaceStartTime === null) {
       violationState.noFaceStartTime = now;
@@ -129,10 +156,10 @@ function processDetectionResults(
       const elapsed = now - violationState.noFaceStartTime;
       if (elapsed >= NO_FACE_THRESHOLD_MS) {
         callbacks.onAlert({
-          type: 'no_face',
-          severity: 'high',
+          type:        'no_face',
+          severity:    'high',
           description: 'Usuario ausente de la cámara',
-          details: { durationMs: elapsed },
+          details:     { durationMs: elapsed },
         });
         callbacks.onRequestSnapshot('no_face_detected');
         violationState.noFaceAlertSent = true;
@@ -143,6 +170,7 @@ function processDetectionResults(
     violationState.noFaceAlertSent = false;
   }
 
+  // ── Looking away ────────────────────────────────────────────────────────────
   if (faceResult.faceCount === 1 && faceResult.isLookingAway) {
     if (violationState.lookingAwayStartTime === null) {
       violationState.lookingAwayStartTime = now;
@@ -150,13 +178,10 @@ function processDetectionResults(
       const elapsed = now - violationState.lookingAwayStartTime;
       if (elapsed >= LOOKING_AWAY_THRESHOLD_MS) {
         callbacks.onAlert({
-          type: 'looking_away',
-          severity: 'medium',
+          type:        'looking_away',
+          severity:    'medium',
           description: 'El estudiante desvió la mirada por tiempo prolongado',
-          details: {
-            durationMs: elapsed,
-            headPose: faceResult.headPose,
-          },
+          details:     { durationMs: elapsed, headPose: faceResult.headPose },
         });
         callbacks.onRequestSnapshot('looking_away_detected');
         violationState.lookingAwayAlertSent = true;
@@ -167,18 +192,15 @@ function processDetectionResults(
     violationState.lookingAwayAlertSent = false;
   }
 
+  // ── Prohibited objects ──────────────────────────────────────────────────────
   if (objectResult.hasSuspiciousObject) {
     if (now - violationState.prohibitedObjectLastAlert >= ALERT_COOLDOWN_MS) {
       for (const obj of objectResult.suspiciousObjects) {
         callbacks.onAlert({
-          type: 'prohibited_object',
-          severity: 'critical',
+          type:        'prohibited_object',
+          severity:    'critical',
           description: `Objeto prohibido detectado: ${obj.class}`,
-          details: {
-            objectClass: obj.class,
-            confidence: obj.score,
-            bbox: obj.bbox,
-          },
+          details:     { objectClass: obj.class, confidence: obj.score, bbox: obj.bbox },
         });
         callbacks.onRequestSnapshot(`prohibited_object:${obj.class}`);
       }
@@ -191,8 +213,5 @@ export function getDetectionStatus(): {
   isRunning: boolean;
   violationState: ViolationState;
 } {
-  return {
-    isRunning,
-    violationState: { ...violationState },
-  };
+  return { isRunning, violationState: { ...violationState } };
 }

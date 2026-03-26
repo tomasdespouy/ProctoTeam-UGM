@@ -1,5 +1,6 @@
-import * as cocoSsd from '@tensorflow-models/coco-ssd';
-import '@tensorflow/tfjs';
+// All TF.js imports are dynamic (inside initObjectDetector) to prevent
+// Turbopack/SSR crashes — TensorFlow touches browser-only APIs (WebGL,
+// document, navigator) at module evaluation time, which fails on the server.
 
 export interface ObjectDetectionResult {
   suspiciousObjects: DetectedObject[];
@@ -15,7 +16,8 @@ export interface DetectedObject {
 const PROHIBITED_OBJECTS = ['cell phone'];
 const MIN_CONFIDENCE = 0.75;
 
-let model: cocoSsd.ObjectDetection | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let model: any | null = null;
 let isLoading = false;
 
 export async function initObjectDetector(): Promise<void> {
@@ -23,9 +25,12 @@ export async function initObjectDetector(): Promise<void> {
 
   isLoading = true;
   try {
-    model = await cocoSsd.load({
-      base: 'lite_mobilenet_v2',
-    });
+    // Dynamic imports — only executed in the browser, never during SSR/Turbopack
+    // bundling. This mirrors the pattern used in face-detector.ts for MediaPipe.
+    await import('@tensorflow/tfjs');
+    const cocoSsd = await import('@tensorflow-models/coco-ssd');
+
+    model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
   } finally {
     isLoading = false;
   }
@@ -35,24 +40,17 @@ export async function detectObjects(
   videoElement: HTMLVideoElement | HTMLCanvasElement
 ): Promise<ObjectDetectionResult> {
   if (!model) {
-    return {
-      suspiciousObjects: [],
-      hasSuspiciousObject: false,
-    };
+    return { suspiciousObjects: [], hasSuspiciousObject: false };
   }
 
   const predictions = await model.detect(videoElement);
 
   const suspiciousObjects: DetectedObject[] = predictions
-    .filter((prediction) => {
-      const isProhibited = PROHIBITED_OBJECTS.includes(prediction.class);
-      const hasHighConfidence = prediction.score >= MIN_CONFIDENCE;
-      return isProhibited && hasHighConfidence;
-    })
-    .map((prediction) => ({
-      class: prediction.class,
-      score: prediction.score,
-      bbox: prediction.bbox as [number, number, number, number],
+    .filter((p: any) => PROHIBITED_OBJECTS.includes(p.class) && p.score >= MIN_CONFIDENCE)
+    .map((p: any) => ({
+      class: p.class,
+      score: p.score,
+      bbox: p.bbox as [number, number, number, number],
     }));
 
   return {

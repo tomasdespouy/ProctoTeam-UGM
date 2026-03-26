@@ -29,6 +29,7 @@ Preferred communication style: Simple, everyday language.
 - **Use Cases**: Proctoring alert evaluation, student help desk, instructor support, biometric identity verification.
 - **Proctoring Engine**: Modular AI architecture for face detection (presence, pose), object detection (prohibited items like cell phones), and behavior detection.
 - **Detection Rules**: Alerts for multiple faces, no face, looking away, and prohibited objects. Includes spam prevention with cooldowns.
+- **AI Fixes (critical — applied)**: (1) `object-detector.ts` — TF.js and coco-ssd converted to dynamic imports (`await import(...)`) inside `initObjectDetector()` to prevent Turbopack/SSR crash at module evaluation time. (2) `ai-coordinator.ts` — `startDetection()` calls `stopDetection()` defensively first; `stopDetection()` sets `isRunning=false` before clearing the interval; `StudentCam` cleanup is now unconditional. (3) `face-detector.ts` — `detectFaces()` wrapped in a Promise that resolves on the `onResults` callback of that specific frame, eliminating the race condition with `latestResults`.
 
 ## Real-time Monitoring System
 - **Computer Vision**: TensorFlow.js with COCO-SSD for object detection, MediaPipe Face Mesh for face detection and head pose.

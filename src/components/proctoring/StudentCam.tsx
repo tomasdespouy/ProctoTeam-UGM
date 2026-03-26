@@ -384,10 +384,15 @@ export function StudentCam({
   }, [enableAI, hasVideo, setupPhase, handleAIAlert, handleAISnapshot]);
 
   // ── AI cleanup on unmount ──────────────────────────────────────────────────
+  // FIX (Bug #2): Call stopDetection() unconditionally, not gated by
+  // aiInitializedRef. If initAICoordinator() threw mid-way, isRunning might
+  // be in an inconsistent state. Unconditional cleanup guarantees the module
+  // singleton is always reset on unmount, preventing a zombie isRunning=true
+  // that would silently block the next startDetection() call after remount.
   useEffect(() => {
     return () => {
+      stopDetection();
       if (aiInitializedRef.current) {
-        stopDetection();
         disposeAICoordinator();
         aiInitializedRef.current = false;
       }

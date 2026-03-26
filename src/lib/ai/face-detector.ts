@@ -18,8 +18,6 @@ const PITCH_THRESHOLD = 25;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let faceMeshInstance: any | null = null;
 let isInitialized                = false;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let latestResults: any | null    = null;
 
 export async function initFaceDetector(): Promise<void> {
   if (isInitialized && faceMeshInstance) return;
@@ -34,43 +32,67 @@ export async function initFaceDetector(): Promise<void> {
   });
 
   faceMeshInstance.setOptions({
-    maxNumFaces:           3,
-    refineLandmarks:       true,
+    maxNumFaces:            3,
+    refineLandmarks:        true,
     minDetectionConfidence: 0.5,
     minTrackingConfidence:  0.5,
-  });
-
-  faceMeshInstance.onResults((results: any) => {
-    latestResults = results;
   });
 
   isInitialized = true;
 }
 
+/**
+ * Analyse one video frame and return face-detection results.
+ *
+ * FIX (Bug #3): The original code registered a persistent `onResults` handler
+ * that wrote to a shared `latestResults` variable, then called `send()` and
+ * immediately read that variable — creating a race condition where `send()`
+ * could resolve before the callback fired, always returning stale/null data.
+ *
+ * Now we wrap each `send()` call in a fresh Promise that only resolves once
+ * MediaPipe fires `onResults` for *that specific frame*.  A 3 s safety timeout
+ * prevents hanging if MediaPipe never calls back.
+ */
 export async function detectFaces(videoElement: HTMLVideoElement): Promise<FaceDetectionResult> {
-  if (!faceMeshInstance || !isInitialized) {
-    return { faceCount: 0, headPose: null, isLookingAway: false };
-  }
+  const EMPTY: FaceDetectionResult = { faceCount: 0, headPose: null, isLookingAway: false };
 
-  await faceMeshInstance.send({ image: videoElement });
+  if (!faceMeshInstance || !isInitialized) return EMPTY;
 
-  if (!latestResults || !latestResults.multiFaceLandmarks) {
-    return { faceCount: 0, headPose: null, isLookingAway: false };
-  }
+  return new Promise<FaceDetectionResult>((resolve) => {
+    // Safety valve: if onResults never fires within 3 s, resolve with empty.
+    const timeout = setTimeout(() => resolve(EMPTY), 3000);
 
-  const faceCount = latestResults.multiFaceLandmarks.length;
+    // Register a one-shot handler for this frame's results.
+    faceMeshInstance.onResults((results: any) => {
+      clearTimeout(timeout);
 
-  if (faceCount === 0) {
-    return { faceCount: 0, headPose: null, isLookingAway: false };
-  }
+      if (!results?.multiFaceLandmarks) {
+        resolve(EMPTY);
+        return;
+      }
 
-  const landmarks = latestResults.multiFaceLandmarks[0];
-  const headPose  = estimateHeadPose(landmarks);
-  const isLookingAway =
-    Math.abs(headPose.yaw)   > YAW_THRESHOLD ||
-    Math.abs(headPose.pitch) > PITCH_THRESHOLD;
+      const faceCount = results.multiFaceLandmarks.length;
 
-  return { faceCount, headPose, isLookingAway };
+      if (faceCount === 0) {
+        resolve(EMPTY);
+        return;
+      }
+
+      const landmarks    = results.multiFaceLandmarks[0];
+      const headPose     = estimateHeadPose(landmarks);
+      const isLookingAway =
+        Math.abs(headPose.yaw)   > YAW_THRESHOLD ||
+        Math.abs(headPose.pitch) > PITCH_THRESHOLD;
+
+      resolve({ faceCount, headPose, isLookingAway });
+    });
+
+    // Kick off the analysis; if send() itself throws, resolve empty.
+    faceMeshInstance.send({ image: videoElement }).catch(() => {
+      clearTimeout(timeout);
+      resolve(EMPTY);
+    });
+  });
 }
 
 function estimateHeadPose(
@@ -107,9 +129,9 @@ function estimateHeadPose(
   const roll      = Math.atan2(eyeDeltaY, rightEyeOuter.x - leftEyeOuter.x) * (180 / Math.PI);
 
   return {
-    yaw:   Math.max(-90,  Math.min(90,  yaw)),
-    pitch: Math.max(-90,  Math.min(90,  pitch)),
-    roll:  Math.max(-45,  Math.min(45,  roll)),
+    yaw:   Math.max(-90, Math.min(90,  yaw)),
+    pitch: Math.max(-90, Math.min(90,  pitch)),
+    roll:  Math.max(-45, Math.min(45,  roll)),
   };
 }
 
@@ -118,6 +140,5 @@ export function disposeFaceDetector(): void {
     faceMeshInstance.close();
     faceMeshInstance = null;
     isInitialized    = false;
-    latestResults    = null;
   }
 }
