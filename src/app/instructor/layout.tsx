@@ -6,17 +6,34 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { Eye, History, Settings, LogOut, AlertCircle } from 'lucide-react';
+import { useAuth } from '@/context/auth-context';
+import {
+  Home,
+  Eye,
+  History,
+  HelpCircle,
+  LogOut,
+} from 'lucide-react';
+
+// ─── Nav items ────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
-  { href: '/instructor/configure-exam', label: 'Empezar monitoreo', icon: Eye },
-  { href: '/instructor/live-monitor',   label: 'Monitor en vivo',   icon: History },
-  { href: '/instructor/historic',       label: 'Histórico',         icon: History },
+  { href: '/instructor',              label: 'Home',             icon: Home    },
+  { href: '/instructor/live-monitor', label: 'Monitor en Vivo',  icon: Eye     },
+  { href: '/instructor/historic',     label: 'Histórico',        icon: History },
+  { href: '/instructor/help',         label: 'Ayuda',            icon: HelpCircle },
 ];
 
+// ─── Layout ───────────────────────────────────────────────────────────────────
+
 export default function InstructorLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const router   = useRouter();
+  const pathname  = usePathname();
+  const router    = useRouter();
+  const { userProfile } = useAuth();
+
+  const initials = userProfile?.nombre
+    ? userProfile.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+    : 'IN';
 
   const handleSignOut = async () => {
     const { signOut } = await import('@/lib/azure-auth');
@@ -25,92 +42,90 @@ export default function InstructorLayout({ children }: { children: React.ReactNo
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="flex min-h-screen">
 
-      {/* ── Topbar ─────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-white/10" style={{ backgroundColor: '#1A1D47' }}>
-        <div className="max-w-screen-2xl mx-auto px-6 h-14 flex items-center justify-between">
+      {/* ── Sidebar ──────────────────────────────────────────────────────── */}
+      <aside
+        className="fixed left-0 top-0 h-screen w-48 flex flex-col z-50 select-none"
+        style={{ background: 'linear-gradient(180deg, #1A1D47 0%, #242F62 100%)' }}
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
+          <Image
+            src="/UGM.png"
+            alt="UGM"
+            width={28}
+            height={28}
+            className="object-contain flex-shrink-0"
+          />
+          <span className="text-base font-bold tracking-tight leading-none">
+            <span style={{ color: '#00D4FF' }}>Procto</span>
+            <span className="text-white">Team</span>
+          </span>
+        </div>
 
-          {/* Left: logo + wordmark */}
+        {/* Navigation */}
+        <nav className="flex-1 px-3 py-5 space-y-1">
+          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+            const isActive =
+              href === '/instructor'
+                ? pathname === '/instructor'
+                : pathname.startsWith(href);
+
+            return (
+              <Link key={href} href={href}>
+                <span
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer',
+                    isActive
+                      ? 'bg-white/15 text-white'
+                      : 'text-white/60 hover:bg-white/10 hover:text-white'
+                  )}
+                >
+                  <Icon className="h-4 w-4 flex-shrink-0" />
+                  {label}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Sign out */}
+        <div className="px-3 py-4 border-t border-white/10">
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white transition-colors"
+          >
+            <LogOut className="h-4 w-4 flex-shrink-0" />
+            Salir
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Main area ────────────────────────────────────────────────────── */}
+      <div className="ml-48 flex-1 flex flex-col min-h-screen bg-gray-50">
+
+        {/* Top header */}
+        <header className="sticky top-0 z-40 bg-white border-b border-gray-200 h-14 flex items-center justify-between px-6">
+          <h1 className="text-base font-semibold text-gray-800">Portal del Docente</h1>
+
           <div className="flex items-center gap-3">
-            <Image src="/UGM.png" alt="UGM" width={32} height={32} className="object-contain" style={{ width: 32, height: 'auto' }} />
-            <div className="h-5 w-px bg-white/20" />
-            <span className="text-lg font-bold tracking-tight select-none">
-              <span className="text-[#00D4FF]">Procto</span>
-              <span className="text-white">Team</span>
-            </span>
-          </div>
-
-          {/* Right: controls */}
-          <div className="flex items-center gap-1">
             <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/10 rounded-full h-9 w-9"
-              aria-label="Configuración"
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+              style={{ backgroundColor: '#242F62' }}
+              title={userProfile?.nombre ?? 'Instructor'}
             >
-              <Settings className="h-4 w-4" />
-            </Button>
-            <Button
-              onClick={handleSignOut}
-              variant="ghost"
-              className="text-white hover:bg-white/10 border border-white/20 rounded-full px-4 h-9 ml-1"
-            >
-              <LogOut className="h-4 w-4 mr-1.5" />
-              Salir
-            </Button>
+              {initials}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* ── Sub-navbar ─────────────────────────────────────────────────── */}
-      <nav className="sticky top-14 z-40 bg-white border-b border-gray-200">
-        <div className="max-w-screen-2xl mx-auto px-6 h-12 flex items-center justify-between">
-
-          {/* Navigation tabs */}
-          <div className="flex items-center gap-2">
-            {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-              const isActive =
-                pathname === href ||
-                (href === '/instructor' && pathname === '/instructor');
-              return (
-                <Link key={href} href={href}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      'rounded-full border h-8 gap-1.5 text-sm transition-colors',
-                      isActive
-                        ? 'bg-gray-100 border-gray-300 text-gray-900 font-medium'
-                        : 'border-transparent text-gray-600 hover:bg-gray-100 hover:border-gray-200'
-                    )}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {label}
-                  </Button>
-                </Link>
-              );
-            })}
-          </div>
-
-          {/* Help button */}
-          <Link href="/instructor/help">
-            <Button
-              size="sm"
-              className="rounded-full h-8 gap-1.5 bg-red-500 hover:bg-red-600 text-white text-sm"
-            >
-              <AlertCircle className="h-3.5 w-3.5" />
-              ayuda
-            </Button>
-          </Link>
-        </div>
-      </nav>
-
-      {/* ── Page content ───────────────────────────────────────────────── */}
-      <main className="flex-1">
-        {children}
-      </main>
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

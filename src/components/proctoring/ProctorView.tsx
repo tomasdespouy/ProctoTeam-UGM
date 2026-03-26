@@ -1,20 +1,18 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Video,
   VideoOff,
-  AlertTriangle,
-  Users,
-  Eye,
-  Ban,
-  Maximize2,
   Wifi,
   WifiOff,
+  ScanFace,
+  Ban,
+  Download,
+  Filter,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 
@@ -47,24 +45,38 @@ interface ProctorViewProps {
   onBlockStudent?: (participationId: string) => void;
 }
 
+type AlertFilter = 'all' | 'critical' | 'warning' | 'info';
+
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
 ];
 
+// ─── Severity helpers ─────────────────────────────────────────────────────────
+
+const SEVERITY_COLOR: Record<string, string> = {
+  critical: '#EF4444',
+  warning:  '#F97316',
+  info:     '#3B82F6',
+};
+
+const SEVERITY_LABEL: Record<string, string> = {
+  critical: 'Crítico',
+  warning:  'Advertencia',
+  info:     'Info',
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorViewProps) {
-  const [students, setStudents]           = useState<Map<string, StudentStream>>(new Map());
-  const [alerts, setAlerts]               = useState<DbAlert[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
-  const [isConnected, setIsConnected]     = useState(false);
-  const [isLoading, setIsLoading]         = useState(true);
+  const [students, setStudents]         = useState<Map<string, StudentStream>>(new Map());
+  const [alerts, setAlerts]             = useState<DbAlert[]>([]);
+  const [alertFilter, setAlertFilter]   = useState<AlertFilter>('all');
+  const [isConnected, setIsConnected]   = useState(false);
+  const [isLoading, setIsLoading]       = useState(true);
 
-  // WebRTC: one RTCPeerConnection per student, keyed by studentId
   const peerConnections  = useRef<Map<string, RTCPeerConnection>>(new Map());
-  // Ref to the active Supabase channel so async WebRTC callbacks can send
   const signalingChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // ── Load students + historical alerts from DB ─────────────────────────────
@@ -76,7 +88,6 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
 
       const studentsMap = new Map<string, StudentStream>();
       (data.students ?? []).forEach((s: any) => {
-        // Preserve existing stream if already connected via WebRTC
         const existing = studentsMap.get(s.studentId);
         studentsMap.set(s.studentId, {
           studentId:       s.studentId,
@@ -105,9 +116,9 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
         });
       });
       enriched.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setAlerts(enriched.slice(0, 100));
+      setAlerts(enriched.slice(0, 200));
     } catch (err) {
-      console.error('[ProctorView] Error cargando datos del examen:', err);
+      console.error('[ProctorView] Error cargando datos:', err);
     } finally {
       setIsLoading(false);
     }
@@ -117,7 +128,6 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
   const handleWebRTCSignaling = useCallback(async ({ payload }: any) => {
     const { type, fromId, toId, data, isRenegotiation } = payload;
 
-    // ── Student joined announcement ──
     if (type === 'student-joined') {
       const { studentName, participationId } = payload;
       setStudents(prev => {
@@ -137,52 +147,38 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
       return;
     }
 
-    // All other message types are addressed to the instructor
     if (toId !== 'instructor') return;
 
-    // ── WebRTC offer ─────────────────────────────────────────────────────────
     if (type === 'offer') {
       let pc: RTCPeerConnection;
 
       if (isRenegotiation && peerConnections.current.has(fromId)) {
-        // Renegotiation (e.g. screen share added): reuse existing connection
         pc = peerConnections.current.get(fromId)!;
       } else {
-        // New connection — cleanup stale PC first (fixes Riesgo 4)
         const stale = peerConnections.current.get(fromId);
         if (stale) {
           stale.close();
           peerConnections.current.delete(fromId);
-          console.log(`[ProctorView] Closed stale RTCPeerConnection for ${fromId}`);
         }
 
         pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
         peerConnections.current.set(fromId, pc);
 
-        // Trickle ICE back to the student
         pc.onicecandidate = ({ candidate }) => {
           if (candidate && signalingChannel.current) {
             signalingChannel.current.send({
               type: 'broadcast',
               event: 'webrtc-signaling',
-              payload: {
-                type:   'ice-candidate',
-                fromId: 'instructor',
-                toId:   fromId,
-                data:   candidate.toJSON(),
-              },
+              payload: { type: 'ice-candidate', fromId: 'instructor', toId: fromId, data: candidate.toJSON() },
             });
           }
         };
 
-        // Incoming media tracks → display in student card
         pc.ontrack = (event) => {
           setStudents(prev => {
             const updated = new Map(prev);
             const student = updated.get(fromId);
-            if (student) {
-              updated.set(fromId, { ...student, stream: event.streams[0] });
-            }
+            if (student) updated.set(fromId, { ...student, stream: event.streams[0] });
             return updated;
           });
         };
@@ -195,45 +191,29 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
       signalingChannel.current?.send({
         type: 'broadcast',
         event: 'webrtc-signaling',
-        payload: {
-          type:   'answer',
-          fromId: 'instructor',
-          toId:   fromId,
-          data:   { type: answer.type, sdp: answer.sdp },
-        },
+        payload: { type: 'answer', fromId: 'instructor', toId: fromId, data: { type: answer.type, sdp: answer.sdp } },
       });
-
       return;
     }
 
-    // ── ICE candidate from student ────────────────────────────────────────────
     if (type === 'ice-candidate') {
       const pc = peerConnections.current.get(fromId);
-      if (pc) {
-        await pc.addIceCandidate(new RTCIceCandidate(data)).catch(() => {});
-      }
+      if (pc) await pc.addIceCandidate(new RTCIceCandidate(data)).catch(() => {});
     }
   }, []);
 
-  // ── Supabase channel: Realtime alerts + WebRTC Broadcast ─────────────────
+  // ── Supabase: Realtime alerts + WebRTC Broadcast ──────────────────────────
   useEffect(() => {
     loadData();
     const pollInterval = setInterval(loadData, 30_000);
 
     const channel = supabase
       .channel(`exam-room-${examId}`)
-      // Phase 2: persistent alert feed from DB
       .on(
         'postgres_changes' as any,
-        {
-          event:  'INSERT',
-          schema: 'public',
-          table:  'alerts',
-          filter: `exam_session_id=eq.${examId}`,
-        },
+        { event: 'INSERT', schema: 'public', table: 'alerts', filter: `exam_session_id=eq.${examId}` },
         (payload: any) => {
           const newAlert = payload.new as DbAlert;
-
           setStudents(prev => {
             const student = prev.get(newAlert.student_id);
             if (!student) return prev;
@@ -241,21 +221,16 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
             updated.set(newAlert.student_id, { ...student, alertCount: student.alertCount + 1 });
             return updated;
           });
-
-          setAlerts(prev => [newAlert, ...prev].slice(0, 100));
+          setAlerts(prev => [newAlert, ...prev].slice(0, 200));
         }
       )
-      // Phase 3: WebRTC signaling via Broadcast
       .on('broadcast', { event: 'webrtc-signaling' }, handleWebRTCSignaling)
-      .subscribe((status: string) => {
-        setIsConnected(status === 'SUBSCRIBED');
-      });
+      .subscribe((status: string) => setIsConnected(status === 'SUBSCRIBED'));
 
     signalingChannel.current = channel;
 
     return () => {
       clearInterval(pollInterval);
-      // Close all peer connections cleanly
       peerConnections.current.forEach(pc => pc.close());
       peerConnections.current.clear();
       signalingChannel.current = null;
@@ -263,180 +238,322 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
     };
   }, [examId, loadData, handleWebRTCSignaling]);
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-600';
-      case 'warning':  return 'bg-orange-500';
-      case 'info':     return 'bg-blue-500';
-      default:         return 'bg-gray-500';
-    }
-  };
+  // ── Derived data ──────────────────────────────────────────────────────────
+  const studentsArray   = Array.from(students.values());
+  const activeCount     = studentsArray.filter(s => s.connected).length;
+  const alertCount      = studentsArray.reduce((sum, s) => sum + s.alertCount, 0);
 
-  const getSeverityLabel = (severity: string) => {
-    switch (severity) {
-      case 'critical': return 'crítico';
-      case 'warning':  return 'aviso';
-      case 'info':     return 'info';
-      default:         return severity;
-    }
-  };
+  const filteredAlerts = alertFilter === 'all'
+    ? alerts
+    : alerts.filter(a => a.severity === alertFilter);
 
-  const resolveStudentName = (alert: DbAlert): string =>
+  const resolveStudentName = (alert: DbAlert) =>
     alert.studentName ??
     students.get(alert.student_id)?.studentName ??
     `ID:${alert.student_id.substring(0, 8)}`;
 
-  const studentsArray = Array.from(students.values());
+  const handleExportAlerts = () => {
+    const csv = [
+      'Timestamp,Estudiante,Severidad,Descripción',
+      ...filteredAlerts.map(a =>
+        `"${a.timestamp}","${resolveStudentName(a)}","${a.severity}","${a.description.replace(/"/g, "'")}"`)
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `alertas-examen-${examId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full gap-4">
+    <div className="px-6 py-6 space-y-6 max-w-screen-2xl mx-auto">
 
-      {/* ── Grid de estudiantes ─────────────────────────────────────────── */}
-      <div className="flex-1">
-        <Card className="h-full">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Monitoreo en Vivo
-                <Badge variant={isConnected ? 'default' : 'destructive'}>
-                  {isConnected
-                    ? <><Wifi    className="h-3 w-3 mr-1 inline" />Tiempo real</>
-                    : <><WifiOff className="h-3 w-3 mr-1 inline" />Conectando...</>}
-                </Badge>
-              </CardTitle>
-              <Badge variant="secondary">
-                {studentsArray.filter(s => s.connected).length} / {studentsArray.length} activos
-              </Badge>
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12 text-muted-foreground">
-                <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mr-3" />
-                Cargando estudiantes...
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {studentsArray.map(student => (
-                  <Card
-                    key={student.studentId}
-                    className={`relative cursor-pointer transition-all hover:ring-2 hover:ring-primary ${
-                      selectedStudent === student.studentId ? 'ring-2 ring-primary' : ''
-                    } ${!student.connected ? 'opacity-50' : ''}`}
-                    onClick={() => setSelectedStudent(student.studentId)}
-                  >
-                    <div className="aspect-video bg-muted relative overflow-hidden rounded-t-lg">
-                      {student.stream ? (
-                        <VideoPlayer stream={student.stream} />
-                      ) : student.lastSnapshot ? (
-                        <img
-                          src={student.lastSnapshot}
-                          alt={student.studentName}
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          {student.connected
-                            ? <Video    className="h-8 w-8 text-muted-foreground animate-pulse" />
-                            : <VideoOff className="h-8 w-8 text-destructive" />}
-                        </div>
-                      )}
-
-                      {student.alertCount > 0 && (
-                        <Badge className="absolute top-2 right-2 bg-red-600">
-                          {student.alertCount}
-                        </Badge>
-                      )}
-                    </div>
-
-                    <div className="p-2">
-                      <p className="text-sm font-medium truncate">{student.studentName}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant={student.connected ? 'default' : 'secondary'} className="text-xs">
-                          {student.connected ? 'En línea' : 'Desconectado'}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <div className="absolute bottom-2 right-2 flex gap-1">
-                      <Button
-                        size="icon" variant="ghost" className="h-6 w-6"
-                        onClick={e => { e.stopPropagation(); setSelectedStudent(student.studentId); }}
-                      >
-                        <Maximize2 className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon" variant="ghost"
-                        className="h-6 w-6 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                        onClick={e => { e.stopPropagation(); onBlockStudent?.(student.participationId); }}
-                      >
-                        <Ban className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-
-                {studentsArray.length === 0 && (
-                  <div className="col-span-full flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <Users className="h-12 w-12 mb-4" />
-                    <p>Esperando estudiantes...</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* ── Header row ───────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Panel de Vigilancia</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Resumen de la actividad de los estudiantes</p>
+        </div>
+        <Badge
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full"
+          style={{
+            backgroundColor: isConnected ? '#DCFCE7' : '#FEE2E2',
+            color:           isConnected ? '#15803D' : '#DC2626',
+          }}
+        >
+          {isConnected
+            ? <><Wifi    className="h-3.5 w-3.5" /> Tiempo real</>
+            : <><WifiOff className="h-3.5 w-3.5" /> Conectando...</>}
+        </Badge>
       </div>
 
-      {/* ── Panel de alertas ─────────────────────────────────────────────── */}
-      <Card className="w-80 flex flex-col">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <AlertTriangle className="h-4 w-4" />
-            Alertas Recientes
-            {alerts.length > 0 && <Badge variant="destructive">{alerts.length}</Badge>}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex-1 p-0">
-          <ScrollArea className="h-[500px]">
-            <div className="p-4 space-y-2">
-              {alerts.map(alert => (
-                <Card key={alert.id} className="p-3">
-                  <div className="flex items-start gap-2">
-                    <Badge className={`${getSeverityColor(alert.severity)} text-xs shrink-0`}>
-                      {getSeverityLabel(alert.severity)}
-                    </Badge>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{resolveStudentName(alert)}</p>
-                      <p className="text-xs mt-1">{alert.description}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {new Date(alert.timestamp).toLocaleTimeString('es-CL')}
-                      </p>
-                    </div>
-                    <Button
-                      size="icon" variant="ghost" className="h-6 w-6 shrink-0"
-                      onClick={() => setSelectedStudent(alert.student_id)}
-                    >
-                      <Eye className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </Card>
-              ))}
+      {/* ── Metric cards ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          label="Estudiantes Activos"
+          value={activeCount.toString()}
+          sub="Estudiantes en línea"
+          gradient="linear-gradient(135deg, #00BBFF 0%, #0095FF 100%)"
+          icon="👥"
+        />
+        <MetricCard
+          label="Tiempo de Monitoreo"
+          value="En curso"
+          sub="Sesión activa"
+          color="#0095FF"
+          icon="🕐"
+        />
+        <MetricCard
+          label="Estudiantes con Alertas"
+          value={studentsArray.filter(s => s.alertCount > 0).length.toString()}
+          sub="Estadísticas en línea"
+          color="#EF4444"
+          icon="🔔"
+        />
+        <MetricCard
+          label="Total de Alertas"
+          value={alertCount.toString()}
+          sub="Alertas registradas"
+          color="#10B981"
+          icon="🛡"
+        />
+      </div>
 
-              {alerts.length === 0 && !isLoading && (
-                <div className="text-center py-8 text-muted-foreground">
-                  <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Sin alertas</p>
-                </div>
-              )}
+      {/* ── Student grid ─────────────────────────────────────────────────── */}
+      <section>
+        <h2 className="text-base font-bold text-gray-800 mb-3">Monitoreo de estudiantes</h2>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12 text-gray-400">
+              <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mr-3" />
+              Cargando estudiantes...
             </div>
+          ) : studentsArray.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+              <Video className="h-10 w-10 mb-3 opacity-40" />
+              <p className="text-sm">Esperando conexión de estudiantes...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+              {studentsArray.map(student => (
+                <StudentCard
+                  key={student.studentId}
+                  student={student}
+                  onBlock={() => onBlockStudent?.(student.participationId)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Alert panel ──────────────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-bold text-gray-800">Panel de alertas</h2>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs h-8"
+              onClick={handleExportAlerts}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Exportar alertas
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs h-8"
+              onClick={handleExportAlerts}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              Exportar Estadísticas
+            </Button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          {/* Filter tabs */}
+          <div className="flex items-center gap-2 mb-4">
+            {(['all', 'critical', 'warning', 'info'] as AlertFilter[]).map(f => (
+              <button
+                key={f}
+                onClick={() => setAlertFilter(f)}
+                className={[
+                  'px-4 py-1.5 rounded-full text-sm font-medium border transition-colors',
+                  alertFilter === f
+                    ? 'bg-gray-800 text-white border-gray-800'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400',
+                ].join(' ')}
+              >
+                {f === 'all'      ? 'Todos'
+                  : f === 'critical' ? 'Críticos'
+                  : f === 'warning'  ? 'Advertencias'
+                  : 'Info'}
+              </button>
+            ))}
+            {filteredAlerts.length > 0 && (
+              <span className="ml-auto text-xs text-gray-400">{filteredAlerts.length} alertas</span>
+            )}
+          </div>
+
+          {/* Alert list */}
+          <ScrollArea className="h-64">
+            {filteredAlerts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                <p className="text-sm">Sin alertas{alertFilter !== 'all' ? ' para este filtro' : ''}</p>
+              </div>
+            ) : (
+              <div className="space-y-2 pr-2">
+                {filteredAlerts.map(alert => (
+                  <AlertRow
+                    key={alert.id}
+                    alert={alert}
+                    studentName={resolveStudentName(alert)}
+                  />
+                ))}
+              </div>
+            )}
           </ScrollArea>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ─── MetricCard ───────────────────────────────────────────────────────────────
+
+function MetricCard({
+  label, value, sub, icon, gradient, color,
+}: {
+  label: string; value: string; sub: string; icon: string;
+  gradient?: string; color?: string;
+}) {
+  return (
+    <div
+      className="rounded-xl p-5 text-white shadow-md"
+      style={{ background: gradient ?? color }}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-lg">{icon}</span>
+        <span className="text-sm font-semibold opacity-90">{label}</span>
+      </div>
+      <p className="text-4xl font-bold leading-none">{value}</p>
+      <p className="text-sm opacity-70 mt-1.5">{sub}</p>
+    </div>
+  );
+}
+
+// ─── StudentCard ──────────────────────────────────────────────────────────────
+
+function StudentCard({ student, onBlock }: { student: StudentStream; onBlock: () => void }) {
+  return (
+    <div
+      className="rounded-xl overflow-hidden flex flex-col border border-white/10 shadow"
+      style={{ backgroundColor: '#1A2744', opacity: student.connected ? 1 : 0.5 }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div
+            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+            style={{ backgroundColor: '#4A5568' }}
+          >
+            {student.studentName?.[0] ?? '?'}
+          </div>
+          <div className="min-w-0">
+            <p className="text-white text-xs font-semibold leading-tight truncate">
+              {student.studentName}
+            </p>
+            <p className="text-xs truncate" style={{ color: '#94A3B8' }}>
+              ID:{student.studentId.substring(0, 8)}
+            </p>
+          </div>
+        </div>
+        <span
+          className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ml-1"
+          style={{
+            backgroundColor: student.connected ? '#22C55E' : '#64748B',
+            color: '#fff',
+          }}
+        >
+          {student.connected ? 'Activo' : 'Inactivo'}
+        </span>
+      </div>
+
+      {/* Video / snapshot area */}
+      <div
+        className="mx-2 rounded-lg overflow-hidden relative flex items-center justify-center"
+        style={{ height: 110, backgroundColor: '#0A1228' }}
+      >
+        {student.stream ? (
+          <VideoPlayer stream={student.stream} />
+        ) : student.lastSnapshot ? (
+          <img
+            src={student.lastSnapshot}
+            alt={student.studentName}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : (
+          student.connected
+            ? <Video    className="h-7 w-7 text-white/20 animate-pulse" />
+            : <VideoOff className="h-7 w-7 text-white/20" />
+        )}
+
+        {student.alertCount > 0 && (
+          <span
+            className="absolute top-2 right-2 text-[10px] font-bold text-white px-1.5 py-0.5 rounded-full"
+            style={{ backgroundColor: '#EF4444' }}
+          >
+            {student.alertCount}
+          </span>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between px-3 py-2">
+        <ScanFace className="h-4 w-4" style={{ color: '#94A3B8' }} />
+        <button
+          title="Bloquear estudiante"
+          onClick={onBlock}
+          className="opacity-40 hover:opacity-100 transition-opacity"
+        >
+          <Ban className="h-3.5 w-3.5 text-red-400" />
+        </button>
+        <div
+          className="w-3 h-3 rounded-full"
+          style={{ backgroundColor: student.alertCount > 0 ? '#EF4444' : '#22C55E' }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── AlertRow ─────────────────────────────────────────────────────────────────
+
+function AlertRow({ alert, studentName }: { alert: DbAlert; studentName: string }) {
+  const color = SEVERITY_COLOR[alert.severity] ?? '#6B7280';
+  const label = SEVERITY_LABEL[alert.severity] ?? alert.severity;
+
+  return (
+    <div className="flex items-start gap-3 py-2.5 px-3 rounded-lg bg-gray-50 border border-gray-100">
+      <span
+        className="text-[10px] font-bold text-white px-2 py-0.5 rounded-full mt-0.5 flex-shrink-0"
+        style={{ backgroundColor: color }}
+      >
+        {label}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-gray-800 truncate">{studentName}</p>
+        <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{alert.description}</p>
+      </div>
+      <p className="text-xs text-gray-400 flex-shrink-0">
+        {new Date(alert.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+      </p>
     </div>
   );
 }
