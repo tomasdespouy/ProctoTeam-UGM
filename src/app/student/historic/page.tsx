@@ -1,540 +1,259 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { useAuth } from "@/context/auth-context";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
-import type { DateRange } from "react-day-picker";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  History,
-  Loader2,
-  Inbox,
-  Search,
-  Calendar as CalendarIcon,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  Monitor,
-  KeyRound,
-  GraduationCap,
-  LogOut,
-} from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
-import Image from "next/image";
+import { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '@/context/auth-context';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Loader2, Search, Calendar, Inbox } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
-interface ExamSession {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface StudentSession {
   id: string;
   title: string;
+  subject: string;
+  section: string;
   duration: number;
-  accessCode: string;
-  createdAt: Timestamp;
+  access_code: string;
+  status: string;
+  participation_date: string;
+  participation_status: string;
 }
 
-const Pagination = ({
-  currentPage,
-  totalPages,
-  onPageChange,
-}: {
-  currentPage: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-}) => {
-  const handlePrevious = () => {
-    if (currentPage > 1) {
-      onPageChange(currentPage - 1);
-    }
-  };
+// ─── Status label helper ──────────────────────────────────────────────────────
 
-  const handleNext = () => {
-    if (currentPage < totalPages) {
-      onPageChange(currentPage + 1);
-    }
-  };
-
-  const getPageNumbers = () => {
-    const pageNumbers: (number | string)[] = [];
-    const maxPagesToShow = 5;
-    const halfPages = Math.floor(maxPagesToShow / 2);
-
-    if (totalPages <= maxPagesToShow) {
-      for (let i = 1; i <= totalPages; i++) {
-        pageNumbers.push(i);
-      }
-    } else {
-      pageNumbers.push(1);
-      if (currentPage > 3) {
-        pageNumbers.push("...");
-      }
-
-      let start = Math.max(2, currentPage - halfPages + 1);
-      let end = Math.min(totalPages - 1, currentPage + halfPages - 1);
-
-      if (currentPage <= 2) {
-        end = 3;
-      }
-      if (currentPage >= totalPages - 1) {
-        start = totalPages - 2;
-      }
-
-      for (let i = start; i <= end; i++) {
-        pageNumbers.push(i);
-      }
-
-      if (currentPage < totalPages - 2) {
-        pageNumbers.push("...");
-      }
-      pageNumbers.push(totalPages);
-    }
-    return pageNumbers;
-  };
-
-  const pages = getPageNumbers();
-
-  return (
-    <div className="flex items-center justify-center gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handlePrevious}
-        disabled={currentPage === 1}
-        className="bg-card hover:bg-card/80 text-foreground border border-border"
-      >
-        {currentPage}
-      </Button>
-      <div className="flex items-center gap-1">
-        {pages.map((page, index) =>
-          typeof page === "number" ? (
-            <Button
-              key={index}
-              variant={currentPage === page ? "default" : "outline"}
-              size="sm"
-              className={cn(
-                "h-8 w-8",
-                currentPage === page
-                  ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                  : "bg-card hover:bg-card/80 text-foreground border border-border",
-              )}
-              onClick={() => onPageChange(page)}
-            >
-              {page}
-            </Button>
-          ) : (
-            <span key={index} className="px-2 py-1 text-[#515774]">
-              ...
-            </span>
-          ),
-        )}
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleNext}
-        disabled={currentPage === totalPages}
-        className="bg-card hover:bg-card/80 text-foreground border border-border"
-      >
-        {totalPages}
-      </Button>
-    </div>
-  );
+const PARTICIPATION_LABELS: Record<string, { label: string; color: string }> = {
+  'submitted':   { label: 'Finalizado',    color: '#22C55E' },
+  'in-progress': { label: 'En progreso',   color: '#F59E0B' },
+  'joined':      { label: 'Conectado',     color: '#3B82F6' },
+  'blocked':     { label: 'Bloqueado',     color: '#EF4444' },
 };
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function StudentHistoricPage() {
-  const { user, userProfile, loading: authLoading } = useAuth();
-  const [examSessions, setExamSessions] = useState<ExamSession[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState("");
-  const [date, setDate] = useState<DateRange | undefined>(undefined);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-  const { toast } = useToast();
-  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  const [sessions,      setSessions]      = useState<StudentSession[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [search,        setSearch]        = useState('');
+  const [dateFilter,    setDateFilter]    = useState('');
 
   useEffect(() => {
-    const fetchExamSessions = async () => {
-      if (!user) return;
+    if (loading || !user) return;
 
-      setIsLoading(true);
+    const load = async () => {
       try {
-        const q = query(
-          collection(db, "examSessions"),
-          where("students", "array-contains", user.uid),
-        );
-        const querySnapshot = await getDocs(q);
-        const sessions = querySnapshot.docs.map(
-          (doc) =>
-            ({
-              id: doc.id,
-              ...doc.data(),
-            }) as ExamSession,
-        );
-
-        setExamSessions(sessions);
-      } catch (error) {
-        console.error("Error fetching exam sessions: ", error);
-        toast({
-          variant: "destructive",
-          title: "Error al cargar el histórico",
-          description:
-            "No se pudieron obtener las sesiones de examen. Por favor, inténtalo más tarde.",
+        const token = await user.getIdToken();
+        const res   = await fetch('/api/exam-sessions/by-student', {
+          headers: { Authorization: `Bearer ${token}` },
         });
+        if (res.ok) {
+          const data = await res.json();
+          setSessions(data.sessions ?? []);
+        }
+      } catch {
+        // network error — leave empty
       } finally {
-        setIsLoading(false);
+        setIsLoadingData(false);
       }
     };
 
-    if (!authLoading && user) {
-      fetchExamSessions();
-    }
-  }, [user, authLoading, toast]);
+    load();
+  }, [user, loading]);
 
-  const filteredSessions = useMemo(() => {
-    setCurrentPage(1);
-    const sortedByDate = [...examSessions].sort(
-      (a, b) => b.createdAt.toMillis() - a.createdAt.toMillis(),
-    );
+  // Client-side filtering
+  const filtered = useMemo(() => {
+    let list = sessions;
 
-    return sortedByDate.filter((session) => {
-      const titleMatch = session.title
-        .toLowerCase()
-        .includes(filter.toLowerCase());
-
-      const createdAtDate = session.createdAt?.toDate();
-      if (!createdAtDate) return false;
-
-      let dateMatch = true;
-      if (date?.from) {
-        const fromDate = new Date(date.from.setHours(0, 0, 0, 0));
-        dateMatch = createdAtDate >= fromDate;
-      }
-      if (date?.to) {
-        const toDate = new Date(date.to.setHours(23, 59, 59, 999));
-        dateMatch = dateMatch && createdAtDate <= toDate;
-      }
-
-      return titleMatch && dateMatch;
-    });
-  }, [examSessions, filter, date]);
-
-  const paginatedSessions = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredSessions.slice(startIndex, endIndex);
-  }, [filteredSessions, currentPage, itemsPerPage]);
-
-  const totalPages = Math.ceil(filteredSessions.length / itemsPerPage);
-
-  const handlePageChange = useCallback((page: number) => {
-    setCurrentPage(page);
-  }, []);
-
-  const renderContent = () => {
-    if (isLoading) {
-      return (
-        <div className="space-y-4">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(s =>
+        s.title.toLowerCase().includes(q) ||
+        s.subject.toLowerCase().includes(q) ||
+        s.section.toLowerCase().includes(q)
       );
     }
 
-    if (examSessions.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center text-center py-16 text-[#515774]">
-          <Inbox className="h-12 w-12 mb-4" />
-          <h3 className="text-xl font-semibold">No has rendido exámenes</h3>
-          <p className="mt-2 text-sm">
-            Los exámenes que rindas aparecerán aquí.
-          </p>
-        </div>
+    if (dateFilter) {
+      list = list.filter(s =>
+        format(new Date(s.participation_date), 'yyyy-MM-dd') === dateFilter
       );
     }
 
-    if (filteredSessions.length === 0 && (filter || date)) {
-      return (
-        <div className="flex flex-col items-center justify-center text-center py-16 text-[#515774]">
-          <Search className="h-12 w-12 mb-4" />
-          <h3 className="text-xl font-semibold">
-            No se encontraron resultados
-          </h3>
-          <p className="mt-2 text-sm">
-            Prueba con otro término de búsqueda o rango de fechas.
-          </p>
-        </div>
-      );
-    }
+    return list;
+  }, [sessions, search, dateFilter]);
 
+  // ── Loading ──────────────────────────────────────────────────────────────────
+  if (loading || isLoadingData) {
     return (
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <Table>
-          <TableHeader className="bg-muted/50">
-            <TableRow className="border-b border-border">
-              <TableHead className="text-foreground font-semibold">
-                Título del Examen
-              </TableHead>
-              <TableHead className="text-foreground font-semibold">
-                Fecha de Rendición
-              </TableHead>
-              <TableHead className="text-center text-foreground font-semibold">
-                Duración (min)
-              </TableHead>
-              <TableHead className="text-foreground font-semibold">
-                Código de Acceso
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedSessions.map((session, index) => (
-              <TableRow
-                key={session.id}
-                className={cn(
-                  "border-b border-border hover:bg-muted/50",
-                  index % 2 === 0 ? "bg-card" : "bg-muted/30",
-                )}
-              >
-                <TableCell className="font-medium text-foreground">
-                  {session.title}
-                </TableCell>
-                <TableCell className="text-foreground">
-                  {session.createdAt
-                    ? format(session.createdAt.toDate(), "dd/MM/yyyy", {
-                        locale: es,
-                      })
-                    : "N/A"}
-                </TableCell>
-                <TableCell className="text-center text-foreground">
-                  {session.duration}
-                </TableCell>
-                <TableCell>
-                  <code className="font-mono bg-muted text-foreground p-1 rounded border border-border">
-                    {session.accessCode}
-                  </code>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    );
-  };
-
-  if (authLoading) {
-    return (
-      <div className="flex justify-center items-center h-screen bg-gradient-to-br from-[#1a1d47] to-[#242f62]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#00d4ff]" />
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#e8eaf2' }}>
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: '#242f62' }} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-section">
-      {/* Header */}
-      <header
-        style={{ backgroundColor: "#161F45" }}
-        className="border-b border-white/20"
-      >
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-4">
-                <Button
-                  variant="ghost"
-                  className="p-0 h-auto w-auto"
-                  onClick={() => router.push("/student")}
-                >
-                  <Image
-                    src="/Logo lineas.png"
-                    alt="Universidad Gabriela Mistral"
-                    width={120}
-                    height={40}
-                    className="object-contain"
-                  />
-                  <span className="sr-only">Ir a Inicio</span>
-                </Button>
-                <div>
-                  <h1 className="text-xl font-bold text-white">
-                    <span className="text-[#00d4ff]">Procto</span>
-                    <span className="text-white">Team</span>
-                  </h1>
-                  <p className="text-xs text-white/70">Portal del Estudiante</p>
-                </div>
-              </div>
-            </div>
+    <div className="min-h-screen px-8 py-8" style={{ backgroundColor: '#e8eaf2' }}>
 
-            <div className="flex items-center gap-4">
-              <ThemeToggle />
-              <span className="text-white text-sm font-medium">
-                {userProfile?.nombre || "juanito"}
-              </span>
-              <Button
-                className="bg-[#242F62] hover:bg-[#1a1d47] text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium border-0"
-                onClick={async () => {
-                  const { signOut } = await import("@/lib/azure-auth");
-                  await signOut();
-                  router.push("/");
-                }}
-              >
-                <LogOut className="w-4 h-4" />
-                Salir
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Botones de navegación */}
-      <div className="py-4 bg-container">
-        <div className="container mx-auto px-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button
-                className="bg-card hover:bg-card/80 text-foreground border border-border flex items-center gap-2 text-sm font-semibold"
-                onClick={() => router.push("/student")}
-              >
-                <KeyRound className="w-4 h-4" />
-                Unirse a Examen
-              </Button>
-
-              <Button className="bg-[#515774] hover:bg-[#414362] text-white border border-[#515774] flex items-center gap-2 text-sm font-semibold">
-                <History className="w-4 h-4" />
-                Histórico
-              </Button>
-            </div>
-
-            <Button
-              className="bg-red-500 hover:bg-red-600 text-white flex items-center gap-2 text-sm font-semibold"
-              onClick={() => router.push("/student/help")}
-            >
-              Ayuda
-            </Button>
-          </div>
-        </div>
+      {/* ── Page title ────────────────────────────────────────────────── */}
+      <div className="mb-6">
+        <h1
+          className="font-bold text-2xl leading-tight"
+          style={{ color: '#242f62', fontFamily: "'Onest', sans-serif" }}
+        >
+          Exámenes Rendidos
+        </h1>
+        <p className="text-base mt-1" style={{ color: '#242f62', opacity: 0.75 }}>
+          Aquí se listan todos los exámenes en los que has participado.
+        </p>
       </div>
 
-      {/* Contenido principal */}
-      <main className="container mx-auto px-6 py-6 bg-panel rounded-lg mx-6 my-6">
-        <Card className="bg-card border border-border shadow-lg rounded-lg overflow-hidden">
-          {/* Header del contenido */}
-          <CardHeader className="bg-muted border-b border-border p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-foreground mb-1">
-                  Exámenes Rendidos
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Aquí se listan todos los exámenes en los que has participado.
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <Search className="absolute h-4 w-4 top-1/2 -translate-y-1/2 left-3 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar"
-                    value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
-                    className="pl-10 w-48 bg-background border-border text-foreground placeholder-muted-foreground focus:border-primary focus:ring-primary"
-                  />
-                </div>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      id="date"
-                      variant="outline"
-                      className={cn(
-                        "w-[180px] justify-start text-left font-normal bg-card hover:bg-card/80 text-foreground border border-border",
-                        !date && "text-muted-foreground",
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {date?.from ? (
-                        date.to ? (
-                          <>
-                            {format(date.from, "dd/MM/yy")} -{" "}
-                            {format(date.to, "dd/MM/yy")}
-                          </>
-                        ) : (
-                          format(date.from, "dd/MM/yyyy")
-                        )
-                      ) : (
-                        <span>Seleccionar fecha</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="end">
-                    <Calendar
-                      initialFocus
-                      mode="range"
-                      defaultMonth={date?.from}
-                      selected={date}
-                      onSelect={setDate}
-                      numberOfMonths={2}
-                      locale={es}
-                    />
-                  </PopoverContent>
-                </Popover>
-                {date && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 text-foreground hover:bg-muted"
-                    onClick={() => setDate(undefined)}
-                  >
-                    <X className="h-4 w-4" />
-                    <span className="sr-only">Limpiar fecha</span>
-                  </Button>
-                )}
-              </div>
+      {/* ── Search + Date filter ──────────────────────────────────────── */}
+      <div className="flex items-center justify-end gap-3 mb-4">
+        <div className="relative w-64">
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
+            style={{ color: '#54537d' }}
+          />
+          <Input
+            placeholder="Buscar"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-10 pl-9 border-[#cccfdd] bg-white text-sm focus-visible:ring-[#242f62]"
+            style={{ color: '#54537d' }}
+          />
+        </div>
+
+        <div className="relative w-44">
+          <Calendar
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
+            style={{ color: '#767c97' }}
+          />
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={e => setDateFilter(e.target.value)}
+            className="h-10 w-full rounded-lg border border-[#cccfdd] bg-white pl-9 pr-3 text-sm text-[#767c97] focus:outline-none focus:ring-2 focus:ring-[#242f62]"
+          />
+        </div>
+
+        {dateFilter && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-gray-400 hover:text-gray-600 h-10"
+            onClick={() => setDateFilter('')}
+          >
+            Limpiar
+          </Button>
+        )}
+      </div>
+
+      {/* ── Table card ────────────────────────────────────────────────── */}
+      <div
+        className="rounded-[10px] border border-[#cccfdd] overflow-hidden"
+        style={{ backgroundColor: '#fff' }}
+      >
+        {/* Table header row */}
+        <div
+          className="grid border-b border-[#cccfdd]"
+          style={{
+            backgroundColor: '#e2e5f3',
+            gridTemplateColumns: '2fr 1.4fr 1fr 1.5fr 1fr',
+            height: 55,
+          }}
+        >
+          {['Título del Examen', 'Asignatura', 'Sección', 'Fecha de Participación', 'Estado'].map(col => (
+            <div
+              key={col}
+              className="flex items-center px-6 text-sm font-normal"
+              style={{ color: '#242f62' }}
+            >
+              {col}
             </div>
-          </CardHeader>
+          ))}
+        </div>
 
-          {/* Contenido de la tabla */}
-          <CardContent className="p-6">{renderContent()}</CardContent>
+        {/* Empty state */}
+        {sessions.length === 0 ? (
+          <div className="py-16 flex flex-col items-center gap-3" style={{ color: '#515774' }}>
+            <Inbox className="h-10 w-10 opacity-50" />
+            <p className="text-sm">No has rendido exámenes todavía.</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-16 text-center text-sm" style={{ color: '#515774' }}>
+            No hay resultados para tu búsqueda.
+          </div>
+        ) : (
+          filtered.map((session, idx) => {
+            const badge = PARTICIPATION_LABELS[session.participation_status] ?? { label: session.participation_status, color: '#767c97' };
 
-          {/* Footer con paginación */}
-          {totalPages > 1 && (
-            <CardFooter className="bg-muted border-t border-border px-6 py-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-muted-foreground">
-                  Página {currentPage} de {totalPages}
+            return (
+              <div
+                key={session.id}
+                className="grid border-b border-[#cccfdd] last:border-b-0 hover:bg-gray-50 transition-colors"
+                style={{
+                  gridTemplateColumns: '2fr 1.4fr 1fr 1.5fr 1fr',
+                  height: 44,
+                  backgroundColor: idx % 2 === 0 ? '#fff' : '#fafbff',
+                }}
+              >
+                {/* Título */}
+                <div className="flex items-center px-6">
+                  <span className="text-sm font-medium truncate" style={{ color: '#515774' }}>
+                    {session.title}
+                  </span>
                 </div>
-                <Pagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onPageChange={handlePageChange}
-                />
+
+                {/* Asignatura */}
+                <div className="flex items-center px-6">
+                  <span className="text-sm truncate" style={{ color: '#515774' }}>
+                    {session.subject}
+                  </span>
+                </div>
+
+                {/* Sección */}
+                <div className="flex items-center px-6">
+                  <span className="text-sm" style={{ color: '#515774' }}>
+                    {session.section}
+                  </span>
+                </div>
+
+                {/* Fecha */}
+                <div className="flex items-center px-6">
+                  <span className="text-sm" style={{ color: '#515774' }}>
+                    {format(new Date(session.participation_date), 'dd/MM/yyyy', { locale: es })}
+                  </span>
+                </div>
+
+                {/* Estado */}
+                <div className="flex items-center px-6">
+                  <span
+                    className="text-xs font-semibold px-2.5 py-0.5 rounded-full"
+                    style={{
+                      backgroundColor: badge.color + '22',
+                      color: badge.color,
+                      border: `1px solid ${badge.color}44`,
+                    }}
+                  >
+                    {badge.label}
+                  </span>
+                </div>
               </div>
-            </CardFooter>
-          )}
-        </Card>
-      </main>
+            );
+          })
+        )}
+      </div>
+
+      {/* ── Footer count ──────────────────────────────────────────────── */}
+      {sessions.length > 0 && (
+        <p className="mt-3 text-xs text-right" style={{ color: '#767c97' }}>
+          {filtered.length} de {sessions.length} exámenes
+        </p>
+      )}
     </div>
   );
 }
