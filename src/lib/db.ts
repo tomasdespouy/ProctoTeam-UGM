@@ -8,9 +8,15 @@ declare global {
 let pool: Pool;
 
 if (!global.pool) {
+  // Supabase requiere SSL. Replit original no lo necesitaba (red interna).
+  // rejectUnauthorized: false permite certificados auto-firmados en entornos dev/staging.
+  const isSupabase =
+    (process.env.DATABASE_URL ?? '').includes('supabase.co') ||
+    (process.env.DATABASE_URL ?? '').includes('pooler.supabase.com');
+
   global.pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: false, // Replit usa red interna, si fallara cambia a true
+    ssl: isSupabase ? { rejectUnauthorized: false } : false,
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
@@ -26,7 +32,7 @@ export const query = async (text: string, params?: any[]) => {
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
     if (duration > 1000) {
-       console.warn(`Slow query (${duration}ms):`, text);
+      console.warn(`Slow query (${duration}ms):`, text);
     }
     return res;
   } catch (error) {
@@ -38,5 +44,5 @@ export const query = async (text: string, params?: any[]) => {
 // Exportación por objeto para 'import { db } from ...' (Lo que usan otros servicios)
 export const db = {
   query,
-  pool
+  pool,
 };
