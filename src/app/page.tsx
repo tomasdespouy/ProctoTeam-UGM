@@ -124,9 +124,6 @@ export default function HomePage() {
             style={{ filter: 'brightness(0) invert(1)', opacity: 0.95, width: 'auto', height: '44px' }}
             priority
           />
-          <p className="text-white/50 text-[11px] italic tracking-wide mt-1">
-            Juntos escribimos tu futuro
-          </p>
         </div>
 
         {/* Title */}
