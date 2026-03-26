@@ -288,7 +288,7 @@ export default function StudentExamLivePage() {
 
                 <div className="p-6 space-y-5">
                   {/* Rules box */}
-                  <div className="rounded-xl border border-[#1A1D47]/30 p-4" style={{ backgroundColor: '#00D4FF' }}>
+                  <div className="rounded-xl border border-[#1A1D47]/30 p-4" style={{ backgroundColor: '#87CEEB' }}>
                     <p className="font-bold flex items-center gap-2 mb-3 text-sm" style={{ color: '#1A1D47' }}>
                       <AlertTriangle className="h-4 w-4" />
                       Requerimientos de Monitoreo
