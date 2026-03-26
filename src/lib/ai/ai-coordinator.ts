@@ -28,10 +28,12 @@ interface ViolationState {
   prohibitedObjectLastAlert: number;
 }
 
-const LOOKING_AWAY_THRESHOLD_MS = 5000;
-const NO_FACE_THRESHOLD_MS      = 5000;
+// QA mode: thresholds reducidos para pruebas rápidas.
+// Restaurar para producción: LOOKING_AWAY=5000, NO_FACE=5000, COOLDOWN=30000
+const LOOKING_AWAY_THRESHOLD_MS = 2000;
+const NO_FACE_THRESHOLD_MS      = 2000;
 const DETECTION_INTERVAL_MS     = 500;
-const ALERT_COOLDOWN_MS         = 30000;
+const ALERT_COOLDOWN_MS         = 10000;
 
 // ─── Module-level singleton state ────────────────────────────────────────────
 // FIX (Bug #2): `isRunning` and `detectionIntervalId` are module-level

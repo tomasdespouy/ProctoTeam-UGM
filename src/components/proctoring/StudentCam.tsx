@@ -25,6 +25,7 @@ import {
   stopDetection,
   disposeAICoordinator,
   type AIAlert,
+  type AICoordinatorCallbacks,
 } from '@/lib/ai';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -104,9 +105,26 @@ export function StudentCam({
     sev: 'low' | 'medium' | 'high' | 'critical'
   ) => void>(() => {});
 
+  /**
+   * Stale-closure fix for AI callbacks:
+   * startDetection captures callbacks once at call time (setInterval closure).
+   * If handleAIAlert or handleAISnapshot are recreated later (because their
+   * deps changed), the interval would keep calling the stale versions.
+   * By passing stable wrapper functions that always delegate to this ref,
+   * the coordinator always calls the latest implementation.
+   */
+  const aiCallbacksRef = useRef<AICoordinatorCallbacks>({
+    onAlert:          () => {},
+    onRequestSnapshot: () => {},
+  });
+
   // Keep mirrors in sync on every render (cheap — no effect teardown/setup).
   useEffect(() => { setupPhaseRef.current = setupPhase; }, [setupPhase]);
   useEffect(() => { onReadyRef.current    = onReady; },    [onReady]);
+  // Keep AI callbacks ref in sync — interval always reads the freshest version.
+  useEffect(() => {
+    aiCallbacksRef.current = { onAlert: handleAIAlert, onRequestSnapshot: handleAISnapshot };
+  }, [handleAIAlert, handleAISnapshot]);
 
   // ── Re-apply streams whenever <video> elements mount (phase transitions) ────
   // • videoRef      → camera  (webcam)   — AI always reads this element
@@ -140,7 +158,16 @@ export function StudentCam({
         description: `[${alertType}] ${description}`,
         severity,
       }),
-    }).catch(err => console.error('[Alert] No se pudo persistir la alerta:', err));
+    })
+      .then(async res => {
+        if (!res.ok) {
+          const body = await res.text().catch(() => res.statusText);
+          console.error(`[Alert] ⛔ API rechazó la alerta — HTTP ${res.status}:`, body);
+        } else {
+          console.debug(`[Alert] ✅ Alerta persistida: [${alertType}] severity=${severity}`);
+        }
+      })
+      .catch(err => console.error('[Alert] 🔌 Error de red al persistir alerta:', err));
 
     if (onAlert) onAlert(alertType, description, severity);
   }, [examId, studentId, onAlert]);
@@ -369,7 +396,13 @@ export function StudentCam({
         await initAICoordinator();
         // Re-check ref after async gap (component may have unmounted)
         if (videoRef.current && videoRef.current.readyState >= 2) {
-          startDetection(videoRef.current, { onAlert: handleAIAlert, onRequestSnapshot: handleAISnapshot });
+          // Use aiCallbacksRef wrappers so the setInterval closure always
+          // calls the latest handleAIAlert/handleAISnapshot even if they
+          // were recreated after startDetection() was first called.
+          startDetection(videoRef.current, {
+            onAlert:           (alert)  => aiCallbacksRef.current.onAlert(alert),
+            onRequestSnapshot: (reason) => aiCallbacksRef.current.onRequestSnapshot(reason),
+          });
           aiInitializedRef.current = true;
           setAiStatus('active');
           console.info('[AI] Detection started — pointing at camera videoRef');

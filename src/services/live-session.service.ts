@@ -262,7 +262,7 @@ export const liveSessionService = {
         -- Subquery para contar mensajes sin leer del alumno (feedback para el profesor)
         (SELECT COUNT(*)::int FROM messages m WHERE m.student_id = ep.student_id AND m.exam_session_id = ep.exam_session_id AND m.is_read = FALSE) as "unreadMessages",
 
-        -- Agregamos las últimas 5 alertas como JSON
+        -- Alertas más recientes del alumno (ORDER BY garantiza que LIMIT toma las últimas)
         COALESCE(
           (
             SELECT json_agg(json_build_object(
@@ -273,8 +273,9 @@ export const liveSessionService = {
             ) ORDER BY a.timestamp DESC)
             FROM (
               SELECT * FROM alerts 
-              WHERE exam_session_id = ep.exam_session_id AND student_id = ep.student_id 
-              LIMIT 5
+              WHERE exam_session_id = ep.exam_session_id AND student_id = ep.student_id
+              ORDER BY timestamp DESC
+              LIMIT 20
             ) a
           ), 
           '[]'
