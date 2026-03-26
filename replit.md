@@ -64,8 +64,14 @@ Preferred communication style: Simple, everyday language.
 
 ## Core Services
 - **Azure AD**: Enterprise Single Sign-On (SSO).
-- **PostgreSQL (Replit)**: Relational database.
+- **PostgreSQL (Replit → Supabase)**: Relational database — migration in progress. Real schema captured in `scripts/real-schema-dump.sql`.
+- **Supabase**: Target platform for DB + Storage (MVP Free Tier). Client: `@supabase/supabase-js`. Storage bucket: `evidences`. Env vars needed: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 - **Google AI**: Gemini 1.5 Flash via Genkit.
+
+## Storage Migration Notes
+- `src/app/api/exam/evidence/route.ts` migrated from Replit GCS sidecar (`@google-cloud/storage` + `http://127.0.0.1:1106`) to **Supabase Storage**.
+- All DB queries (`pg` pool, raw SQL with `$1/$2`) remain unchanged — Supabase is PostgreSQL-compatible.
+- `drizzle-orm` is installed but not used (db.ts uses raw `pg` Pool); decision pending on whether to adopt it.
 
 ## AI & Machine Learning
 - **TensorFlow.js**: Client-side machine learning.
