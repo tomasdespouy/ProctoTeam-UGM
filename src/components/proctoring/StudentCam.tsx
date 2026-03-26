@@ -97,21 +97,22 @@ export function StudentCam({
     description: string, 
     severity: 'low' | 'medium' | 'high' | 'critical' = 'medium'
   ) => {
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit('alert:new', {
-        examId,
+    fetch('/api/live', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'alert',
         studentId,
-        participationId,
-        alertType,
+        examId,
+        description: `[${alertType}] ${description}`,
         severity,
-        description,
-        timestamp: new Date().toISOString(),
-      });
-    }
+      }),
+    }).catch(err => console.error('[Alert] No se pudo persistir la alerta:', err));
+
     if (onAlert) {
       onAlert(alertType, description, severity);
     }
-  }, [examId, studentId, participationId, onAlert]);
+  }, [examId, studentId, onAlert]);
 
   const sendAlertWithSnapshot = useCallback((
     alertType: string, 

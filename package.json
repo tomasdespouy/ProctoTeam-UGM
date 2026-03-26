@@ -3,13 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run genkit:watch & next dev --turbopack",
-    "dev-standard": "npm run genkit:watch & next dev",
-    "dev-socket": "npm run genkit:watch & tsx server.ts",
+    "dev": "npm run genkit:watch & next dev --turbopack -p 5000",
+    "dev-standard": "npm run genkit:watch & next dev -p 5000",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",
-    "start": "tsx server.ts",
+    "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:init": "psql $DATABASE_URL -f database/schema.sql"

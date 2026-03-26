@@ -33,15 +33,16 @@ Preferred communication style: Simple, everyday language.
 ## Real-time Monitoring System
 - **Computer Vision**: TensorFlow.js with COCO-SSD for object detection, MediaPipe Face Mesh for face detection and head pose.
 - **Behavior Detection**: Custom algorithms for tab switching, audio spikes, multiple person detection, and face visibility.
-- **Live Session Management**: In-memory service for real-time student tracking and alert management.
+- **Live Session Management**: `liveSessionService` backed by PostgreSQL (via `/api/live`).
 - **Mandatory Screen Sharing**: Students must share screen to join. Dead Man's Switch detects screen share termination, triggering critical alerts and blocking modals.
-- **WebSocket Server**: Custom Next.js server with Socket.io for real-time communication, WebRTC signaling, and alert broadcasting.
+- **Real-time Architecture (Sprint 2 — in progress)**: Migrating from Socket.io to **Supabase Realtime**. Phase 1 complete: custom `server.ts` and `socket-server.ts` removed; standard Next.js server on port 5000.
+- **Alert Persistence**: `StudentCam` emits alerts via HTTP POST to `/api/live` → `liveSessionService.reportAlert()` → `alerts` table in PostgreSQL. Alerts are durable and survive restarts.
 
 ## Data Architecture
-- **Primary Database**: PostgreSQL (Replit) for persistent data storage.
-- **Schema**: `users`, `exam_sessions`, `alerts`, `student_details`, `exam_alerts`.
-- **Real-time Data**: In-memory session service.
-- **Evidence Storage**: Snapshots uploaded to Replit Object Storage; alerts persisted in `exam_alerts` table.
+- **Primary Database**: PostgreSQL (Supabase pooler) for persistent data storage.
+- **Schema**: `users`, `exam_sessions`, `exam_participations`, `alerts`, `exam_alerts`, `messages`.
+- **Real-time Data**: Supabase Realtime (migration in progress — Phase 2).
+- **Evidence Storage**: Snapshots uploaded to Supabase Storage bucket `evidences`; URL returned to client which calls `/api/live` alert action separately.
 
 ## Component Structure
 - **Student Portal**: Exam interface with monitoring and help systems.
