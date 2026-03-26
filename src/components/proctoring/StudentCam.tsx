@@ -337,17 +337,42 @@ export function StudentCam({
   }, []); // ← intentionally empty: mount/unmount only
 
   // ── AI init ────────────────────────────────────────────────────────────────
+  // Tarea 3: Gate AI on setupPhase === 'ready' so that:
+  //   (a) videoRef.current always refers to the live camera <video> in the DOM
+  //   (b) the video element has had time to start playing (readyState ≥ 2)
+  // readyState meanings: 0=HAVE_NOTHING, 1=HAVE_METADATA, 2=HAVE_CURRENT_DATA
+  // We need ≥ 2 before passing to TF.js / MediaPipe (they need actual pixel data).
   useEffect(() => {
-    if (!enableAI || !hasVideo || !videoRef.current || aiInitializedRef.current) return;
+    if (!enableAI || !hasVideo || aiInitializedRef.current) return;
+    if (setupPhase !== 'ready') return; // camera <video> only in DOM during 'ready'
 
     const initAI = async () => {
+      // ── Guard: camera element must be mounted and have pixel data ──────────
+      const cam = videoRef.current;
+      if (!cam) {
+        console.warn('[AI] videoRef.current is null — camera not in DOM yet');
+        return;
+      }
+      if (cam.readyState < 2) {
+        // Not ready yet — wait for the 'canplay' event then retry
+        console.warn('[AI] Camera readyState', cam.readyState, '< 2 — waiting for canplay');
+        const onCanPlay = () => {
+          cam.removeEventListener('canplay', onCanPlay);
+          setTimeout(initAI, 200); // small debounce after canplay
+        };
+        cam.addEventListener('canplay', onCanPlay);
+        return;
+      }
+
       try {
         setAiStatus('loading');
         await initAICoordinator();
-        if (videoRef.current) {
+        // Re-check ref after async gap (component may have unmounted)
+        if (videoRef.current && videoRef.current.readyState >= 2) {
           startDetection(videoRef.current, { onAlert: handleAIAlert, onRequestSnapshot: handleAISnapshot });
           aiInitializedRef.current = true;
           setAiStatus('active');
+          console.info('[AI] Detection started — pointing at camera videoRef');
         }
       } catch {
         setAiStatus('error');
@@ -356,7 +381,7 @@ export function StudentCam({
 
     const timer = setTimeout(initAI, 2000);
     return () => clearTimeout(timer);
-  }, [enableAI, hasVideo, handleAIAlert, handleAISnapshot]);
+  }, [enableAI, hasVideo, setupPhase, handleAIAlert, handleAISnapshot]);
 
   // ── AI cleanup on unmount ──────────────────────────────────────────────────
   useEffect(() => {
@@ -400,6 +425,31 @@ export function StudentCam({
             sendAlertRef.current('exam_closed', 'El examen ha sido cerrado por el instructor', 'low');
             break;
           }
+
+          // ── Tarea 2: Instructor detected ICE failure — re-send offer ────────
+          case 'request-renegotiation': {
+            const pc = peerConnectionRef.current;
+            if (!pc) break;
+            try {
+              const offer = await pc.createOffer({ iceRestart: true });
+              await pc.setLocalDescription(offer);
+              channel.send({
+                type:  'broadcast',
+                event: 'webrtc-signaling',
+                payload: {
+                  type:            'offer',
+                  fromId:          studentId,
+                  toId:            'instructor',
+                  data:            { type: offer.type, sdp: offer.sdp },
+                  isRenegotiation: true,
+                },
+              });
+              console.info('[StudentCam] Renegotiation offer sent (instructor requested)');
+            } catch (err) {
+              console.error('[StudentCam] Renegotiation failed:', err);
+            }
+            break;
+          }
         }
       })
       .subscribe(async (status: string) => {
@@ -438,6 +488,36 @@ export function StudentCam({
                   data:   candidate.toJSON(),
                 },
               });
+            }
+          };
+
+          // ── Tarea 2: Self-triggered ICE reconnection ─────────────────────────
+          // If our own ICE state goes to disconnected/failed, immediately send a
+          // new offer with iceRestart:true. The instructor's existing PC will
+          // handle it via the isRenegotiation flag (no teardown needed).
+          pc.oniceconnectionstatechange = () => {
+            if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+              console.warn('[StudentCam] ICE', pc.iceConnectionState, '— self-initiating renegotiation');
+              const renegotiate = async () => {
+                try {
+                  const offer = await pc.createOffer({ iceRestart: true });
+                  await pc.setLocalDescription(offer);
+                  channel.send({
+                    type:  'broadcast',
+                    event: 'webrtc-signaling',
+                    payload: {
+                      type:            'offer',
+                      fromId:          studentId,
+                      toId:            'instructor',
+                      data:            { type: offer.type, sdp: offer.sdp },
+                      isRenegotiation: true,
+                    },
+                  });
+                } catch (err) {
+                  console.error('[StudentCam] Self-renegotiation failed:', err);
+                }
+              };
+              renegotiate();
             }
           };
 

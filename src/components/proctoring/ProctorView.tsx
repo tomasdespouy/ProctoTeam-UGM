@@ -60,6 +60,9 @@ interface StudentStream {
   studentName:     string;
   participationId: string;
   connected:       boolean;
+  /** All remote MediaStreams received via WebRTC ontrack (deduplicated by id). */
+  allStreams?:     MediaStream[];
+  /** Legacy field kept for backward compat (last stream received). */
   stream?:         MediaStream;
   alertCount:      number;
   lastSnapshot?:   string;
@@ -155,20 +158,26 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
       // Bug 3: set exam metadata when returned by the API
       if (data.exam) setExamMeta(data.exam);
 
-      const studentsMap = new Map<string, StudentStream>();
-      (data.students ?? []).forEach((s: any) => {
-        const existing = studentsMap.get(s.studentId);
-        studentsMap.set(s.studentId, {
-          studentId:       s.studentId,
-          studentName:     s.name,
-          participationId: s.id,
-          connected:       s.status === 'in-progress' || s.status === 'joined',
-          alertCount:      s.alerts?.length ?? 0,
-          lastSnapshot:    s.lastSnapshot ?? undefined,
-          stream:          existing?.stream,
+      // Use functional update so prev state is accessible — critical to
+      // preserve live WebRTC streams (stream, allStreams) that arrive via
+      // ontrack and must NOT be overwritten on every poll cycle.
+      setStudents(prev => {
+        const studentsMap = new Map<string, StudentStream>();
+        (data.students ?? []).forEach((s: any) => {
+          const existing = prev.get(s.studentId); // ← read from PREVIOUS state (not new empty map)
+          studentsMap.set(s.studentId, {
+            studentId:       s.studentId,
+            studentName:     s.name,
+            participationId: s.id,
+            connected:       s.status === 'in-progress' || s.status === 'joined',
+            alertCount:      s.alerts?.length ?? 0,
+            lastSnapshot:    s.lastSnapshot ?? undefined,
+            stream:          existing?.stream,
+            allStreams:       existing?.allStreams,
+          });
         });
+        return studentsMap;
       });
-      setStudents(studentsMap);
 
       const enriched: DbAlert[] = [];
       (data.students ?? []).forEach((s: any) => {
@@ -273,13 +282,39 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
           }
         };
 
+        // ── Tarea 1: accumulate unique streams for PiP classification ──────
+        // The student sends camera tracks in streamRef and screen tracks in
+        // screenStreamRef — two separate MediaStream objects. We collect all
+        // unique streams here; VideoPlayer classifies them at render time
+        // (camera = has audio tracks, screen = video-only).
         pc.ontrack = (event) => {
+          const incomingStream = event.streams[0];
+          if (!incomingStream) return;
           setStudents(prev => {
             const updated = new Map(prev);
             const student = updated.get(fromId);
-            if (student) updated.set(fromId, { ...student, stream: event.streams[0] });
+            if (!student) return prev;
+            const existing = student.allStreams ?? [];
+            if (existing.some(s => s.id === incomingStream.id)) return updated; // deduplicate
+            updated.set(fromId, {
+              ...student,
+              allStreams: [...existing, incomingStream],
+              stream: incomingStream, // keep legacy field updated
+            });
             return updated;
           });
+        };
+
+        // ── Tarea 2: ICE reconnection — ask student to renegotiate ──────────
+        pc.oniceconnectionstatechange = () => {
+          if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+            console.warn('[ProctorView] ICE', pc.iceConnectionState, 'for student', fromId, '— requesting renegotiation');
+            signalingChannel.current?.send({
+              type:  'broadcast',
+              event: 'webrtc-signaling',
+              payload: { type: 'request-renegotiation', fromId: 'instructor', toId: fromId },
+            });
+          }
         };
       }
 
@@ -594,7 +629,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent }: ProctorVie
             </div>
             <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
               {maximizedStudent.stream ? (
-                <VideoPlayer stream={maximizedStudent.stream} />
+                <VideoPlayer stream={maximizedStudent.stream} allStreams={maximizedStudent.allStreams} />
               ) : maximizedStudent.lastSnapshot ? (
                 <img
                   src={maximizedStudent.lastSnapshot}
@@ -818,7 +853,7 @@ function DenseStudentCell({
       title={`${student.studentName} — clic para maximizar`}
     >
       {student.stream ? (
-        <VideoPlayer stream={student.stream} />
+        <VideoPlayer stream={student.stream} allStreams={student.allStreams} />
       ) : student.lastSnapshot ? (
         <img
           src={student.lastSnapshot}
@@ -892,19 +927,51 @@ function AlertRow({ alert, studentName }: { alert: DbAlert; studentName: string 
 }
 
 // ─── VideoPlayer ──────────────────────────────────────────────────────────────
+// Tarea 1: Renders Picture-in-Picture when two streams are available.
+// Classification rule:
+//   camera stream  = MediaStream that has at least one AudioTrack
+//   screen stream  = MediaStream with video-only (no AudioTracks)
+// This is reliable because the student sends camera+mic on one stream and
+// screen-only on another stream (pc.addTrack with separate MediaStream refs).
 
-function VideoPlayer({ stream }: { stream: MediaStream }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+function VideoPlayer({ stream, allStreams }: { stream: MediaStream; allStreams?: MediaStream[] }) {
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Classify streams at render time — streams are live objects so
+  // getAudioTracks() reflects all tracks that have been added by now.
+  const streams = allStreams && allStreams.length > 0 ? allStreams : [stream];
+  const cameraStream = streams.find(s => s.getAudioTracks().length > 0) ?? null;
+  const screenStream = streams.find(s => s.getAudioTracks().length === 0 && s.getVideoTracks().length > 0) ?? null;
+  const hasPiP = cameraStream && screenStream;
 
   useEffect(() => {
-    if (videoRef.current && stream) videoRef.current.srcObject = stream;
-  }, [stream]);
+    if (screenVideoRef.current) {
+      screenVideoRef.current.srcObject = screenStream ?? stream;
+    }
+    if (cameraVideoRef.current && cameraStream) {
+      cameraVideoRef.current.srcObject = cameraStream;
+    }
+  }, [stream, cameraStream, screenStream]);
 
   return (
-    <video
-      ref={videoRef}
-      autoPlay playsInline muted
-      className="absolute inset-0 w-full h-full object-cover"
-    />
+    <>
+      {/* Background: screen share (or fallback to the only stream) */}
+      <video
+        ref={screenVideoRef}
+        autoPlay playsInline muted
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+
+      {/* PiP: webcam — only rendered when we have two separate streams */}
+      {hasPiP && (
+        <video
+          ref={cameraVideoRef}
+          autoPlay playsInline muted
+          className="absolute top-2 right-2 w-1/3 aspect-video rounded-md shadow-lg border border-white/20 object-cover z-10"
+          style={{ transform: 'scaleX(-1)' }}
+        />
+      )}
+    </>
   );
 }
