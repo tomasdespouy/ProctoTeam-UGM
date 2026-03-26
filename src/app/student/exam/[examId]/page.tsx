@@ -288,23 +288,23 @@ export default function StudentExamLivePage() {
 
                 <div className="p-6 space-y-5">
                   {/* Rules box */}
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <p className="font-bold flex items-center gap-2 mb-3 text-amber-700 text-sm">
+                  <div className="rounded-xl border border-[#00D4FF]/30 p-4" style={{ backgroundColor: '#1A1D47' }}>
+                    <p className="font-bold flex items-center gap-2 mb-3 text-sm" style={{ color: '#00D4FF' }}>
                       <AlertTriangle className="h-4 w-4" />
                       Requerimientos de Monitoreo
                     </p>
-                    <ul className="space-y-2 text-sm text-amber-800">
+                    <ul className="space-y-2 text-sm" style={{ color: '#00D4FF' }}>
                       <li className="flex items-start gap-2">
-                        <span className="mt-0.5 text-amber-500">•</span>
+                        <span className="mt-0.5" style={{ color: '#00D4FF' }}>•</span>
                         Mantén la pantalla completa
-                        {' '}(<code className="font-mono text-xs bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded text-amber-700">{fullscreenKey}</code>)
+                        {' '}(<code className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#242F62', color: '#00D4FF' }}>{fullscreenKey}</code>)
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="mt-0.5 text-amber-500">•</span>
+                        <span className="mt-0.5" style={{ color: '#00D4FF' }}>•</span>
                         No cambies de pestaña, ni minimices la ventana
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="mt-0.5 text-amber-500">•</span>
+                        <span className="mt-0.5" style={{ color: '#00D4FF' }}>•</span>
                         Mantente siempre visible y sin ayuda externa
                       </li>
                     </ul>
@@ -312,9 +312,9 @@ export default function StudentExamLivePage() {
 
                   {/* Blackboard button */}
                   <Button
-                    className="w-full text-base font-bold shadow-sm text-white border-0"
+                    className="w-full text-base font-bold shadow-sm text-white border-0 transition-opacity hover:opacity-90"
                     style={{
-                      background: 'linear-gradient(135deg, #1A1D47 0%, #242F62 100%)',
+                      background: 'linear-gradient(135deg, #00D4FF 0%, #00B8D4 100%)',
                       height: 52,
                     }}
                     onClick={() => window.open('https://ugm.blackboard.com/?new_loc=%2Fultra%2Fcourse', '_blank')}
@@ -331,8 +331,8 @@ export default function StudentExamLivePage() {
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
-                        variant="outline"
-                        className="w-full h-11 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 font-semibold"
+                        className="w-full h-11 font-semibold text-white border-0"
+                        style={{ backgroundColor: '#EF4444' }}
                         disabled={isFinishing}
                       >
                         {isFinishing
@@ -360,9 +360,9 @@ export default function StudentExamLivePage() {
               </div>
 
               {/* Security reminder pill */}
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white shadow-sm">
-                <ShieldCheck className="h-4 w-4 text-[#1A1D47] flex-shrink-0" />
-                <p className="text-xs text-slate-500">
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#00D4FF]/30 shadow-sm" style={{ backgroundColor: '#1A1D47' }}>
+                <ShieldCheck className="h-4 w-4 flex-shrink-0" style={{ color: '#00D4FF' }} />
+                <p className="text-xs" style={{ color: '#00D4FF' }}>
                   Esta sesión está siendo vigilada en tiempo real por el instructor. Tu audio y video son monitoreados.
                 </p>
               </div>
