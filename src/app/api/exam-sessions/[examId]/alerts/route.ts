@@ -15,31 +15,34 @@ export async function GET(
     // Next.js 15: params debe ser awaited
     const { examId } = await params;
 
-    // Get alerts for the session
+    // Get alerts for the session — JOIN exam_participations to resolve student_name
     const alertsResult = await db.query(
       `SELECT 
-        id, 
-        student_id, 
-        student_name, 
-        severity, 
-        description, 
-        evidence_url,
-        created_at as timestamp
-       FROM alerts 
-       WHERE exam_session_id = $1 
-       ORDER BY created_at ASC`,
+        a.id,
+        a.student_id,
+        ep.student_name,
+        a.severity,
+        a.description,
+        a.evidence_url,
+        a.timestamp
+       FROM alerts a
+       LEFT JOIN exam_participations ep
+         ON ep.exam_session_id = a.exam_session_id
+         AND ep.student_id = a.student_id
+       WHERE a.exam_session_id = $1
+       ORDER BY a.timestamp ASC`,
       [examId]
     );
 
-    // Get student details for the session
+    // Get student details for the session — correct table is exam_participations
     const studentDetailsResult = await db.query(
       `SELECT 
-        id, 
-        student_id, 
-        student_name as name, 
-        start_time, 
-        finish_time
-       FROM student_details 
+        id,
+        student_id,
+        student_name as name,
+        started_at,
+        finished_at
+       FROM exam_participations
        WHERE exam_session_id = $1`,
       [examId]
     );
