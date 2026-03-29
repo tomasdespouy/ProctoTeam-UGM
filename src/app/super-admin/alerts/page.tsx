@@ -10,8 +10,15 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  ShieldAlert, AlertTriangle, Info, Search, Loader2, Image as ImageIcon, RefreshCw,
+  ShieldAlert, AlertTriangle, Info, Search, Loader2, Image as ImageIcon, RefreshCw, Camera, Download,
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -253,15 +260,53 @@ export default function AlertsAuditPage() {
                   {/* Evidence */}
                   <TableCell className="py-3.5 text-right">
                     {alert.evidence_url ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2.5 text-xs gap-1 border-green-200 text-green-600 hover:bg-green-50 hover:border-green-400"
-                        onClick={() => window.open(alert.evidence_url!, '_blank')}
-                      >
-                        <ImageIcon className="h-3 w-3" />
-                        Evidencia
-                      </Button>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2.5 text-xs gap-1 border-green-200 text-green-600 hover:bg-green-50 hover:border-green-400"
+                          >
+                            <Camera className="h-3 w-3" />
+                            Ver Foto
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl p-0 overflow-hidden">
+                          <DialogHeader className="px-5 pt-5 pb-3">
+                            <DialogTitle className="text-sm font-semibold text-slate-800 leading-tight">
+                              Evidencia fotográfica
+                              <span className="ml-2 font-normal text-slate-400">— {alert.student_email_masked}</span>
+                            </DialogTitle>
+                            <p className="text-xs text-slate-400 mt-0.5">{alert.description}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <SeverityBadge severity={alert.severity} />
+                              <span className="text-[10px] text-slate-400">
+                                {new Date(alert.timestamp).toLocaleString('es-CL', {
+                                  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                          </DialogHeader>
+                          <div className="bg-black">
+                            <img
+                              src={alert.evidence_url}
+                              alt={`Evidencia — ${alert.description}`}
+                              className="w-full object-contain max-h-[60vh]"
+                            />
+                          </div>
+                          <div className="px-5 py-3 flex justify-end">
+                            <a
+                              href={alert.evidence_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 text-xs text-blue-600 hover:underline"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Abrir en nueva pestaña
+                            </a>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     ) : (
                       <span className="text-slate-300 text-xs">sin evidencia</span>
                     )}

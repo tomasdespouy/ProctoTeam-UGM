@@ -23,6 +23,7 @@ export async function GET(
         student_name, 
         severity, 
         description, 
+        evidence_url,
         created_at as timestamp
        FROM alerts 
        WHERE exam_session_id = $1 
