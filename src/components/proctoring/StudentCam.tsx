@@ -174,39 +174,135 @@ export function StudentCam({
   useEffect(() => { sendAlertRef.current = sendAlert; }, [sendAlert]);
 
   // ── captureSnapshot ────────────────────────────────────────────────────────
-  // Depends only on refs → always stable.
+  // Composite evidence frame: screen share (640×360) as background +
+  // webcam PiP (160×120) pinned to the top-right corner.
+  // Falls back gracefully when either source is missing.
+  // Depends only on refs → always stable (empty dep array).
   const captureSnapshot = useCallback(() => {
-    if (!videoRef.current || !streamRef.current) return null;
     const canvas = document.createElement('canvas');
-    canvas.width  = 320;
-    canvas.height = 240;
+    canvas.width  = 640;
+    canvas.height = 360;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
-    ctx.drawImage(videoRef.current, 0, 0, 320, 240);
-    return canvas.toDataURL('image/jpeg', 0.4);
+
+    // Layer 1 — Screen share as background
+    if (screenVideoRef.current && screenStreamRef.current) {
+      try { ctx.drawImage(screenVideoRef.current, 0, 0, 640, 360); } catch { /* ignore stale frame */ }
+    } else {
+      ctx.fillStyle = '#111827';
+      ctx.fillRect(0, 0, 640, 360);
+      ctx.fillStyle = '#6b7280';
+      ctx.font      = '13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Pantalla no disponible', 320, 186);
+    }
+
+    // Layer 2 — Webcam PiP, top-right corner with red border
+    if (videoRef.current && streamRef.current) {
+      const pipW = 160, pipH = 120, margin = 8;
+      const pipX = 640 - pipW - margin;
+      const pipY = margin;
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(pipX - 2, pipY - 2, pipW + 4, pipH + 4);
+      try { ctx.drawImage(videoRef.current, pipX, pipY, pipW, pipH); } catch { /* ignore */ }
+    }
+
+    return canvas.toDataURL('image/jpeg', 0.5);
   }, []);
 
-  // ── sendAlertWithSnapshot ──────────────────────────────────────────────────
-  const sendSnapshotWithReason = useCallback((_reason: string) => {
-    captureSnapshot();
-  }, [captureSnapshot]);
-
-  const sendAlertWithSnapshot = useCallback((
+  // ── uploadSnapshot ─────────────────────────────────────────────────────────
+  // Sends a Base64 JPEG to /api/exam/evidence (Supabase Storage).
+  // Returns the public URL on success, null on any failure (non-blocking).
+  const uploadSnapshot = useCallback(async (
+    base64:    string,
     alertType: string,
-    description: string,
-    severity: 'low' | 'medium' | 'high' | 'critical' = 'medium',
-  ) => {
-    sendAlert(alertType, description, severity);
-    sendSnapshotWithReason(`alert:${alertType}`);
-  }, [sendAlert, sendSnapshotWithReason]);
+  ): Promise<string | null> => {
+    try {
+      const res = await fetch('/api/exam/evidence', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ snapshot: base64, participationId, alertType }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data.publicUrl as string) ?? null;
+    } catch {
+      return null;
+    }
+  }, [participationId]);
 
-  // ── AI callbacks — depend on sendAlert (OK, stable with memoized onAlert) ──
+  // ── sendAlertWithSnapshot ──────────────────────────────────────────────────
+  // • high / critical → composite capture → upload to Storage → alert + URL.
+  // • low  / medium   → plain text alert only (no storage consumed).
+  const sendAlertWithSnapshot = useCallback(async (
+    alertType:   string,
+    description: string,
+    severity:    'low' | 'medium' | 'high' | 'critical' = 'medium',
+  ) => {
+    const needsEvidence = severity === 'high' || severity === 'critical';
+
+    if (!needsEvidence) {
+      sendAlert(alertType, description, severity);
+      return;
+    }
+
+    const base64 = captureSnapshot();
+    let evidenceUrl: string | undefined;
+
+    if (base64) {
+      const url = await uploadSnapshot(base64, alertType);
+      if (url) evidenceUrl = url;
+    }
+
+    fetch('/api/live', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action:      'alert',
+        studentId,
+        examId,
+        description: `[${alertType}] ${description}`,
+        severity,
+        ...(evidenceUrl ? { evidenceUrl } : {}),
+      }),
+    })
+      .then(async res => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => res.statusText);
+          console.error(`[Alert+Evidence] ⛔ HTTP ${res.status}:`, text);
+        } else {
+          console.debug(`[Alert+Evidence] ✅ [${alertType}] severity=${severity}${evidenceUrl ? ' +evidence' : ' (upload failed)'}`);
+        }
+      })
+      .catch(err => console.error('[Alert+Evidence] 🔌 Error de red:', err));
+
+    if (onAlert) onAlert(alertType, description, severity);
+  }, [examId, studentId, onAlert, sendAlert, captureSnapshot, uploadSnapshot]);
+
+  // ── sendSnapshotWithReason (periodic AI snapshots) ─────────────────────────
+  // Called by the AI coordinator's onRequestSnapshot for periodic frames.
+  // Sends the composite Base64 as a heartbeat imgSrc to update
+  // exam_participations.last_snapshot in the DB — no Supabase Storage used.
+  const sendSnapshotWithReason = useCallback((reason: string) => {
+    const base64 = captureSnapshot();
+    if (!base64) return;
+    fetch('/api/live', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'heartbeat', studentId, examId, imgSrc: base64 }),
+    }).catch(err => console.debug('[Snapshot] Heartbeat error:', err));
+    console.debug(`[Snapshot] Periodic frame sent — reason: ${reason}`);
+  }, [examId, studentId, captureSnapshot]);
+
+  // ── AI callbacks ────────────────────────────────────────────────────────────
+  // handleAIAlert uses sendAlertWithSnapshot so high/critical detections
+  // (celular, múltiples personas, etc.) automatically include photo evidence.
   const handleAIAlert = useCallback((alert: AIAlert) => {
-    sendAlert(alert.type, alert.description, alert.severity);
-  }, [sendAlert]);
+    sendAlertWithSnapshot(alert.type, alert.description, alert.severity);
+  }, [sendAlertWithSnapshot]);
 
   const handleAISnapshot = useCallback((reason: string) => {
-    sendSnapshotWithReason(`ai:${reason}`);
+    sendSnapshotWithReason(reason);
   }, [sendSnapshotWithReason]);
 
   // Keep AI callbacks ref in sync — declared HERE (after handleAIAlert /
