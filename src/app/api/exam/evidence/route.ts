@@ -22,17 +22,26 @@ const STORAGE_BUCKET = 'evidences';
 // El guardado de la alerta en DB es responsabilidad del cliente (via reportAlert).
 export async function POST(request: NextRequest) {
   try {
-    await getAuthenticatedUser(request);
+    // Tarea 2 — log the auth step so we know if a 401 is the culprit
+    let authedUser: Awaited<ReturnType<typeof getAuthenticatedUser>>;
+    try {
+      authedUser = await getAuthenticatedUser(request);
+      console.log(`[Evidence] 🔑 Auth OK — user: ${authedUser.email} role: ${authedUser.role}`);
+    } catch (authErr: any) {
+      console.error('[Evidence] ❌ Auth FAILED:', authErr.message);
+      throw authErr;
+    }
 
     const body = await request.json();
     const { snapshot, participationId, alertType } = body;
 
     if (!snapshot) {
+      console.error('[Evidence] ❌ Body inválido — falta el campo snapshot');
       return NextResponse.json({ error: 'snapshot es requerido' }, { status: 400 });
     }
 
+    // Tarea 2 — log bucket/path before touching Storage
     const supabase = getSupabaseAdmin();
-
     const base64Data = snapshot.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
 
@@ -42,6 +51,8 @@ export async function POST(request: NextRequest) {
       : `snapshot_${timestamp}`;
     const storagePath = `evidence/${prefix}.jpg`;
 
+    console.log(`[Evidence] 📦 Intentando subir a bucket="${STORAGE_BUCKET}" path="${storagePath}" size=${buffer.length}B`);
+
     const { error: uploadError } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(storagePath, buffer, {
@@ -49,16 +60,25 @@ export async function POST(request: NextRequest) {
         upsert: false,
       });
 
+    // Tarea 2 — log full Supabase error (message + statusCode + error name)
     if (uploadError) {
+      console.error(
+        `[Evidence] ❌ Supabase Storage upload FAILED` +
+        ` | bucket="${STORAGE_BUCKET}" path="${storagePath}"` +
+        ` | message="${uploadError.message}"` +
+        ` | statusCode=${(uploadError as any).statusCode ?? 'N/A'}` +
+        ` | error=${(uploadError as any).error ?? 'N/A'}`
+      );
       throw new Error(`Error al subir evidencia: ${uploadError.message}`);
     }
 
     const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(storagePath);
+    console.log(`[Evidence] ✅ Subida exitosa → publicUrl: ${data.publicUrl}`);
 
     return NextResponse.json({ success: true, publicUrl: data.publicUrl }, { status: 201 });
 
   } catch (error: any) {
-    console.error('Error subiendo evidencia:', error);
+    console.error('[Evidence] 💥 Error general en POST /api/exam/evidence:', error?.message ?? error);
 
     if (error.message === 'Authentication required') {
       return NextResponse.json({ error: 'Sesión expirada' }, { status: 401 });

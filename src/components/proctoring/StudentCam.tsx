@@ -19,6 +19,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useAuth } from '@/context/auth-context';
 import {
   initAICoordinator,
   startDetection,
@@ -59,6 +60,9 @@ export function StudentCam({
   onAlert,
   onReady,
 }: StudentCamProps) {
+  // ── Auth — needed to attach Bearer token to /api/exam/evidence ────────────
+  const { user } = useAuth();
+
   // ── State ──────────────────────────────────────────────────────────────────
   const [isConnected,      setIsConnected]      = useState(false);
   const [hasVideo,         setHasVideo]         = useState(false);
@@ -217,19 +221,63 @@ export function StudentCam({
     base64:    string,
     alertType: string,
   ): Promise<string | null> => {
+    // Tarea 3 — abort immediately if the image is empty/missing
+    if (!base64 || base64.length < 100) {
+      console.error('[Evidence] ❌ captureSnapshot() devolvió un frame vacío — upload abortado.');
+      return null;
+    }
+
+    // Tarea 1 — get auth token (same pattern as every other API call in the app)
+    let token: string | null = null;
+    try {
+      token = user ? await user.getIdToken() : null;
+    } catch (tokenErr) {
+      console.error('[Evidence] ❌ No se pudo obtener el token de autenticación:', tokenErr);
+    }
+
+    if (!token) {
+      console.error('[Evidence] ❌ Token nulo — el endpoint /api/exam/evidence devolverá 401. Revisa que la sesión esté activa.');
+      return null;
+    }
+
     try {
       const res = await fetch('/api/exam/evidence', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({ snapshot: base64, participationId, alertType }),
       });
-      if (!res.ok) return null;
+
+      // Tarea 1 — BUG 1: ya no fallo silencioso; leemos el body del error
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => res.statusText);
+        console.error(
+          `[Evidence] ❌ HTTP ${res.status} desde /api/exam/evidence` +
+          ` | alertType=${alertType} | participationId=${participationId}` +
+          ` | body: ${errBody}`
+        );
+        return null;
+      }
+
       const data = await res.json();
-      return (data.publicUrl as string) ?? null;
-    } catch {
+      const url = (data.publicUrl as string) ?? null;
+
+      if (!url) {
+        console.error('[Evidence] ⚠️ El endpoint respondió 2xx pero publicUrl está vacío:', data);
+        return null;
+      }
+
+      console.debug(`[Evidence] ✅ Subida exitosa → ${url}`);
+      return url;
+
+    } catch (netErr) {
+      // Tarea 1 — BUG 2: ya no catch silencioso
+      console.error('[Evidence] ❌ Error de red al subir evidencia (fetch falló):', netErr);
       return null;
     }
-  }, [participationId]);
+  }, [participationId, user]);
 
   // ── sendAlertWithSnapshot ──────────────────────────────────────────────────
   // • high / critical → composite capture → upload to Storage → alert + URL.
