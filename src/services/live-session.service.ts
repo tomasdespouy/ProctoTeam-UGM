@@ -90,7 +90,27 @@ export const liveSessionService = {
 
     // SAFE LOGGING
     const studentIdPreview = data.studentId?.substring?.(0, 8) ?? 'UNKNOWN';
-    console.log(`🚨 Alert registrada: ${studentIdPreview}... | Severity: ${data.severity} | Desc: ${data.description?.substring(0, 30)}...`);
+
+    // ── Nivel 3: Visibilidad post-cierre ─────────────────────────────────────
+    // Query el estado del examen ANTES de insertar para loguear si la alerta
+    // llega durante el periodo de gracia (después de que el examen fue marcado
+    // 'finished'). Esto confirma que el Graceful Shutdown está funcionando.
+    const examStatusRes = await db.query(
+      `SELECT status FROM exam_sessions WHERE id = $1`,
+      [data.examId]
+    );
+    const examStatus: string = examStatusRes.rows[0]?.status ?? 'unknown';
+
+    if (examStatus === 'finished') {
+      console.warn(
+        `⚠️ [Alert] Recibida alerta post-cierre para la sesión ` +
+        `${data.examId.substring(0, 8)}... — Estado: ${examStatus}. ` +
+        `Procesando insert (periodo de gracia activo). ` +
+        `Student: ${studentIdPreview}... | Severity: ${data.severity}`
+      );
+    } else {
+      console.log(`🚨 Alert registrada: ${studentIdPreview}... | Severity: ${data.severity} | Desc: ${data.description?.substring(0, 30)}...`);
+    }
 
     // 1. Guardar la alerta
     const res = await db.query(

@@ -74,6 +74,8 @@ export function StudentCam({
   const [setupPhase,       setSetupPhase]       = useState<SetupPhase>('camera');
   const [screenBlocked,    setScreenBlocked]    = useState(false);
   const [screenError,      setScreenError]      = useState<string | null>(null);
+  /** True while draining in-flight ops after 'exam-closed' broadcast. */
+  const [isSyncing,        setIsSyncing]        = useState(false);
 
   // ── Media / WebRTC refs ────────────────────────────────────────────────────
   const videoRef          = useRef<HTMLVideoElement>(null); // ← camera (webcam) — AI always reads this
@@ -97,6 +99,16 @@ export function StudentCam({
 
   /** Mirror of onReady prop — readable from async callbacks without deps. */
   const onReadyRef = useRef<(() => void) | undefined>(onReady);
+
+  // ── Graceful Shutdown refs (Nivel 2) ──────────────────────────────────────
+  /** Counts in-flight uploadSnapshot + sendAlertWithSnapshot fetch calls.
+   *  Incremented at the START of each operation, decremented in finally{}.
+   *  The exam-closed handler polls this until it reaches 0 (or timeout). */
+  const pendingOpsRef = useRef(0);
+
+  /** Set to true when an 'exam-closed' broadcast is received.
+   *  uploadSnapshot checks this so new operations can log a warning. */
+  const examClosingRef = useRef(false);
 
   /**
    * Latest sendAlert implementation. Kept in a ref so that async event
@@ -217,6 +229,9 @@ export function StudentCam({
   // ── uploadSnapshot ─────────────────────────────────────────────────────────
   // Sends a Base64 JPEG to /api/exam/evidence (Supabase Storage).
   // Returns the public URL on success, null on any failure (non-blocking).
+  //
+  // Graceful Shutdown (Nivel 2): increments pendingOpsRef at entry and
+  // decrements it in finally{} so the exam-closed drain loop can track it.
   const uploadSnapshot = useCallback(async (
     base64:    string,
     alertType: string,
@@ -227,20 +242,26 @@ export function StudentCam({
       return null;
     }
 
-    // Tarea 1 — get auth token (same pattern as every other API call in the app)
-    let token: string | null = null;
-    try {
-      token = user ? await user.getIdToken() : null;
-    } catch (tokenErr) {
-      console.error('[Evidence] ❌ No se pudo obtener el token de autenticación:', tokenErr);
-    }
-
-    if (!token) {
-      console.error('[Evidence] ❌ Token nulo — el endpoint /api/exam/evidence devolverá 401. Revisa que la sesión esté activa.');
-      return null;
+    // Graceful Shutdown: track this op so drain loop can wait for it
+    pendingOpsRef.current += 1;
+    if (examClosingRef.current) {
+      console.warn(`[Evidence] ⏳ uploadSnapshot iniciado durante cierre de examen (ops pendientes: ${pendingOpsRef.current}). Completando antes de ceder.`);
     }
 
     try {
+      // Tarea 1 — get auth token (same pattern as every other API call in the app)
+      let token: string | null = null;
+      try {
+        token = user ? await user.getIdToken() : null;
+      } catch (tokenErr) {
+        console.error('[Evidence] ❌ No se pudo obtener el token de autenticación:', tokenErr);
+      }
+
+      if (!token) {
+        console.error('[Evidence] ❌ Token nulo — el endpoint /api/exam/evidence devolverá 401. Revisa que la sesión esté activa.');
+        return null;
+      }
+
       const res = await fetch('/api/exam/evidence', {
         method:  'POST',
         headers: {
@@ -276,6 +297,9 @@ export function StudentCam({
       // Tarea 1 — BUG 2: ya no catch silencioso
       console.error('[Evidence] ❌ Error de red al subir evidencia (fetch falló):', netErr);
       return null;
+    } finally {
+      // Always decrement — even on error — so drain loop never hangs
+      pendingOpsRef.current -= 1;
     }
   }, [participationId, user]);
 
@@ -615,6 +639,30 @@ export function StudentCam({
             break;
           }
           case 'exam-closed': {
+            // ── Graceful Shutdown — Nivel 2 ─────────────────────────────────
+            // Mark that the exam is closing so new uploads can log a warning.
+            examClosingRef.current = true;
+            setIsSyncing(true);
+
+            // Drain loop: wait up to DRAIN_TIMEOUT_MS for in-flight
+            // uploadSnapshot / sendAlertWithSnapshot fetches to finish.
+            // Each tick waits 100 ms; the safety ceiling avoids hanging forever.
+            const DRAIN_TIMEOUT_MS = 5_000;
+            const drainStart = Date.now();
+            console.log('[GracefulShutdown] exam-closed recibido — esperando ops pendientes:', pendingOpsRef.current);
+
+            while (pendingOpsRef.current > 0 && (Date.now() - drainStart) < DRAIN_TIMEOUT_MS) {
+              await new Promise(r => setTimeout(r, 100));
+            }
+
+            if (pendingOpsRef.current > 0) {
+              console.warn(`[GracefulShutdown] ⚠️ Timeout alcanzado (${DRAIN_TIMEOUT_MS}ms) con ${pendingOpsRef.current} ops aún pendientes. Procediendo de todas formas.`);
+            } else {
+              console.log(`[GracefulShutdown] ✅ Todas las operaciones drenadas en ${Date.now() - drainStart}ms.`);
+            }
+
+            setIsSyncing(false);
+
             // Always up-to-date via ref — no stale closure risk.
             sendAlertRef.current('exam_closed', 'El examen ha sido cerrado por el instructor', 'low');
             break;
@@ -897,6 +945,24 @@ export function StudentCam({
   return (
     <Card className="overflow-hidden">
       <div className="aspect-video bg-black relative">
+
+        {/* ── Graceful Shutdown overlay (Nivel 2) ── */}
+        {/* Shown while draining in-flight evidence uploads after exam-closed.   */}
+        {/* z-30 puts it above error overlay (z-20) and PiP camera (z-10).      */}
+        {isSyncing && (
+          <div className="absolute inset-0 z-30 bg-black/85 flex flex-col items-center justify-center text-white text-center px-6">
+            <div className="h-12 w-12 border-4 border-white border-t-transparent rounded-full animate-spin mb-5" />
+            <p className="text-lg font-semibold leading-tight">
+              Examen finalizado por el instructor
+            </p>
+            <p className="text-sm text-white/70 mt-2 leading-relaxed">
+              Sincronizando reportes finales...
+              <br />
+              <span className="font-medium text-yellow-300">No cierres esta pestaña.</span>
+            </p>
+          </div>
+        )}
+
         {errorMessage && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-red-900/50 z-20">
             <VideoOff className="h-12 w-12 mb-2" />

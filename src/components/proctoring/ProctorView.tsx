@@ -218,7 +218,12 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
     }
   }, [examId]);
 
-  // ── Bug 5: close exam ─────────────────────────────────────────────────────
+  // ── Close exam — Graceful Shutdown (Nivel 1) ──────────────────────────────
+  // After broadcasting 'exam-closed', we wait GRACE_MS before navigating away.
+  // This gives in-flight student alert fetches (Storage upload + /api/live POST)
+  // time to reach the server before the instructor tab tears down.
+  const GRACE_MS = 5_000;
+
   const handleCloseExam = async () => {
     setIsClosing(true);
     try {
@@ -240,7 +245,13 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
         payload: { type: 'exam-closed', fromId: 'instructor', toId: 'all' },
       });
 
-      toast({ title: 'Examen finalizado', description: 'Todos los estudiantes han sido notificados.' });
+      // ── Grace period ──────────────────────────────────────────────────────
+      // isClosing=true already — the button already shows "Sincronizando..."
+      // We wait here so that any in-flight student alert fetches can land
+      // on the server before we navigate away and the page unmounts.
+      await new Promise(r => setTimeout(r, GRACE_MS));
+
+      toast({ title: 'Examen finalizado', description: 'Todas las evidencias han sido sincronizadas.' });
       router.push('/instructor/historic');
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Error', description: `No se pudo finalizar: ${err.message}` });
@@ -499,10 +510,17 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                 className="gap-2 font-bold h-9 px-4 text-sm shadow"
                 disabled={isClosing}
               >
-                {isClosing
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Square  className="h-4 w-4" />}
-                Finalizar Examen
+                {isClosing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sincronizando evidencias...
+                  </>
+                ) : (
+                  <>
+                    <Square className="h-4 w-4" />
+                    Finalizar Examen
+                  </>
+                )}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
