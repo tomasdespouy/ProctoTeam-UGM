@@ -101,6 +101,13 @@ export function startDetection(
       ]);
 
       if (!isRunning) return; // guard against late resolution after stop
+
+      console.debug(
+        '[AI Coordinator] tick — faces:', faceResult.faceCount,
+        '| suspicious objects:', objectResult.suspiciousObjects.length,
+        '| isRunning:', isRunning,
+      );
+
       processDetectionResults(faceResult, objectResult, callbacks);
     } catch (error) {
       console.error('[AI Coordinator] Detection error:', error);

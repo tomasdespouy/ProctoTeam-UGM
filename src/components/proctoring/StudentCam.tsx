@@ -496,10 +496,17 @@ export function StudentCam({
         await initAICoordinator();
         // Re-check ref after async gap (component may have unmounted)
         if (videoRef.current && videoRef.current.readyState >= 2) {
+          const cam = videoRef.current;
+          console.info(
+            '[AI] Starting detection — videoWidth:', cam.videoWidth,
+            '| videoHeight:', cam.videoHeight,
+            '| width attr:', cam.width,
+            '| readyState:', cam.readyState,
+          );
           // Use aiCallbacksRef wrappers so the setInterval closure always
           // calls the latest handleAIAlert/handleAISnapshot even if they
           // were recreated after startDetection() was first called.
-          startDetection(videoRef.current, {
+          startDetection(cam, {
             onAlert:           (alert)  => aiCallbacksRef.current.onAlert(alert),
             onRequestSnapshot: (reason) => aiCallbacksRef.current.onRequestSnapshot(reason),
           });
@@ -507,7 +514,8 @@ export function StudentCam({
           setAiStatus('active');
           console.info('[AI] Detection started — pointing at camera videoRef');
         }
-      } catch {
+      } catch (err) {
+        console.error('[AI] initAICoordinator failed:', err);
         setAiStatus('error');
       }
     };
@@ -859,6 +867,8 @@ export function StudentCam({
         <video
           ref={videoRef}
           autoPlay playsInline muted
+          width={320}
+          height={240}
           className="absolute top-3 right-3 w-40 aspect-video rounded-lg shadow-xl border-2 border-white/20 object-cover z-10"
           style={{ transform: 'scaleX(-1)' }}
         />

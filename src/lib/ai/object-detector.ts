@@ -14,7 +14,7 @@ export interface DetectedObject {
 }
 
 const PROHIBITED_OBJECTS = ['cell phone'];
-const MIN_CONFIDENCE = 0.75;
+const MIN_CONFIDENCE = 0.45;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let model: any | null = null;
@@ -44,6 +44,13 @@ export async function detectObjects(
   }
 
   const predictions = await model.detect(videoElement);
+
+  console.debug(
+    '[COCO-SSD] Raw predictions:',
+    predictions.length
+      ? predictions.map((p: any) => `${p.class}@${p.score.toFixed(2)}`).join(', ')
+      : '(none)',
+  );
 
   const suspiciousObjects: DetectedObject[] = predictions
     .filter((p: any) => PROHIBITED_OBJECTS.includes(p.class) && p.score >= MIN_CONFIDENCE)

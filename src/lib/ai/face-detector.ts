@@ -19,6 +19,10 @@ const PITCH_THRESHOLD = 25;
 let faceMeshInstance: any | null = null;
 let isInitialized                = false;
 
+// Concurrency lock: prevents multiple send() calls from being in-flight
+// simultaneously, which causes onResults to fire for the wrong Promise.
+let isProcessing = false;
+
 export async function initFaceDetector(): Promise<void> {
   if (isInitialized && faceMeshInstance) return;
 
@@ -44,53 +48,79 @@ export async function initFaceDetector(): Promise<void> {
 /**
  * Analyse one video frame and return face-detection results.
  *
- * FIX (Bug #3): The original code registered a persistent `onResults` handler
- * that wrote to a shared `latestResults` variable, then called `send()` and
- * immediately read that variable — creating a race condition where `send()`
- * could resolve before the callback fired, always returning stale/null data.
+ * FIX (Bug #3 — original): Wrapped send() in a Promise that resolves on onResults.
  *
- * Now we wrap each `send()` call in a fresh Promise that only resolves once
- * MediaPipe fires `onResults` for *that specific frame*.  A 3 s safety timeout
- * prevents hanging if MediaPipe never calls back.
+ * FIX (Bug #3 — race condition): MediaPipe's onResults is a PERSISTENT listener
+ * (setter, not additive). If send() for frame N takes >500 ms, frame N+1 overwrites
+ * onResults and frame N's completion resolves frame N+1's Promise with stale data.
+ *
+ * Resolution:
+ *   1. `isProcessing` lock — skips the frame if a previous send() is still in-flight,
+ *      preventing concurrent calls entirely.
+ *   2. `settled` flag — ensures a given Promise resolves exactly once, even if
+ *      onResults somehow fires multiple times for the same send().
+ *   3. All three exit paths (onResults, timeout, catch) release the lock.
  */
 export async function detectFaces(videoElement: HTMLVideoElement): Promise<FaceDetectionResult> {
   const EMPTY: FaceDetectionResult = { faceCount: 0, headPose: null, isLookingAway: false };
 
   if (!faceMeshInstance || !isInitialized) return EMPTY;
 
-  return new Promise<FaceDetectionResult>((resolve) => {
-    // Safety valve: if onResults never fires within 3 s, resolve with empty.
-    const timeout = setTimeout(() => resolve(EMPTY), 3000);
+  // Skip this frame if the previous one hasn't finished — no concurrent sends.
+  if (isProcessing) return EMPTY;
+  isProcessing = true;
 
-    // Register a one-shot handler for this frame's results.
+  return new Promise<FaceDetectionResult>((resolve) => {
+    // Guard: ensures this Promise settles exactly once across all exit paths.
+    let settled = false;
+    const settle = (result: FaceDetectionResult) => {
+      if (settled) return;
+      settled      = true;
+      isProcessing = false;
+      resolve(result);
+    };
+
+    // Safety valve: release lock and resolve empty if onResults never fires.
+    const timeout = setTimeout(() => {
+      console.debug('[FaceMesh] Timeout — no onResults within 3 s');
+      settle(EMPTY);
+    }, 3000);
+
+    // One-shot results handler for this specific frame.
     faceMeshInstance.onResults((results: any) => {
       clearTimeout(timeout);
 
       if (!results?.multiFaceLandmarks) {
-        resolve(EMPTY);
+        settle(EMPTY);
         return;
       }
 
       const faceCount = results.multiFaceLandmarks.length;
 
+      console.debug(
+        '[FaceMesh] faceCount:', faceCount,
+        '| video:', videoElement.videoWidth, '×', videoElement.videoHeight,
+        '| width attr:', videoElement.width,
+      );
+
       if (faceCount === 0) {
-        resolve(EMPTY);
+        settle(EMPTY);
         return;
       }
 
-      const landmarks    = results.multiFaceLandmarks[0];
-      const headPose     = estimateHeadPose(landmarks);
+      const landmarks     = results.multiFaceLandmarks[0];
+      const headPose      = estimateHeadPose(landmarks);
       const isLookingAway =
         Math.abs(headPose.yaw)   > YAW_THRESHOLD ||
         Math.abs(headPose.pitch) > PITCH_THRESHOLD;
 
-      resolve({ faceCount, headPose, isLookingAway });
+      settle({ faceCount, headPose, isLookingAway });
     });
 
-    // Kick off the analysis; if send() itself throws, resolve empty.
+    // Kick off the analysis; release lock immediately if send() itself throws.
     faceMeshInstance.send({ image: videoElement }).catch(() => {
       clearTimeout(timeout);
-      resolve(EMPTY);
+      settle(EMPTY);
     });
   });
 }
@@ -136,6 +166,7 @@ function estimateHeadPose(
 }
 
 export function disposeFaceDetector(): void {
+  isProcessing = false; // release lock in case it was held during disposal
   if (faceMeshInstance) {
     faceMeshInstance.close();
     faceMeshInstance = null;
