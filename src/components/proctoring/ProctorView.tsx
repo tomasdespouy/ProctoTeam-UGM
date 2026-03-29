@@ -17,6 +17,13 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
   Video,
   VideoOff,
   Wifi,
@@ -30,6 +37,7 @@ import {
   Loader2,
   Maximize2,
   X,
+  Camera,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { useToast } from '@/hooks/use-toast';
@@ -191,6 +199,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
             studentName:     s.name,
             severity:        a.severity ?? 'info',
             description:     a.description,
+            evidence_url:    a.evidence_url ?? a.evidenceUrl,
             timestamp:       a.timestamp ?? new Date().toISOString(),
           });
         });
@@ -913,6 +922,7 @@ function DenseStudentCell({
 function AlertRow({ alert, studentName }: { alert: DbAlert; studentName: string }) {
   const color = SEVERITY_COLOR[alert.severity] ?? '#6B7280';
   const label = SEVERITY_LABEL[alert.severity] ?? alert.severity;
+  const hasEvidence = !!alert.evidence_url;
 
   return (
     <div className="flex items-start gap-3 py-2.5 px-3 rounded-lg bg-gray-50 border border-gray-100">
@@ -926,7 +936,68 @@ function AlertRow({ alert, studentName }: { alert: DbAlert; studentName: string 
         <p className="text-sm font-semibold text-gray-800 truncate">{studentName}</p>
         <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{alert.description}</p>
       </div>
-      <p className="text-xs text-gray-400 flex-shrink-0">
+
+      {/* Evidence photo button — only shown when a snapshot URL exists */}
+      {hasEvidence && (
+        <Dialog>
+          <DialogTrigger asChild>
+            <button
+              title="Ver foto de evidencia"
+              className="flex-shrink-0 flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md border transition-colors"
+              style={{
+                color:           color,
+                borderColor:     color + '44',
+                backgroundColor: color + '11',
+              }}
+            >
+              <Camera className="h-3 w-3" />
+              Foto
+            </button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl p-0 overflow-hidden">
+            <DialogHeader className="px-5 pt-5 pb-3">
+              <DialogTitle className="text-sm font-semibold text-gray-800 leading-tight">
+                Evidencia fotográfica
+                <span className="ml-2 font-normal text-gray-400">— {studentName}</span>
+              </DialogTitle>
+              <p className="text-xs text-gray-400 mt-0.5">{alert.description}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span
+                  className="text-[10px] font-bold text-white px-2 py-0.5 rounded-full"
+                  style={{ backgroundColor: color }}
+                >
+                  {label}
+                </span>
+                <span className="text-[10px] text-gray-400">
+                  {new Date(alert.timestamp).toLocaleString('es-CL', {
+                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                  })}
+                </span>
+              </div>
+            </DialogHeader>
+            <div className="bg-black">
+              <img
+                src={alert.evidence_url}
+                alt={`Evidencia — ${alert.description}`}
+                className="w-full object-contain max-h-[60vh]"
+              />
+            </div>
+            <div className="px-5 py-3 flex justify-end">
+              <a
+                href={alert.evidence_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-blue-600 hover:underline"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Abrir en nueva pestaña
+              </a>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      <p className="text-xs text-gray-400 flex-shrink-0 mt-0.5">
         {new Date(alert.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
       </p>
     </div>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/auth-middleware';
-import db from '@/lib/db';
+import { db } from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
