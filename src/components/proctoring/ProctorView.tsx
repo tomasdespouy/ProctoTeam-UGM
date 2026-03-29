@@ -205,7 +205,12 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
         });
       });
       enriched.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setAlerts(enriched.slice(0, 200));
+      setAlerts(prev => {
+        const knownUrls = new Map(prev.map(a => [a.id, a.evidence_url]));
+        return enriched
+          .map(a => ({ ...a, evidence_url: a.evidence_url ?? knownUrls.get(a.id) }))
+          .slice(0, 200);
+      });
     } catch (err) {
       console.error('[ProctorView] Error cargando datos:', err);
     } finally {

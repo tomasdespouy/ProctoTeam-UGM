@@ -269,7 +269,8 @@ export const liveSessionService = {
               'id', a.id,
               'description', a.description,
               'severity', a.severity,
-              'timestamp', a.timestamp
+              'timestamp', a.timestamp,
+              'evidence_url', a.evidence_url
             ) ORDER BY a.timestamp DESC)
             FROM (
               SELECT * FROM alerts 
