@@ -79,7 +79,7 @@ export default function HomePage() {
 
   return (
     <main
-      className="min-h-screen relative flex flex-col items-center justify-center overflow-hidden"
+      className="min-h-screen relative flex flex-col items-center justify-center overflow-hidden pb-12"
       style={{ background: 'linear-gradient(135deg, #1B2A6B 0%, #0E1845 40%, #080E28 100%)' }}
     >
 
@@ -128,7 +128,7 @@ export default function HomePage() {
             alt="Universidad Gabriela Mistral"
             width={220}
             height={44}
-            style={{ filter: 'brightness(0) invert(1)', opacity: 0.95, width: 'auto', height: '44px' }}
+            style={{ filter: 'brightness(0) invert(1)', opacity: 0.95, width: 'auto', height: 'auto' }}
             priority
           />
         </div>
@@ -136,8 +136,8 @@ export default function HomePage() {
         {/* Title */}
         <h1 className="font-headline font-black leading-none mb-2 text-center"
             style={{ fontSize: 'clamp(40px, 5.5vw, 72px)' }}>
-          <span style={{ color: '#00D4FF' }}>UGM </span>
-          <span className="text-white">Proctor</span>
+          <span style={{ color: '#00D4FF' }}>Procto</span>
+          <span className="text-white">Team</span>
         </h1>
         <p className="text-white/80 text-base font-light tracking-wide mb-10 text-center">
           Sistema de Vigilancia de Exámenes en Línea
@@ -229,7 +229,7 @@ export default function HomePage() {
               </Button>
               <Button
                 variant="outline" size="sm"
-                onClick={() => { setDevEmail('test@ugm.cl'); handleDevLogin('test@ugm.cl'); }}
+                onClick={() => { setDevEmail('test@ugm.cl'); handleDevLogin('test@ugm.cl', 'instructor'); }}
                 disabled={devLoading}
                 className="flex-1 h-8 text-xs border-green-400/50 text-green-300 bg-transparent hover:bg-green-400/10"
               >

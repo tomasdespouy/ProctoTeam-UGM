@@ -1,3 +1,4 @@
+import 'dotenv/config';
 
 import '@/ai/flows/evaluate-proctoring-alert.ts';
 import '@/ai/flows/proctor-help-flow.ts';

@@ -60,7 +60,9 @@ export async function GET(
         section: data.section,
         duration: data.duration,
         status: data.exam_status,
-        startedAt: data.student_started_at ? data.student_started_at.toISOString() : null,
+        startedAt: data.student_started_at
+          ? (typeof data.student_started_at === 'string' ? data.student_started_at : data.student_started_at.toISOString())
+          : null,
       },
       studentStatus:   data.student_status,
       participationId: data.participation_id ?? null,  // UUID para WebRTC (StudentCam)
