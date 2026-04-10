@@ -310,11 +310,11 @@ export const liveSessionService = {
 
     const result = await db.query(query, [examId]);
 
-    // Mapeo final
+    // Mapeo final — alerts puede llegar como string JSON desde el REST fallback
     return result.rows.map(row => ({
       ...row,
-      alerts: row.alerts,
-      lastSeen: new Date(row.lastSeen) // Asegurar objeto Date
+      alerts: typeof row.alerts === 'string' ? JSON.parse(row.alerts) : (row.alerts ?? []),
+      lastSeen: row.lastSeen ? new Date(row.lastSeen) : new Date(),
     }));
   }
 };

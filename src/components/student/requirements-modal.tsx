@@ -13,7 +13,7 @@ interface RequirementsModalProps {
 export function RequirementsModal({ isOpen, onAcceptRequirements }: RequirementsModalProps) {
   return (
     <Dialog open={isOpen}>
-      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-hidden" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col overflow-hidden" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="text-2xl font-headline text-primary flex items-center gap-2">
             <ShieldAlert className="h-7 w-7" />
@@ -23,7 +23,7 @@ export function RequirementsModal({ isOpen, onAcceptRequirements }: Requirements
             Para asegurar la integridad del proceso, al continuar declaras bajo juramento que entiendes y aceptas las siguientes condiciones de monitoreo.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4 text-sm max-h-[50vh] overflow-y-auto pr-2">
+        <div className="grid gap-4 py-4 text-sm flex-1 overflow-y-auto pr-2">
           <div className="flex items-start space-x-3">
             <UserCheck className="h-5 w-5 mt-1 flex-shrink-0 text-primary" />
             <div>
@@ -64,7 +64,7 @@ export function RequirementsModal({ isOpen, onAcceptRequirements }: Requirements
             </p>
            </div>
         </div>
-        <DialogFooter className="px-0">
+        <DialogFooter className="px-0 pt-4 flex-shrink-0">
           <Button onClick={onAcceptRequirements} className="w-full bg-green-600 hover:bg-green-700 text-white mx-0">
             <CheckCircle className="mr-2 h-4 w-4" />
             Acepto los Términos y me Comprometo a Cumplirlos

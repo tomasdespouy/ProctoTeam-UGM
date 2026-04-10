@@ -12,7 +12,7 @@ import { ErrorRecovery } from '@/components/error-recovery';
 
 
 export const metadata: Metadata = {
-  title: 'UGM Proctor',
+  title: 'ProctoTeam UGM',
   description: 'Sistema de Proctoring (vigilancia en línea) de exámenes universitarios.',
 };
 
