@@ -9,7 +9,8 @@ export const dynamic = 'force-dynamic';
 const DEV_JWT_SECRET = 'ugm-proctor-dev-secret-2024';
 
 export async function POST(request: NextRequest) {
-  if (process.env.NODE_ENV !== 'development') {
+  const allowTestLogin = process.env.ALLOW_TEST_LOGIN === 'true';
+  if (process.env.NODE_ENV !== 'development' && !allowTestLogin) {
     return NextResponse.json(
       { error: 'Este endpoint solo está disponible en desarrollo' },
       { status: 403 }

@@ -209,7 +209,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Protección de rutas
   useEffect(() => {
     if (loading) return;
-    const publicPaths = ['/', '/student/login', '/instructor/login', '/auth/callback'];
+    const publicPaths = ['/', '/test', '/student/login', '/instructor/login', '/auth/callback'];
 
     // Permitir acceso si es ruta pública o si el usuario está logueado
     if (!user && !publicPaths.includes(pathname)) {
