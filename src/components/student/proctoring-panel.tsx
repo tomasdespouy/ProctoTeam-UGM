@@ -732,7 +732,7 @@ export function ProctoringPanel({
                 payload: {
                     studentId,
                     name: userProfile.nombre,
-                    email: user.email,
+                    email: userProfile.correo,
                 },
             }),
         }).catch(console.error);
@@ -826,7 +826,7 @@ export function ProctoringPanel({
             document.documentElement.requestFullscreen().catch(err => {
                 console.warn("Fallo al entrar en Fullscreen: ", err);
                 toast({
-                    variant: 'warning',
+                    variant: 'default',
                     title: 'Atención',
                     description: 'La aplicación no pudo ingresar a pantalla completa. Por favor, hágalo manualmente.',
                     duration: 8000

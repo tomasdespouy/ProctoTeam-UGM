@@ -16,7 +16,7 @@ export interface UserProfile {
   updated_at?: Date;
 }
 
-interface MsalUser {
+export interface MsalUser {
   account: AccountInfo;
   getIdToken: () => Promise<string | null>;
 }

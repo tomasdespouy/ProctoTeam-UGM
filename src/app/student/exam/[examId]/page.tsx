@@ -71,7 +71,8 @@ const ProfessionalLoader = () => (
 export default function StudentExamLivePage() {
   const { user, userProfile, loading } = useAuth();
   const params = useParams();
-  const examId = Array.isArray(params.examId) ? params.examId[0] : params.examId;
+  const examIdParam = Array.isArray(params.examId) ? params.examId[0] : params.examId;
+  const examId = examIdParam ?? '';
 
   const [step,               setStep]               = useState<ExamStep>('requirements');
   const [examData,           setExamData]           = useState<ExamData | null>(null);
@@ -113,7 +114,7 @@ export default function StudentExamLivePage() {
   useEffect(() => {
     if (!examId || !user) return;
 
-    const studentIdForCheck = userProfile?.uid || user.uid;
+    const studentIdForCheck = userProfile?.uid || user.account.localAccountId || user.account.homeAccountId;
     if (!studentIdForCheck) return;
 
     const fetchExamStatus = async () => {
@@ -168,7 +169,7 @@ export default function StudentExamLivePage() {
   };
 
   const handleFinishExam = async () => {
-    const studentIdToUse = userProfile?.uid || user?.uid;
+    const studentIdToUse = userProfile?.uid || user?.account.localAccountId || user?.account.homeAccountId;
     if (!studentIdToUse || !examId) return;
 
     setIsFinishing(true);
@@ -230,8 +231,8 @@ export default function StudentExamLivePage() {
 
   if (!user || !userProfile) return null;
 
-  const studentId   = userProfile.uid ?? user.uid;
-  const studentName = userProfile.nombre ?? userProfile.correo ?? user.email ?? 'Estudiante';
+  const studentId   = userProfile.uid ?? user.account.localAccountId ?? user.account.homeAccountId;
+  const studentName = userProfile.nombre ?? userProfile.correo ?? user.account.username ?? 'Estudiante';
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">

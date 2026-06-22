@@ -22,7 +22,7 @@ const jwks = jwksClient({
 // ─────────────────────────────────────────────────────────────────────────────
 // Dev secret — mismo que firma el token en /api/auth/dev-login/route.ts
 // ─────────────────────────────────────────────────────────────────────────────
-const DEV_JWT_SECRET = 'ugm-proctor-dev-secret-2024';
+const DEV_JWT_SECRET = process.env.DEV_JWT_SECRET ?? 'ugm-proctor-dev-secret-2024';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getKey — callback para jwt.verify en la ruta de Azure (RS256)
@@ -97,7 +97,7 @@ export async function verifyAuth(request: NextRequest): Promise<{
       // ── Ruta de Desarrollo ────────────────────────────────────────────────
       // Validamos con el secret simétrico local.
       // Si NEXT_PUBLIC_SHOW_DEV_LOGIN no está activo rechazamos igualmente.
-      if (process.env.NEXT_PUBLIC_SHOW_DEV_LOGIN !== 'true') {
+      if (process.env.ALLOW_DEV_TOKENS !== 'true' && process.env.NODE_ENV !== 'development') {
         console.warn('Auth Error: Dev token recibido en entorno de producción');
         return { authenticated: false, user: null, error: 'Dev tokens no permitidos en producción' };
       }

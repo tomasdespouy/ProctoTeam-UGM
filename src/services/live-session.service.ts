@@ -20,12 +20,14 @@ export interface Alert {
 export interface StudentSession {
   id: string; // ID de participación
   studentId: string;
+  examId?: string;
   name: string;
   email?: string;
   status: 'joined' | 'in-progress' | 'submitted' | 'blocked';
   lastSnapshot?: string; // Base64 o URL de la imagen
   lastSeen: Date;
   startedAt?: Date;
+  finishedAt?: Date;
   alerts: Alert[];
   unreadMessages: number; // Conteo de mensajes sin leer
 }
@@ -270,12 +272,14 @@ export const liveSessionService = {
     const query = `
       SELECT 
         ep.id,
+        ep.exam_session_id as "examId",
         ep.student_id as "studentId",
         ep.student_name as name,
         u.email,
         ep.status,
         ep.last_snapshot as "lastSnapshot",
         ep.started_at as "startedAt",
+        ep.finished_at as "finishedAt",
         -- Usamos started_at o finished_at como proxy de "visto por última vez" si no tenemos columna heartbeat dedicada
         COALESCE(ep.finished_at, ep.started_at) as "lastSeen",
 
@@ -315,6 +319,8 @@ export const liveSessionService = {
       ...row,
       alerts: typeof row.alerts === 'string' ? JSON.parse(row.alerts) : (row.alerts ?? []),
       lastSeen: row.lastSeen ? new Date(row.lastSeen) : new Date(),
+      startedAt: row.startedAt ? new Date(row.startedAt) : undefined,
+      finishedAt: row.finishedAt ? new Date(row.finishedAt) : undefined,
     }));
   }
 };

@@ -4,19 +4,11 @@ import { upsertUser } from '@/lib/auth-postgres';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { uid, email, nombre, role, photo_url } = body;
+    const { uid, email, nombre, photo_url } = body;
 
-    if (!uid || !email || !nombre || !role) {
+    if (!uid || !email || !nombre) {
       return NextResponse.json(
-        { error: 'Missing required fields: uid, email, nombre, role' },
-        { status: 400 }
-      );
-    }
-
-    // Validar rol
-    if (!['student', 'instructor', 'super-admin'].includes(role)) {
-      return NextResponse.json(
-        { error: 'Invalid role. Must be: student, instructor, or super-admin' },
+        { error: 'Missing required fields: uid, email, nombre' },
         { status: 400 }
       );
     }
@@ -25,7 +17,6 @@ export async function POST(request: NextRequest) {
       uid,
       email,
       nombre,
-      role,
       photo_url: photo_url || undefined,
     });
 

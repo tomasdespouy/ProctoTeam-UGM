@@ -39,13 +39,14 @@ export function UserNav() {
   
   const userRole = userProfile?.role;
   const displayName = userProfile?.nombre || user?.account?.name;
+  const displayEmail = userProfile?.correo || user?.account?.username;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-9 w-9 rounded-full">
           <Avatar className="h-9 w-9">
-            <AvatarFallback>{displayName?.split(' ').map(n => n[0]).join('').substring(0, 2) ?? user.email?.[0].toUpperCase() ?? 'U'}</AvatarFallback>
+            <AvatarFallback>{displayName?.split(' ').map(n => n[0]).join('').substring(0, 2) ?? displayEmail?.[0].toUpperCase() ?? 'U'}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>

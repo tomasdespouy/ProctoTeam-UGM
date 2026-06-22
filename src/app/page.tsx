@@ -11,10 +11,12 @@ import { useAuth, UserProfile } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
 
 const SHOW_DEV_LOGIN = process.env.NEXT_PUBLIC_SHOW_DEV_LOGIN === 'true';
+const DEV_TEACHER_EMAIL = 'docente@ugm.cl';
 
 export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
-  const [devEmail, setDevEmail] = useState('');
+  const [devEmail, setDevEmail] = useState(DEV_TEACHER_EMAIL);
+  const [devPassword, setDevPassword] = useState('');
   const [devLoading, setDevLoading] = useState(false);
   const { toast } = useToast();
   const { setDevUser } = useAuth();
@@ -40,14 +42,18 @@ export default function HomePage() {
     }
   };
 
-  const handleDevLogin = async (email: string, forceRole?: string) => {
+  const handleDevLogin = async (email: string, forceRole?: string, password?: string) => {
     if (devLoading) return;
     setDevLoading(true);
     try {
       const response = await fetch('/api/auth/dev-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, ...(forceRole ? { role: forceRole } : {}) }),
+        body: JSON.stringify({
+          email,
+          ...(forceRole ? { role: forceRole } : {}),
+          ...(password ? { password } : {}),
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Error en dev login');
@@ -213,11 +219,26 @@ export default function HomePage() {
             </div>
             <Input
               type="email"
-              placeholder="Email de prueba..."
+              placeholder="Usuario docente..."
               value={devEmail}
               onChange={(e) => setDevEmail(e.target.value)}
               className="mb-2 h-9 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-amber-400"
             />
+            <Input
+              type="password"
+              placeholder="ContraseÃ±a docente..."
+              value={devPassword}
+              onChange={(e) => setDevPassword(e.target.value)}
+              className="mb-2 h-9 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-amber-400"
+            />
+            <Button
+              onClick={() => handleDevLogin(devEmail || DEV_TEACHER_EMAIL, 'instructor', devPassword)}
+              disabled={devLoading || !devEmail || !devPassword}
+              size="sm"
+              className="mb-2 w-full h-8 text-xs bg-green-600/90 hover:bg-green-600 text-white"
+            >
+              {devLoading ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Entrando...</> : 'Entrar como Docente'}
+            </Button>
             <div className="flex gap-2 mb-2">
               <Button
                 variant="outline" size="sm"

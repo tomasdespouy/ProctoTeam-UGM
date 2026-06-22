@@ -8,10 +8,18 @@ import { useTheme } from 'next-themes';
 interface LogoProps {
   width?: number;
   height?: number;
+  size?: 'sm' | 'md' | 'lg';
 }
 
-export function PortalLogo({ width = 48, height = 48 }: LogoProps) {
+const logoSizes = {
+  sm: 32,
+  md: 48,
+  lg: 96,
+};
+
+export function PortalLogo({ width, height, size = 'md' }: LogoProps) {
   const { resolvedTheme } = useTheme();
+  const resolvedSize = logoSizes[size];
   // Default to the light theme logo URL
   const [logoSrc, setLogoSrc] = useState("https://i.postimg.cc/65cC9b5h/Logo-UGM-alto-contraste-Blanco-01-1.png");
 
@@ -30,8 +38,8 @@ export function PortalLogo({ width = 48, height = 48 }: LogoProps) {
     <Image
       src={logoSrc}
       alt="UGM Portal Logo"
-      width={width}
-      height={height}
+      width={width ?? resolvedSize}
+      height={height ?? resolvedSize}
       className="object-contain"
       priority
     />

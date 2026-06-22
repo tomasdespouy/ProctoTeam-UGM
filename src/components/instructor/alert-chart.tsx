@@ -5,8 +5,11 @@ import { Pie, PieChart, Cell } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from '@/components/ui/chart';
 import { useMemo } from 'react';
-import type { FormattedAlert } from '@/app/instructor/page';
 import { PieChartIcon } from 'lucide-react';
+
+interface FormattedAlert {
+  description: string;
+}
 
 interface AlertChartProps {
   alerts: FormattedAlert[];
@@ -50,7 +53,21 @@ export function AlertChart({ alerts }: AlertChartProps) {
   }, [chartData]);
   
   const RADIAN = Math.PI / 180;
-  const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+  const renderCustomizedLabel = ({
+    cx,
+    cy,
+    midAngle,
+    innerRadius,
+    outerRadius,
+    percent,
+  }: {
+    cx: number;
+    cy: number;
+    midAngle: number;
+    innerRadius: number;
+    outerRadius: number;
+    percent: number;
+  }) => {
     if (percent < 0.05) return null; // Don't show label for slices smaller than 5%
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + radius * Math.cos(-midAngle * RADIAN);

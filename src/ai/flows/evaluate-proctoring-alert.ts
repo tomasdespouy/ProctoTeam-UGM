@@ -68,7 +68,7 @@ const evaluateProctoringAlertFlow = ai.defineFlow(
     } catch (error) {
       console.error('Error in evaluateProctoringAlertFlow:', error);
       return {
-        severity: 'critical',
+        severity: 'critical' as const,
         explanation:
           'Se produjo un error al procesar la alerta. El sistema de IA no está disponible.',
         recommendation:

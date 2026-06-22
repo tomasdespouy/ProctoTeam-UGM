@@ -21,10 +21,10 @@ const chartConfig = {
 
 export function getChartData(students: StudentSession[]) {
     const finishedStudentsData = students
-      .filter(s => s.status === 'finished' && s.startTime && s.finishTime)
+      .filter(s => s.status === 'submitted' && s.startedAt && s.finishedAt)
       .map(s => ({
         name: s.name.split(' ')[0], // Use first name
-        duration: parseFloat(((s.finishTime! - s.startTime!) / 60000).toFixed(1)),
+        duration: parseFloat(((s.finishedAt!.getTime() - s.startedAt!.getTime()) / 60000).toFixed(1)),
       }))
       .sort((a, b) => a.duration - b.duration);
 

@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 export const dynamic = 'force-dynamic';
 
 // Secret used only for signing dev tokens — never exposed to production
-const DEV_JWT_SECRET = 'ugm-proctor-dev-secret-2024';
+const DEV_JWT_SECRET = process.env.DEV_JWT_SECRET ?? 'ugm-proctor-dev-secret-2024';
 
 export async function POST(request: NextRequest) {
   const allowTestLogin = process.env.ALLOW_TEST_LOGIN === 'true';
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { email, role: forceRole } = body;
+    const { email, password, role: forceRole } = body;
 
     if (!email || typeof email !== 'string') {
       return NextResponse.json(
@@ -29,12 +29,26 @@ export async function POST(request: NextRequest) {
     }
 
     const emailLower = email.toLowerCase().trim();
+    const teacherEmail = (process.env.DEV_TEACHER_EMAIL ?? 'docente@ugm.cl').toLowerCase().trim();
+    const teacherPassword = process.env.DEV_TEACHER_PASSWORD ?? 'Docente123!';
 
     if (!emailLower.includes('@')) {
       return NextResponse.json(
         { error: 'Formato de email inválido' },
         { status: 400 }
       );
+    }
+
+    let requestedRole = forceRole;
+
+    if (emailLower === teacherEmail || password) {
+      if (password !== teacherPassword) {
+        return NextResponse.json(
+          { error: 'Credenciales de docente invÃ¡lidas' },
+          { status: 401 }
+        );
+      }
+      requestedRole = requestedRole ?? 'instructor';
     }
 
     let user = await getUserByEmail(emailLower);
@@ -52,13 +66,13 @@ export async function POST(request: NextRequest) {
 
     // In development only: allow forcing a specific role (e.g. super-admin)
     const validRoles = ['student', 'instructor', 'super-admin'];
-    if (forceRole && validRoles.includes(forceRole) && user.role !== forceRole) {
+    if (requestedRole && validRoles.includes(requestedRole) && user.role !== requestedRole) {
       const { query } = await import('@/lib/db');
       await query(
         `UPDATE users SET role = $1, updated_at = NOW() WHERE uid = $2`,
-        [forceRole, user.uid]
+        [requestedRole, user.uid]
       );
-      user = { ...user, role: forceRole as 'student' | 'instructor' | 'super-admin' };
+      user = { ...user, role: requestedRole as 'student' | 'instructor' | 'super-admin' };
     }
 
     // Generate a properly-structured JWT so that auth-middleware.ts can decode it.

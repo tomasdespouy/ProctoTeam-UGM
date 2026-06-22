@@ -37,27 +37,29 @@ interface StudentCardProps {
 }
 
 const statusConfig = {
-    active: { icon: <CheckCircle className="h-4 w-4 text-green-500" />, text: 'Activo', color: 'text-green-500' },
-    alert: { icon: <AlertTriangle className="h-4 w-4 text-destructive" />, text: 'En Alerta', color: 'text-destructive' },
-    finished: { icon: <Power className="h-4 w-4 text-muted-foreground" />, text: 'Finalizado', color: 'text-muted-foreground' },
+    joined: { icon: <CheckCircle className="h-4 w-4 text-green-500" />, text: 'Unido', color: 'text-green-500' },
+    'in-progress': { icon: <CheckCircle className="h-4 w-4 text-green-500" />, text: 'Activo', color: 'text-green-500' },
+    submitted: { icon: <Power className="h-4 w-4 text-muted-foreground" />, text: 'Finalizado', color: 'text-muted-foreground' },
+    blocked: { icon: <XCircle className="h-4 w-4 text-destructive" />, text: 'Bloqueado', color: 'text-destructive' },
 }
 
 export function StudentCard({ student }: StudentCardProps) {
-    const { name, id, status, lastAlert, lastSnapshot, alerts } = student;
+    const { name, id, status, lastSnapshot, alerts } = student;
+    const lastAlert = alerts?.[0]?.description ?? 'Sin alertas';
     const hasValidImage = typeof lastSnapshot === 'string' && lastSnapshot.trim().length > 0;
-    const currentStatus = statusConfig[status as keyof typeof statusConfig];
+    const currentStatus = statusConfig[status];
     const { toast } = useToast();
     const [message, setMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
     const [isTerminating, setIsTerminating] = useState(false);
     const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false);
     const [highlight, setHighlight] = useState(false);
-    const lastAlertTimestamp = alerts?.[0]?.timestamp ?? 0;
+    const lastAlertTimestamp = alerts?.[0]?.timestamp ? new Date(alerts[0].timestamp).getTime() : 0;
 
     useEffect(() => {
         // Only highlight if the latest alert is recent (e.g., within the last 5 seconds)
         // and the student is currently in 'alert' status.
-        if (status === 'alert' && Date.now() - lastAlertTimestamp < 5000) {
+        if (alerts.length > 0 && Date.now() - lastAlertTimestamp < 5000) {
             setHighlight(true);
             const timer = setTimeout(() => {
                 setHighlight(false);
