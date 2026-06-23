@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { broadcastAlert } from '@/lib/realtime-broadcast';
 
 /**
  * SERVICIO LIVE SESSION (PERSISTENTE)
@@ -122,10 +123,12 @@ export const liveSessionService = {
       [data.examId, data.studentId, data.description, data.severity, data.evidenceUrl || null]
     );
 
-    // 2. (Opcional) Si la severidad es crítica, podríamos cambiar el estado del alumno aquí
-    // pero por ahora solo registramos.
+    const alert = res.rows[0];
 
-    return res.rows[0];
+    // 2. Notificar al panel del proctor en tiempo real (reemplaza postgres_changes).
+    await broadcastAlert(data.examId, alert);
+
+    return alert;
   },
 
   /**

@@ -370,21 +370,25 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
 
     const channel = supabase
       .channel(`exam-room-${examId}`)
-      .on(
-        'postgres_changes' as any,
-        { event: 'INSERT', schema: 'public', table: 'alerts', filter: `exam_session_id=eq.${examId}` },
-        (payload: any) => {
-          const newAlert = payload.new as DbAlert;
-          setStudents(prev => {
-            const student = prev.get(newAlert.student_id);
-            if (!student) return prev;
-            const updated = new Map(prev);
-            updated.set(newAlert.student_id, { ...student, alertCount: student.alertCount + 1 });
-            return updated;
-          });
-          setAlerts(prev => [newAlert, ...prev].slice(0, 200));
-        },
-      )
+      // Alertas en tiempo real vía Broadcast emitido por el servidor (service_role).
+      // Reemplaza `postgres_changes`, que dejó de funcionar al activar RLS en
+      // `public.alerts`. El payload es la fila de la alerta insertada.
+      .on('broadcast', { event: 'new-alert' }, ({ payload }: any) => {
+        const newAlert = payload as DbAlert;
+        if (!newAlert?.student_id) return;
+        setStudents(prev => {
+          const student = prev.get(newAlert.student_id);
+          if (!student) return prev;
+          const updated = new Map(prev);
+          updated.set(newAlert.student_id, { ...student, alertCount: student.alertCount + 1 });
+          return updated;
+        });
+        setAlerts(prev => {
+          // Evita duplicar si el polling de 30s ya trajo esta alerta.
+          if (newAlert.id && prev.some(a => a.id === newAlert.id)) return prev;
+          return [newAlert, ...prev].slice(0, 200);
+        });
+      })
       .on('broadcast', { event: 'webrtc-signaling' }, handleWebRTCSignaling)
       .subscribe((status: string) => setIsConnected(status === 'SUBSCRIBED'));
 

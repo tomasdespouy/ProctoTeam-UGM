@@ -1,4 +1,5 @@
 import { query } from './db';
+import { broadcastAlert } from './realtime-broadcast';
 
 export interface ExamSession {
   id: string;
@@ -161,8 +162,13 @@ export async function addAlert(alertData: {
       alertData.description,
     ]
   );
-  
-  return result.rows[0] as Alert;
+
+  const alert = result.rows[0] as Alert;
+
+  // Notificar al panel del proctor en tiempo real (reemplaza postgres_changes).
+  await broadcastAlert(alert.exam_session_id, alert);
+
+  return alert;
 }
 
 // Obtener alertas de una sesión
