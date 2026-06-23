@@ -28,6 +28,18 @@ export default function HomePage() {
     try {
       const result = await signInWithAzurePopup();
       if (result.error) {
+        const code = (result.error as any)?.errorCode ?? '';
+        // 'interaction_in_progress' = quedó un login previo a medio terminar.
+        // NO hacemos fallback a redirect (lo empeora); pedimos reintentar.
+        if (code === 'interaction_in_progress') {
+          toast({
+            variant: "destructive",
+            title: "Sesión de login ocupada",
+            description: "Había un inicio de sesión a medias. Recargamos el estado; intenta de nuevo en unos segundos.",
+          });
+          setIsLoading(false);
+          return;
+        }
         console.warn("Popup falló, intentando redirección...", result.error);
         await signInWithAzureRedirect();
       }
@@ -124,6 +136,13 @@ export default function HomePage() {
         }}
       />
 
+      {/* ── Halo cyan sutil detrás del título (profundidad sobria) ── */}
+      <div
+        aria-hidden="true"
+        className="absolute left-1/2 top-[26%] -translate-x-1/2 -translate-y-1/2 w-[560px] h-[560px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.12) 0%, transparent 70%)', zIndex: 0 }}
+      />
+
       {/* ── Centre content ── */}
       <div className="relative z-10 flex flex-col items-center w-full px-4">
 
@@ -142,7 +161,7 @@ export default function HomePage() {
         {/* Title */}
         <h1 className="font-headline font-black leading-none mb-2 text-center"
             style={{ fontSize: 'clamp(40px, 5.5vw, 72px)' }}>
-          <span style={{ color: '#00D4FF' }}>Procto</span>
+          <span style={{ color: '#00D4FF', textShadow: '0 0 28px rgba(0,212,255,0.35)' }}>Procto</span>
           <span className="text-white">Team</span>
         </h1>
         <p className="text-white/80 text-base font-light tracking-wide mb-10 text-center">
@@ -226,11 +245,14 @@ export default function HomePage() {
             />
             <Input
               type="password"
-              placeholder="ContraseÃ±a docente..."
+              placeholder="Clave de acceso de desarrollo (requerida)..."
               value={devPassword}
               onChange={(e) => setDevPassword(e.target.value)}
-              className="mb-2 h-9 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-amber-400"
+              className="mb-1 h-9 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-amber-400"
             />
+            <p className="text-amber-200/60 text-[10px] mb-2">
+              Requerida para todos los accesos de desarrollo (DEV_LOGIN_PASSWORD).
+            </p>
             <Button
               onClick={() => handleDevLogin(devEmail || DEV_TEACHER_EMAIL, 'instructor', devPassword)}
               disabled={devLoading || !devEmail || !devPassword}
@@ -242,32 +264,32 @@ export default function HomePage() {
             <div className="flex gap-2 mb-2">
               <Button
                 variant="outline" size="sm"
-                onClick={() => { setDevEmail('test@estudiante.ugm.cl'); handleDevLogin('test@estudiante.ugm.cl'); }}
-                disabled={devLoading}
+                onClick={() => { setDevEmail('test@estudiante.ugm.cl'); handleDevLogin('test@estudiante.ugm.cl', 'student', devPassword); }}
+                disabled={devLoading || !devPassword}
                 className="flex-1 h-8 text-xs border-blue-400/50 text-blue-300 bg-transparent hover:bg-blue-400/10"
               >
                 <GraduationCap className="h-3 w-3 mr-1" /> Estudiante
               </Button>
               <Button
                 variant="outline" size="sm"
-                onClick={() => { setDevEmail('test@ugm.cl'); handleDevLogin('test@ugm.cl', 'instructor'); }}
-                disabled={devLoading}
+                onClick={() => { setDevEmail('test@ugm.cl'); handleDevLogin('test@ugm.cl', 'instructor', devPassword); }}
+                disabled={devLoading || !devPassword}
                 className="flex-1 h-8 text-xs border-green-400/50 text-green-300 bg-transparent hover:bg-green-400/10"
               >
                 <BookOpen className="h-3 w-3 mr-1" /> Instructor
               </Button>
               <Button
                 variant="outline" size="sm"
-                onClick={() => { setDevEmail('admin@ugm.cl'); handleDevLogin('admin@ugm.cl', 'super-admin'); }}
-                disabled={devLoading}
+                onClick={() => { setDevEmail('admin@ugm.cl'); handleDevLogin('admin@ugm.cl', 'super-admin', devPassword); }}
+                disabled={devLoading || !devPassword}
                 className="flex-1 h-8 text-xs border-purple-400/50 text-purple-300 bg-transparent hover:bg-purple-400/10"
               >
                 <ShieldCheck className="h-3 w-3 mr-1" /> Admin
               </Button>
             </div>
             <Button
-              onClick={() => handleDevLogin(devEmail)}
-              disabled={devLoading || !devEmail}
+              onClick={() => handleDevLogin(devEmail, undefined, devPassword)}
+              disabled={devLoading || !devEmail || !devPassword}
               size="sm"
               className="w-full h-8 text-xs bg-amber-500/80 hover:bg-amber-500 text-white"
             >
