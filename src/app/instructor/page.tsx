@@ -235,7 +235,7 @@ export default function InstructorHome() {
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 md:p-8">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-card p-6 md:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
 
             <div className="space-y-2">

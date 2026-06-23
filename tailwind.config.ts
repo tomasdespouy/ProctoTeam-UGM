@@ -88,6 +88,23 @@ export default {
         'figma-dark-tertiary': '#0f1123',
         'figma-gradient-start': '#1a1d47',
         'figma-gradient-end': '#242f62',
+        // ── Escala navy unificada (fuente única de verdad para superficies oscuras) ──
+        navy: {
+          950: '#080E28',
+          900: '#0E1640',
+          800: '#131C4D',
+          700: '#1A1D47',
+          600: '#242F62',
+          500: '#2D3561',
+          400: '#394281',
+        },
+        // ── Acento de marca (cyan) ──
+        brand: {
+          300: '#00D4FF',
+          400: '#00BBFF',
+          500: '#00A6E6',
+          600: '#0099CC',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -152,7 +169,10 @@ export default {
         'gradient-primary': 'linear-gradient(135deg, #00d4ff 0%, #00b8e6 50%, #0099cc 100%)',
       },
       boxShadow: {
-        'card': '0px 3px 10px 2px rgba(0,0,0,0.27)',
+        // Sombras suaves y en tono navy (más sobrias que el negro duro anterior)
+        'soft':       '0 1px 2px rgba(16,24,64,0.05)',
+        'card':       '0 1px 3px rgba(16,24,64,0.06), 0 6px 18px rgba(16,24,64,0.06)',
+        'card-hover': '0 4px 12px rgba(16,24,64,0.08), 0 14px 30px rgba(16,24,64,0.10)',
         'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.37)',
         'glass-inset': 'inset 0 2px 4px 0 rgba(255, 255, 255, 0.1)',
         'figma': '0 10px 40px rgba(0, 212, 255, 0.2)',
