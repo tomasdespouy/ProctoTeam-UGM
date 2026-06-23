@@ -197,17 +197,24 @@ export async function POST(request: NextRequest) {
         result = { success: true, count: activeStudents.length };
         break;
 
-      case 'BLOCK_STUDENT':
-        // Expulsión manual por el profesor
-        // Reutilizamos finishExam pero podríamos agregar un flag de 'blocked' en el futuro
-        // Por ahora, lo marcamos como submitted/blocked en la base de datos manualmente si queremos distinción
-        // O usamos un método específico si el servicio lo tiene.
-        // Dado el servicio actual, vamos a actualizar el status directamente via DB o añadir método al servicio.
-        // Por simplicidad y robustez:
-        await liveSessionService.finishExam(payload.examId, payload.studentId);
-        // TODO: Agregar método 'blockStudent' en el servicio para cambiar status a 'blocked' explícitamente
-        result = { success: true, message: 'Estudiante bloqueado/finalizado.' };
+      case 'BLOCK_STUDENT': {
+        // Expulsión manual por el profesor: marca status='blocked' (no 'submitted'),
+        // que el polling del alumno detecta para cerrarle la sesión y que impide reingreso.
+        const blockExamId = payload.examId || body.examId;
+        const blockStudentId = payload.studentId || body.studentId || payload.uid || body.uid;
+
+        if (!blockExamId || !blockStudentId) {
+          console.warn('⛔ [API /live] BLOCK_STUDENT rechazado: Missing examId/studentId');
+          return NextResponse.json(
+            { error: 'Bad Request', details: 'Missing required fields: examId and studentId for block' },
+            { status: 400 }
+          );
+        }
+
+        await liveSessionService.blockStudent(blockExamId, blockStudentId);
+        result = { success: true, message: 'Estudiante retirado de la evaluación.' };
         break;
+      }
 
       case 'TERMINATE_ALL_SESSIONS':
         // Finalizar examen completo (Profesor)

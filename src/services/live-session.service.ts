@@ -249,6 +249,35 @@ export const liveSessionService = {
   },
 
   /**
+   * Retira (bloquea) a un estudiante de la evaluación. Marca status='blocked',
+   * que el polling del alumno (GET /api/exam-sessions/[examId]) detecta para
+   * cerrarle la sesión, y que el UPSERT de joinSession respeta para impedir el
+   * reingreso. A diferencia de finishExam ('submitted'), esto sí expulsa.
+   */
+  blockStudent: async (examId: string, studentId: string) => {
+    if (!studentId || typeof studentId !== 'string') {
+      console.warn('⛔ [BLOCK_STUDENT] Guard Clause: studentId inválido. Operación abortada.');
+      return { success: false, reason: 'INVALID_STUDENT_ID' };
+    }
+    if (!examId || typeof examId !== 'string') {
+      console.warn('⛔ [BLOCK_STUDENT] Guard Clause: examId inválido. Operación abortada.');
+      return { success: false, reason: 'INVALID_EXAM_ID' };
+    }
+
+    const studentIdPreview = studentId.substring(0, 8);
+    console.log(`🚫 Block Student: ${studentIdPreview}... en examen ${examId.substring(0, 8)}...`);
+
+    await db.query(
+      `UPDATE exam_participations
+       SET status = 'blocked', finished_at = NOW()
+       WHERE exam_session_id = $1 AND student_id = $2`,
+      [examId, studentId]
+    );
+
+    return { success: true };
+  },
+
+  /**
    * Fuerza el cierre de un examen y marca a todos los participantes como finalizados
    */
   forceCloseExam: async (examId: string) => {

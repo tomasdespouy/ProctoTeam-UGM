@@ -38,6 +38,7 @@ import {
   Maximize2,
   X,
   Camera,
+  Send,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { useToast } from '@/hooks/use-toast';
@@ -131,6 +132,11 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
   const [gridMode,          setGridMode]          = useState<'normal' | 'dense'>('dense');
   const [maximizedStudent,  setMaximizedStudent]  = useState<StudentStream | null>(null);
 
+  // Acciones por estudiante (enviar mensaje / retirar) desde el modal maximizado
+  const [msgText,           setMsgText]           = useState('');
+  const [isSendingMsg,      setIsSendingMsg]      = useState(false);
+  const [isRemoving,        setIsRemoving]        = useState(false);
+
   // Close maximize modal on ESC key
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -139,6 +145,9 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Limpia el borrador de mensaje al cambiar de estudiante o cerrar el modal.
+  useEffect(() => { setMsgText(''); }, [maximizedStudent?.studentId]);
 
   // ── Bug 3: exam metadata state ─────────────────────────────────────────────
   const [examMeta, setExamMeta] = useState<ExamMeta | null>(null);
@@ -256,6 +265,54 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Error', description: `No se pudo finalizar: ${err.message}` });
       setIsClosing(false);
+    }
+  };
+
+  // ── Enviar un mensaje al estudiante ────────────────────────────────────────
+  // El alumno lo recibe en su próximo heartbeat (≤5s) como notificación toast.
+  const handleSendMessage = async () => {
+    if (!maximizedStudent || !msgText.trim()) return;
+    setIsSendingMsg(true);
+    try {
+      const res = await fetch('/api/live', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          action:  'SEND_MESSAGE_TO_STUDENT',
+          payload: { examId, studentId: maximizedStudent.studentId, message: msgText.trim() },
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast({ title: 'Mensaje enviado', description: `${maximizedStudent.studentName} lo recibirá en unos segundos.` });
+      setMsgText('');
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo enviar el mensaje.' });
+    } finally {
+      setIsSendingMsg(false);
+    }
+  };
+
+  // ── Retirar (bloquear) a un estudiante de la evaluación ────────────────────
+  // Marca status='blocked'; el polling del alumno (≤5s) cierra su sesión y no
+  // podrá reingresar.
+  const handleRemoveStudent = async (student: StudentStream) => {
+    setIsRemoving(true);
+    try {
+      const res = await fetch('/api/live', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          action:  'BLOCK_STUDENT',
+          payload: { examId, studentId: student.studentId, reason: 'Retirado por el supervisor.' },
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast({ title: 'Estudiante retirado', description: `${student.studentName} fue retirado de la evaluación.` });
+      setMaximizedStudent(null);
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo retirar al estudiante.' });
+    } finally {
+      setIsRemoving(false);
     }
   };
 
@@ -688,9 +745,62 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                 </div>
               )}
             </div>
-            <div className="px-5 py-2.5 text-center border-t border-white/10"
+            <div className="px-5 py-3 border-t border-white/10 space-y-3"
               style={{ backgroundColor: '#111827' }}>
-              <p className="text-xs text-white/25">Haz clic fuera del modal para cerrar</p>
+              {/* Enviar mensaje al estudiante */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={msgText}
+                  onChange={e => setMsgText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !isSendingMsg) handleSendMessage(); }}
+                  placeholder={`Enviar un mensaje a ${maximizedStudent.studentName}…`}
+                  maxLength={500}
+                  className="flex-1 rounded-lg bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSendMessage}
+                  disabled={isSendingMsg || !msgText.trim()}
+                  className="gap-1.5 h-9 flex-shrink-0"
+                >
+                  {isSendingMsg ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Enviar
+                </Button>
+              </div>
+
+              {/* Retirar de la evaluación */}
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-white/25">
+                  El estudiante recibirá el mensaje como notificación en unos segundos.
+                </p>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="destructive" className="gap-1.5 h-8 flex-shrink-0" disabled={isRemoving}>
+                      {isRemoving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                      Retirar de la evaluación
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>¿Retirar a {maximizedStudent.studentName}?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        El estudiante será retirado de la evaluación y no podrá volver a ingresar.
+                        Su sesión se cerrará automáticamente en unos segundos. Esta acción es irreversible.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => handleRemoveStudent(maximizedStudent)}
+                        className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                      >
+                        Retirar
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
             </div>
           </div>
         </div>
