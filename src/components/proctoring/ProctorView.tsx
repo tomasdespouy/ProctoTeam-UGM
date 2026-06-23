@@ -657,9 +657,14 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
 
         <div className="rounded-xl p-3 border border-white/10" style={{ backgroundColor: '#111827' }}>
           {isLoading ? (
-            <div className="flex items-center justify-center py-12 text-gray-500">
-              <div className="animate-spin h-6 w-6 border-2 border-gray-600 border-t-transparent rounded-full mr-3" />
-              Cargando estudiantes...
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-lg border border-white/5 animate-pulse"
+                  style={{ backgroundColor: '#0A1228', aspectRatio: '4/3' }}
+                />
+              ))}
             </div>
           ) : studentsArray.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-500">
@@ -1000,7 +1005,11 @@ function DenseStudentCell({
 }: { student: StudentStream; onMaximize: () => void }) {
   return (
     <div
-      className="rounded-lg overflow-hidden relative cursor-pointer group border border-white/5"
+      className={`rounded-lg overflow-hidden relative cursor-pointer group transition-base ${
+        student.alertCount > 0
+          ? 'ring-2 ring-red-500/60 border border-red-500/30'
+          : 'border border-white/5 hover:border-white/20'
+      }`}
       style={{ backgroundColor: '#0A1228', aspectRatio: '4/3' }}
       onClick={onMaximize}
       title={`${student.studentName} — clic para maximizar`}
