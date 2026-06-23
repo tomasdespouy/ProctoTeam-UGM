@@ -997,7 +997,7 @@ function AlertRow({ alert, studentName }: { alert: DbAlert; studentName: string 
                 </span>
                 <span className="text-[10px] text-gray-400">
                   {new Date(alert.timestamp).toLocaleString('es-CL', {
-                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit',
                   })}
                 </span>
               </div>
@@ -1024,8 +1024,8 @@ function AlertRow({ alert, studentName }: { alert: DbAlert; studentName: string 
         </Dialog>
       )}
 
-      <p className="text-xs text-gray-400 flex-shrink-0 mt-0.5">
-        {new Date(alert.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+      <p className="text-xs text-gray-400 flex-shrink-0 mt-0.5 tabular-nums">
+        {new Date(alert.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
       </p>
     </div>
   );
