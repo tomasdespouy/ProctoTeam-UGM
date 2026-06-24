@@ -13,6 +13,14 @@ export function getMsalInstance(): PublicClientApplication {
 export async function initializeMsal(): Promise<PublicClientApplication> {
   const instance = getMsalInstance();
   await instance.initialize();
+  // Procesa cualquier redirect pendiente y limpia el estado "interaction_in_progress"
+  // que pueda haber quedado trabado por un intento previo que no completó
+  // (p.ej. cuando Microsoft devuelve un error AADSTS y no se vuelve al callback).
+  try {
+    await instance.handleRedirectPromise();
+  } catch {
+    /* sin redirect pendiente o ya procesado */
+  }
   return instance;
 }
 

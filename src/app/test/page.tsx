@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 
 export default function TestLoginPage() {
   const [devEmail, setDevEmail] = useState('');
+  const [devPassword, setDevPassword] = useState('');
   const [devLoading, setDevLoading] = useState(false);
   const { toast } = useToast();
   const { setDevUser } = useAuth();
@@ -18,12 +19,16 @@ export default function TestLoginPage() {
 
   const handleDevLogin = async (email: string, forceRole?: string) => {
     if (devLoading) return;
+    if (!devPassword) {
+      toast({ variant: 'destructive', title: 'Falta la clave', description: 'Ingresa la clave de acceso de desarrollo.' });
+      return;
+    }
     setDevLoading(true);
     try {
       const response = await fetch('/api/auth/dev-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, ...(forceRole ? { role: forceRole } : {}) }),
+        body: JSON.stringify({ email, password: devPassword, ...(forceRole ? { role: forceRole } : {}) }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Error en test login');
@@ -95,15 +100,23 @@ export default function TestLoginPage() {
             </span>
           </div>
 
-          <p className="text-white/60 text-xs mb-4">
+          <p className="text-white/60 text-xs mb-3">
             Selecciona un rol para ingresar al sistema como usuario de prueba.
           </p>
+
+          <Input
+            type="password"
+            placeholder="Clave de acceso de desarrollo (requerida)..."
+            value={devPassword}
+            onChange={(e) => setDevPassword(e.target.value)}
+            className="mb-4 h-10 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-amber-400"
+          />
 
           <div className="flex flex-col gap-3 mb-4">
             <Button
               variant="outline"
               onClick={() => { setDevEmail('test@estudiante.ugm.cl'); handleDevLogin('test@estudiante.ugm.cl', 'student'); }}
-              disabled={devLoading}
+              disabled={devLoading || !devPassword}
               className="h-12 text-sm border-blue-400/50 text-blue-300 bg-transparent hover:bg-blue-400/10 justify-start"
             >
               <GraduationCap className="h-5 w-5 mr-3" /> Entrar como Estudiante
@@ -111,7 +124,7 @@ export default function TestLoginPage() {
             <Button
               variant="outline"
               onClick={() => { setDevEmail('test@ugm.cl'); handleDevLogin('test@ugm.cl', 'instructor'); }}
-              disabled={devLoading}
+              disabled={devLoading || !devPassword}
               className="h-12 text-sm border-green-400/50 text-green-300 bg-transparent hover:bg-green-400/10 justify-start"
             >
               <BookOpen className="h-5 w-5 mr-3" /> Entrar como Instructor
@@ -119,7 +132,7 @@ export default function TestLoginPage() {
             <Button
               variant="outline"
               onClick={() => { setDevEmail('admin@ugm.cl'); handleDevLogin('admin@ugm.cl', 'super-admin'); }}
-              disabled={devLoading}
+              disabled={devLoading || !devPassword}
               className="h-12 text-sm border-purple-400/50 text-purple-300 bg-transparent hover:bg-purple-400/10 justify-start"
             >
               <ShieldCheck className="h-5 w-5 mr-3" /> Entrar como Super Admin
@@ -137,7 +150,7 @@ export default function TestLoginPage() {
             />
             <Button
               onClick={() => handleDevLogin(devEmail)}
-              disabled={devLoading || !devEmail}
+              disabled={devLoading || !devEmail || !devPassword}
               className="w-full h-10 text-sm bg-amber-500/80 hover:bg-amber-500 text-white"
             >
               {devLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : 'Entrar con email personalizado'}

@@ -9,6 +9,7 @@ import { getUserByUid } from './auth-postgres';
 // Caché habilitada: las llaves se reutilizan 10 min antes de re-fetchear.
 // ─────────────────────────────────────────────────────────────────────────────
 const AZURE_TENANT_ID = '05970e72-c674-4f1f-8033-6e35dd7f76aa';
+const AZURE_CLIENT_ID = 'e9f08a61-0e07-4a60-b825-c6041cdf0505';
 const JWKS_URI = `https://login.microsoftonline.com/${AZURE_TENANT_ID}/discovery/v2.0/keys`;
 
 const jwks = jwksClient({
@@ -21,8 +22,9 @@ const jwks = jwksClient({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dev secret — mismo que firma el token en /api/auth/dev-login/route.ts
+// SIN valor por defecto: si no está configurado, los tokens dev se rechazan.
 // ─────────────────────────────────────────────────────────────────────────────
-const DEV_JWT_SECRET = process.env.DEV_JWT_SECRET ?? 'ugm-proctor-dev-secret-2024';
+const DEV_JWT_SECRET = process.env.DEV_JWT_SECRET;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getKey — callback para jwt.verify en la ruta de Azure (RS256)
@@ -102,6 +104,11 @@ export async function verifyAuth(request: NextRequest): Promise<{
         return { authenticated: false, user: null, error: 'Dev tokens no permitidos en producción' };
       }
 
+      if (!DEV_JWT_SECRET) {
+        console.error('Auth Error: DEV_JWT_SECRET no configurado — dev tokens rechazados');
+        return { authenticated: false, user: null, error: 'Dev tokens no configurados' };
+      }
+
       try {
         verifiedPayload = jwt.verify(token, DEV_JWT_SECRET, { algorithms: ['HS256'] });
         console.log('[Auth] ✅ Token de desarrollo verificado (HS256)');
@@ -122,7 +129,13 @@ export async function verifyAuth(request: NextRequest): Promise<{
       try {
         verifiedPayload = await jwtVerifyAsync(token, getKey as jwt.GetPublicKeyOrSecret, {
           algorithms: ['RS256'],
+          audience: AZURE_CLIENT_ID,
         });
+        // Defensa adicional: el token debe pertenecer a NUESTRO tenant (equivale a validar issuer).
+        if (verifiedPayload.tid && verifiedPayload.tid !== AZURE_TENANT_ID) {
+          console.error('Auth Error: tid del token no coincide con el tenant esperado');
+          return { authenticated: false, user: null, error: 'Token de otro tenant' };
+        }
         console.log('[Auth] ✅ Token de Azure AD verificado (RS256)');
       } catch (err: any) {
         if (err.name === 'TokenExpiredError') {
@@ -182,6 +195,44 @@ export async function getAuthenticatedUser(request: NextRequest) {
   }
 
   return result.user;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// verifyAzureToken — verifica criptográficamente un id_token de Azure AD
+// (firma RS256 + audience + tenant) SIN consultar la base de datos.
+// Se usa en el endpoint de provisión (get-user), donde el usuario todavía no
+// existe en la tabla `users`. Devuelve la identidad del token, o null si es
+// inválido/forjado.
+// ─────────────────────────────────────────────────────────────────────────────
+export async function verifyAzureToken(
+  token: string
+): Promise<{ uid: string; email: string; name: string } | null> {
+  try {
+    const jwtVerifyAsync = promisify<string, jwt.Secret | jwt.GetPublicKeyOrSecret, jwt.VerifyOptions, any>(
+      jwt.verify.bind(jwt) as any
+    );
+
+    const payload = await jwtVerifyAsync(token, getKey as jwt.GetPublicKeyOrSecret, {
+      algorithms: ['RS256'],
+      audience: AZURE_CLIENT_ID,
+    });
+
+    if (payload.tid && payload.tid !== AZURE_TENANT_ID) {
+      console.error('verifyAzureToken: tid no coincide con el tenant esperado');
+      return null;
+    }
+
+    const uid = payload.oid || payload.sub;
+    const email = payload.email || payload.preferred_username || payload.upn;
+    const name = payload.name || (email ? email.split('@')[0] : 'Usuario');
+
+    if (!uid || !email) return null;
+
+    return { uid, email, name };
+  } catch (err: any) {
+    console.error('verifyAzureToken: verificación falló:', err?.message ?? err);
+    return null;
+  }
 }
 
 export function requireRole(allowedRoles: ('student' | 'instructor' | 'super-admin')[]) {
