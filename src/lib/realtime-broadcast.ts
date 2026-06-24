@@ -9,7 +9,7 @@
 // mantener una conexión abierta.
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 /**
  * Emite una alerta al canal `exam-room-${examId}` como evento `new-alert`.

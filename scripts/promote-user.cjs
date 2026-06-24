@@ -7,7 +7,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 const email = (process.argv[2] || '').toLowerCase().trim();
 const role = process.argv[3] || 'super-admin';
 
