@@ -42,8 +42,9 @@ import {
 } from 'lucide-react';
 import { DocumentTitleHandler } from '@/components/student/document-title-handler';
 import { StudentCam } from '@/components/proctoring/StudentCam';
+import { BiometricVerificationModal } from '@/components/student/biometric-verification-modal';
 
-export type ExamStep = 'requirements' | 'monitoring' | 'finished';
+export type ExamStep = 'requirements' | 'identity' | 'monitoring' | 'finished';
 
 interface ExamData {
   title: string;
@@ -165,6 +166,10 @@ export default function StudentExamLivePage() {
   }, [examId, user, userProfile, isTerminated, toast]);
 
   const handleAcceptRequirements = () => {
+    setStep('identity');
+  };
+
+  const handleIdentityVerified = () => {
     setStep('monitoring');
   };
 
@@ -241,6 +246,14 @@ export default function StudentExamLivePage() {
       <RequirementsModal
         isOpen={step === 'requirements'}
         onAcceptRequirements={handleAcceptRequirements}
+      />
+
+      <BiometricVerificationModal
+        isOpen={step === 'identity'}
+        onVerificationSuccess={handleIdentityVerified}
+        studentId={studentId}
+        studentName={studentName}
+        participationId={participationId ?? ''}
       />
 
       {/* Exam header with timer */}

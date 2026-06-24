@@ -1,34 +1,25 @@
 'use server';
 /**
- * @fileOverview A Genkit flow that acts as a help assistant for instructors.
+ * @fileOverview Asistente de ayuda con IA (OpenAI/GPT) para instructores.
  *
- * - askProctorHelp - A function that answers instructor questions about the platform.
- * - ProctorHelpInput - The input type for the askProctorHelp function.
- * - ProctorHelpOutput - The return type for the askProctorHelp function.
+ * - askProctorHelp - Responde preguntas del instructor sobre la plataforma.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { generateText } from 'ai';
+import { z } from 'zod';
+import { model } from '@/ai/llm';
 
 const ProctorHelpInputSchema = z.object({
-  query: z.string().describe('The instructor\'s question about the platform.'),
+  query: z.string().describe('La pregunta del instructor sobre la plataforma.'),
 });
 export type ProctorHelpInput = z.infer<typeof ProctorHelpInputSchema>;
 
 const ProctorHelpOutputSchema = z.object({
-  answer: z.string().describe('The helpful answer to the instructor\'s question.'),
+  answer: z.string().describe('La respuesta útil a la pregunta del instructor.'),
 });
 export type ProctorHelpOutput = z.infer<typeof ProctorHelpOutputSchema>;
 
-export async function askProctorHelp(input: ProctorHelpInput): Promise<ProctorHelpOutput> {
-  return proctorHelpFlow(input);
-}
-
-const proctorHelpPrompt = ai.definePrompt({
-  name: 'proctorHelpPrompt',
-  input: {schema: ProctorHelpInputSchema},
-  output: {schema: ProctorHelpOutputSchema},
-  prompt: `Eres un asistente de IA muy útil para la plataforma UGM Proctor. Tu objetivo es responder las preguntas de los docentes sobre cómo usar la plataforma.
+const PROCTOR_HELP_SYSTEM = `Eres un asistente de IA muy útil para la plataforma UGM Proctor. Tu objetivo es responder las preguntas de los docentes sobre cómo usar la plataforma.
 Aquí tienes documentación sobre la plataforma:
 
 **Cómo iniciar una sesión de examen:**
@@ -56,23 +47,18 @@ La página "Histórico" muestra una lista de todas las sesiones de examen pasada
 **¿Cómo obtienen soporte los estudiantes?**
 Los estudiantes tienen un botón "Solicitar Ayuda Técnica" durante el examen. Cuando hacen clic en él, se te envía una alerta crítica a ti, el instructor.
 
-Responde la pregunta del usuario basándote en esta información. Sé conciso y claro. Si la pregunta no está relacionada con la plataforma UGM Proctor, declina cortésmente responder.
+Responde la pregunta del usuario basándote en esta información. Sé conciso y claro. Si la pregunta no está relacionada con la plataforma UGM Proctor, declina cortésmente responder.`;
 
-Pregunta del usuario: {{{query}}}
-`,
-});
-
-const proctorHelpFlow = ai.defineFlow(
-  {
-    name: 'proctorHelpFlow',
-    inputSchema: ProctorHelpInputSchema,
-    outputSchema: ProctorHelpOutputSchema,
-  },
-  async (input) => {
-    const { output } = await proctorHelpPrompt(input);
-    if (!output) {
-      return { answer: 'Lo siento, no pude procesar tu pregunta en este momento. Por favor, intenta de nuevo.' };
-    }
-    return output;
+export async function askProctorHelp(input: ProctorHelpInput): Promise<ProctorHelpOutput> {
+  try {
+    const { text } = await generateText({
+      model,
+      system: PROCTOR_HELP_SYSTEM,
+      prompt: input.query,
+    });
+    return { answer: text || 'Lo siento, no pude procesar tu pregunta en este momento. Por favor, intenta de nuevo.' };
+  } catch (error) {
+    console.error('Error in askProctorHelp:', error);
+    return { answer: 'Lo siento, no pude procesar tu pregunta en este momento. Por favor, intenta de nuevo.' };
   }
-);
+}

@@ -3,10 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run genkit:watch & next dev --turbopack -p 5000",
-    "dev-standard": "npm run genkit:watch & next dev -p 5000",
-    "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
-    "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
+    "dev": "next dev --turbopack -p 5000",
+    "dev-standard": "next dev -p 5000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -14,10 +12,9 @@
     "db:init": "psql $DATABASE_URL -f database/schema.sql"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.74",
     "@azure/msal-browser": "^4.25.0",
     "@azure/msal-node": "^3.8.0",
-    "@genkit-ai/googleai": "^1.8.0",
-    "@genkit-ai/next": "^1.8.0",
     "@google-cloud/storage": "^7.18.0",
     "@hookform/resolvers": "^4.1.3",
     "@mediapipe/camera_utils": "^0.3.1675466862",
@@ -52,11 +49,11 @@
     "@uppy/core": "^5.2.0",
     "@uppy/dashboard": "^5.1.0",
     "@uppy/react": "^5.1.1",
+    "ai": "^6.0.208",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "framer-motion": "^11.5.7",
-    "genkit": "^1.8.0",
     "google-auth-library": "^10.5.0",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^4.0.1",
@@ -74,7 +71,7 @@
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",
-    "zod": "^3.24.2"
+    "zod": "^3.25.76"
   },
   "overrides": {
     "axios": "1.13.5",
@@ -87,7 +84,6 @@
     "dotenv": "^16.4.5",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.9",
-    "genkit-cli": "^1.8.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.15.5",

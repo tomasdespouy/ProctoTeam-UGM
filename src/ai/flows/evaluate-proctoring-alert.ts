@@ -2,79 +2,58 @@
 'use server';
 
 /**
- * @fileOverview This file defines a Genkit flow for evaluating proctoring alerts during an exam.
- *
- * - evaluateProctoringAlert - A function that evaluates a proctoring alert and provides a severity assessment and supporting information.
- * - EvaluateProctoringAlertInput - The input type for the evaluateProctoringAlert function.
- * - EvaluateProctoringAlertOutput - The return type for the evaluateProctoringAlert function.
+ * @fileOverview Evalúa una alerta de proctoring durante un examen usando OpenAI (GPT),
+ * devolviendo severidad, explicación, recomendación y un puntaje de confianza.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { generateObject } from 'ai';
+import { z } from 'zod';
+import { model } from '@/ai/llm';
 
 const EvaluateProctoringAlertInputSchema = z.object({
-  eventType: z.string().describe('The type of event that triggered the alert (e.g., tab switch, audio spike).'),
-  eventDetails: z.string().describe('Detailed information about the event, including timestamps and any relevant data.'),
-  studentId: z.string().describe('The ID of the student taking the exam.'),
-  examName: z.string().describe('The name of the exam being proctored.'),
+  eventType: z.string().describe('Tipo de evento que disparó la alerta (p.ej. cambio de pestaña, pico de audio).'),
+  eventDetails: z.string().describe('Información detallada del evento, incluyendo marcas de tiempo y datos relevantes.'),
+  studentId: z.string().describe('ID del estudiante que rinde el examen.'),
+  examName: z.string().describe('Nombre del examen supervisado.'),
 });
 export type EvaluateProctoringAlertInput = z.infer<typeof EvaluateProctoringAlertInputSchema>;
 
 const EvaluateProctoringAlertOutputSchema = z.object({
-  severity: z.enum(['critical', 'warning', 'info']).describe('The severity level of the alert.'),
-  explanation: z.string().describe('A detailed explanation of why the alert was triggered and its potential impact on exam integrity.'),
-  recommendation: z.string().describe('A recommendation for the proctor on how to proceed (e.g., investigate further, escalate to supervisor, ignore).'),
-  confidenceScore: z.number().min(0).max(1).describe('A score between 0 and 1 indicating the confidence level in the severity assessment.'),
+  severity: z.enum(['critical', 'warning', 'info']).describe('Nivel de severidad de la alerta.'),
+  explanation: z.string().describe('Explicación detallada de por qué se disparó la alerta y su impacto en la integridad del examen.'),
+  recommendation: z.string().describe('Recomendación para el supervisor (p.ej. investigar, escalar, ignorar).'),
+  confidenceScore: z.number().min(0).max(1).describe('Puntaje entre 0 y 1 con la confianza en la evaluación de severidad.'),
 });
 export type EvaluateProctoringAlertOutput = z.infer<typeof EvaluateProctoringAlertOutputSchema>;
 
-export async function evaluateProctoringAlert(input: EvaluateProctoringAlertInput): Promise<EvaluateProctoringAlertOutput> {
-  return evaluateProctoringAlertFlow(input);
-}
-
-const evaluateProctoringAlertPrompt = ai.definePrompt({
-  name: 'evaluateProctoringAlertPrompt',
-  input: {schema: EvaluateProctoringAlertInputSchema},
-  output: {schema: EvaluateProctoringAlertOutputSchema},
-  prompt: `Eres un asistente de IA que ayuda a los supervisores a evaluar alertas durante los exámenes en línea.
+export async function evaluateProctoringAlert(
+  input: EvaluateProctoringAlertInput
+): Promise<EvaluateProctoringAlertOutput> {
+  try {
+    const { object } = await generateObject({
+      model,
+      schema: EvaluateProctoringAlertOutputSchema,
+      prompt: `Eres un asistente de IA que ayuda a los supervisores a evaluar alertas durante los exámenes en línea.
 
 Se te proporciona la siguiente información sobre un evento que activó una alerta:
 
-Tipo de Evento: {{{eventType}}}
-Detalles del Evento: {{{eventDetails}}}
-ID de Estudiante: {{{studentId}}}
-Nombre del Examen: {{{examName}}}
+Tipo de Evento: ${input.eventType}
+Detalles del Evento: ${input.eventDetails}
+ID de Estudiante: ${input.studentId}
+Nombre del Examen: ${input.examName}
 
 Basándote en esta información, determina la gravedad de la alerta, proporciona una explicación detallada
-y recomienda cómo debe proceder el supervisor. Además, proporciona una puntuación de confianza para tu evaluación.
+y recomienda cómo debe proceder el supervisor. Además, proporciona una puntuación de confianza para tu evaluación.`,
+    });
 
-Asegúrate de seguir el esquema de salida. Devuelve un objeto JSON.
-`,
-});
-
-const evaluateProctoringAlertFlow = ai.defineFlow(
-  {
-    name: 'evaluateProctoringAlertFlow',
-    inputSchema: EvaluateProctoringAlertInputSchema,
-    outputSchema: EvaluateProctoringAlertOutputSchema,
-  },
-  async (input) => {
-    try {
-      const { output } = await evaluateProctoringAlertPrompt(input);
-      if (!output) {
-        throw new Error('AI model returned no output.');
-      }
-      return output;
-    } catch (error) {
-      console.error('Error in evaluateProctoringAlertFlow:', error);
-      return {
-        severity: 'critical' as const,
-        explanation:
-          'Se produjo un error al procesar la alerta. El sistema de IA no está disponible.',
-        recommendation:
-          'Notifique al soporte técnico sobre el error del sistema de IA.',
-        confidenceScore: 0.0,
-      };
-    }
+    return object;
+  } catch (error) {
+    console.error('Error in evaluateProctoringAlert:', error);
+    return {
+      severity: 'critical' as const,
+      explanation: 'Se produjo un error al procesar la alerta. El sistema de IA no está disponible.',
+      recommendation: 'Notifique al soporte técnico sobre el error del sistema de IA.',
+      confidenceScore: 0.0,
+    };
   }
-);
+}

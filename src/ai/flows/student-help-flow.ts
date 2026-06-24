@@ -1,34 +1,25 @@
 'use server';
 /**
- * @fileOverview A Genkit flow that acts as a help assistant for students.
+ * @fileOverview Asistente de ayuda con IA (OpenAI/GPT) para estudiantes.
  *
- * - askStudentHelp - A function that answers student questions about the platform.
- * - StudentHelpInput - The input type for the askStudentHelp function.
- * - StudentHelpOutput - The return type for the askStudentHelp function.
+ * - askStudentHelp - Responde preguntas del estudiante sobre la plataforma.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { generateText } from 'ai';
+import { z } from 'zod';
+import { model } from '@/ai/llm';
 
 const StudentHelpInputSchema = z.object({
-  query: z.string().describe('The student\'s question about the platform.'),
+  query: z.string().describe('La pregunta del estudiante sobre la plataforma.'),
 });
 export type StudentHelpInput = z.infer<typeof StudentHelpInputSchema>;
 
 const StudentHelpOutputSchema = z.object({
-  answer: z.string().describe('The helpful answer to the student\'s question.'),
+  answer: z.string().describe('La respuesta útil a la pregunta del estudiante.'),
 });
 export type StudentHelpOutput = z.infer<typeof StudentHelpOutputSchema>;
 
-export async function askStudentHelp(input: StudentHelpInput): Promise<StudentHelpOutput> {
-  return studentHelpFlow(input);
-}
-
-const studentHelpPrompt = ai.definePrompt({
-  name: 'studentHelpPrompt',
-  input: {schema: StudentHelpInputSchema},
-  output: {schema: StudentHelpOutputSchema},
-  prompt: `Eres un asistente de IA muy útil para los estudiantes que usan la plataforma UGM Proctor. Tu objetivo es responder sus preguntas sobre cómo usar la plataforma desde su perspectiva.
+const STUDENT_HELP_SYSTEM = `Eres un asistente de IA muy útil para los estudiantes que usan la plataforma UGM Proctor. Tu objetivo es responder sus preguntas sobre cómo usar la plataforma desde su perspectiva.
 
 Aquí tienes la documentación relevante para un estudiante:
 
@@ -53,27 +44,22 @@ Durante el examen, verás un botón que dice "Solicitar Ayuda Técnica". Al hace
 La página "Histórico" muestra una lista de todos los exámenes pasados que has rendido. Puedes consultar la fecha y los detalles básicos de cada sesión desde el menú de usuario.
 
 **¿Cómo actualizo mi perfil?**
-Puedes acceder a "Mi Perfil" desde el menú desplegable de tu avatar en la esquina superior derecha. En esa página, puedes actualizar tu nombre completo y la URL de tu foto de perfil. También puedes gestionar la seguridad de tu cuenta, como cambiar tu contraseña o correo electrónico.
+Puedes acceder a "Mi Perfil" desde el menú desplegable de tu avatar en la esquina superior derecha. En esa página, puedes actualizar tu nombre completo y la URL de tu foto de perfil.
 
-**IMPORTANTE - Gestión de Roles:** Tu rol es ser un asistente para el **portal del estudiante**. Si un estudiante te pregunta sobre acciones que son claramente de un docente (como "crear un examen", "ver las alertas de todos", "extender el tiempo de un examen"), tu respuesta debe ser clara y educativa. Debes explicar amablemente que, como estudiante en la plataforma UGM Proctor, su rol tiene ciertas limitaciones y que esas funciones específicas están reservadas para los docentes. Por ejemplo, podrías decir algo como: "Entiendo tu pregunta, pero la función de crear exámenes es exclusiva para los docentes en la plataforma. Como estudiante, tu portal está diseñado para unirte y rendir los exámenes que ellos configuran."
+**IMPORTANTE - Gestión de Roles:** Tu rol es ser un asistente para el **portal del estudiante**. Si un estudiante te pregunta sobre acciones que son claramente de un docente (como "crear un examen", "ver las alertas de todos", "extender el tiempo de un examen"), explica amablemente que esas funciones están reservadas para los docentes y que su portal está diseñado para unirse y rendir los exámenes que ellos configuran.
 
-Responde la pregunta del estudiante basándote en esta información. Sé conciso, amigable y claro.
+Responde la pregunta del estudiante basándote en esta información. Sé conciso, amigable y claro.`;
 
-Pregunta del estudiante: {{{query}}}
-`,
-});
-
-const studentHelpFlow = ai.defineFlow(
-  {
-    name: 'studentHelpFlow',
-    inputSchema: StudentHelpInputSchema,
-    outputSchema: StudentHelpOutputSchema,
-  },
-  async (input) => {
-    const { output } = await studentHelpPrompt(input);
-    if (!output) {
-      return { answer: 'Lo siento, no pude procesar tu pregunta en este momento. Por favor, intenta de nuevo.' };
-    }
-    return output;
+export async function askStudentHelp(input: StudentHelpInput): Promise<StudentHelpOutput> {
+  try {
+    const { text } = await generateText({
+      model,
+      system: STUDENT_HELP_SYSTEM,
+      prompt: input.query,
+    });
+    return { answer: text || 'Lo siento, no pude procesar tu pregunta en este momento. Por favor, intenta de nuevo.' };
+  } catch (error) {
+    console.error('Error in askStudentHelp:', error);
+    return { answer: 'Lo siento, no pude procesar tu pregunta en este momento. Por favor, intenta de nuevo.' };
   }
-);
+}
