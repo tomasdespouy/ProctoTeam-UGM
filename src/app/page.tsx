@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,11 +19,39 @@ export default function HomePage() {
   const [devPassword, setDevPassword] = useState('');
   const [devLoading, setDevLoading] = useState(false);
   const { toast } = useToast();
-  const { setDevUser } = useAuth();
+  const { setDevUser, user, userProfile, loading } = useAuth();
   const router = useRouter();
+  const redirectedRef = useRef(false);
+
+  // Once authenticated, leave the public login page and route by role.
+  // This is driven by the auth-context state that the msal:loginSuccess event
+  // populates — NOT by awaiting loginPopup() — so it still fires when COOP blocks
+  // MSAL's popup window.closed monitor and the loginPopup promise never resolves.
+  // (That hang is exactly why the button used to stay frozen on "Conectando…".)
+  useEffect(() => {
+    if (loading || redirectedRef.current) return;
+    if (userProfile) {
+      redirectedRef.current = true;
+      setIsLoading(false);
+      if (userProfile.role === 'student') router.replace('/student');
+      else if (userProfile.role === 'super-admin') router.replace('/super-admin/dashboard');
+      else router.replace('/instructor');
+    } else if (user) {
+      // Sesión iniciada pero el perfil no sincronizó (p.ej. /api/auth/get-user
+      // falló): no dejar el spinner colgado — avisar y permitir reintentar.
+      redirectedRef.current = true;
+      setIsLoading(false);
+      toast({
+        variant: 'destructive',
+        title: 'No pudimos cargar tu perfil',
+        description: 'Tu sesión se inició pero hubo un problema al sincronizar tu cuenta. Intenta nuevamente.',
+      });
+    }
+  }, [user, userProfile, loading, router, toast]);
 
   const handleLogin = async () => {
     if (isLoading) return;
+    redirectedRef.current = false; // re-arm the redirect effect for this attempt
     setIsLoading(true);
     try {
       const result = await signInWithAzurePopup();

@@ -75,6 +75,15 @@ const nextConfig = {
             value: 'camera=*, microphone=*, display-capture=*',
           },
           {
+            // Keep a usable handle to the MSAL login popup so its window.closed
+            // monitor works (otherwise COOP blocks it and the popup flow hangs).
+            // "allow-popups" stays non-isolating: no COEP is set and the app never
+            // becomes crossOriginIsolated, so the cross-origin MediaPipe CDN WASM
+            // still loads and proctoring (camera/screen-share) is unaffected.
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin-allow-popups',
+          },
+          {
             key: 'Cache-Control',
             value: 'no-cache, no-store, must-revalidate',
           },

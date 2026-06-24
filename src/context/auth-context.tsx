@@ -83,6 +83,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   useEffect(() => {
     const initAuth = async () => {
+      // Bracket every run (including the re-run from msal:loginSuccess) with
+      // loading=true so consumers that gate on !loading don't observe a transient
+      // window where loading=false but userProfile hasn't synced yet.
+      setLoading(true);
       try {
         const storedDevUser = sessionStorage.getItem(DEV_USER_KEY);
         if (storedDevUser) {
