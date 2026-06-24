@@ -86,6 +86,10 @@ export function StudentCam({
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const aiInitializedRef  = useRef(false);
 
+  // ── Grabación (MediaRecorder) refs ─────────────────────────────────────────
+  const mediaRecorderRef  = useRef<MediaRecorder | null>(null);
+  const chunkIndexRef     = useRef(0);
+
   // ── Stable-value refs ──────────────────────────────────────────────────────
   // These let async/event callbacks always access the latest values without
   // being listed as useEffect/useCallback dependencies (which would cause
@@ -482,24 +486,31 @@ export function StudentCam({
 
   // ── Camera + microphone init ───────────────────────────────────────────────
   // FIX: empty deps [] → runs exactly once on mount, cleans up only on unmount.
-  // hasCameraInitRef guards against React StrictMode double-invoke in dev.
-  // All alert calls use sendAlertRef.current so they never go stale.
-  useEffect(() => {
-    if (hasCameraInitRef.current) return;
-    hasCameraInitRef.current = true;
+  // startCamera — pide cámara+micrófono con REINTENTO automático.
+  // "Timeout starting video source" / NotReadableError suelen ser transitorios
+  // (cámara ocupada por otra app/pestaña, o despertando): reintentamos con backoff.
+  // NotAllowedError (permiso denegado) NO se reintenta. Puede invocarse manualmente
+  // desde el botón "Reintentar".
+  const startCamera = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setErrorMessage('Tu navegador no permite acceder a la cámara.');
+      sendAlertRef.current('camera_access_denied', 'API de cámara no disponible', 'critical');
+      return;
+    }
 
-    const initCamera = async () => {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setErrorMessage('Tu navegador no permite acceder a la cámara.');
-        sendAlertRef.current('camera_access_denied', 'API de cámara no disponible', 'critical');
-        return;
-      }
+    // Limpia cualquier intento previo antes de reintentar.
+    streamRef.current?.getTracks().forEach(t => t.stop());
 
+    const constraints: MediaStreamConstraints = {
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+      audio: true,
+    };
+    const MAX = 3;
+    let lastErr: any = null;
+
+    for (let attempt = 1; attempt <= MAX; attempt++) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-          audio: true,
-        });
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
@@ -509,6 +520,7 @@ export function StudentCam({
 
         setHasVideo(videoTrack?.enabled ?? false);
         setHasAudio(audioTrack?.enabled ?? false);
+        setErrorMessage(null);
         setSetupPhase('screen');
 
         // Use sendAlertRef.current — never stale, never causes effect to re-run.
@@ -520,20 +532,121 @@ export function StudentCam({
           setHasAudio(false);
           sendAlertRef.current('microphone_disabled', 'El micrófono fue deshabilitado', 'medium');
         });
+        return; // éxito
       } catch (error: any) {
-        setErrorMessage(error.message || 'No se pudo acceder a la cámara');
-        sendAlertRef.current('camera_access_denied', 'Acceso a cámara denegado', 'critical');
+        lastErr = error;
+        const name = error?.name ?? '';
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+          setErrorMessage('Permiso de cámara denegado. Habilítalo en el navegador y reintenta.');
+          sendAlertRef.current('camera_access_denied', 'Acceso a cámara denegado', 'critical');
+          return;
+        }
+        console.warn(`[Camera] Intento ${attempt}/${MAX} falló: ${name || error?.message}`);
+        if (attempt < MAX) {
+          setErrorMessage(`Reintentando acceso a la cámara (${attempt}/${MAX})…`);
+          await new Promise(r => setTimeout(r, attempt * 900));
+        }
       }
-    };
+    }
 
-    initCamera();
+    const busy = lastErr?.name === 'NotReadableError' || /timeout|video source/i.test(lastErr?.message ?? '');
+    setErrorMessage(
+      busy
+        ? 'No se pudo iniciar la cámara: parece estar en uso por otra app o pestaña. Cierra Zoom/Teams/otras pestañas y reintenta.'
+        : (lastErr?.message || 'No se pudo acceder a la cámara.')
+    );
+    sendAlertRef.current('camera_access_denied', 'Acceso a cámara denegado tras reintentos', 'critical');
+  }, []);
+
+  // hasCameraInitRef guards against React StrictMode double-invoke in dev.
+  // All alert calls use sendAlertRef.current so they never go stale.
+  useEffect(() => {
+    if (hasCameraInitRef.current) return;
+    hasCameraInitRef.current = true;
+
+    startCamera();
 
     // Cleanup runs ONLY when the component truly unmounts, not on dep changes.
     return () => {
       streamRef.current?.getTracks().forEach(t => t.stop());
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
     };
-  }, []); // ← intentionally empty: mount/unmount only
+  }, [startCamera]); // startCamera es estable (useCallback [])
+
+  // ── Grabación de la sesión (B-bajo: webcam + audio, bitrate bajo) ───────────
+  // Graba el stream de la cámara en chunks (timeslice) y los sube a Supabase
+  // Storage durante el examen (resiliente ante desconexiones). ~0.4 Mbps.
+  const uploadChunk = useCallback(async (blob: Blob, index: number) => {
+    pendingOpsRef.current += 1;
+    try {
+      const token = user ? await user.getIdToken() : null;
+      if (!token) return;
+      const form = new FormData();
+      form.append('chunk', blob, `${index}.webm`);
+      form.append('participationId', participationId);
+      form.append('index', String(index));
+      const res = await fetch('/api/exam/recording', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => res.statusText);
+        console.error(`[Rec] chunk ${index} HTTP ${res.status}:`, t);
+      }
+    } catch (err) {
+      console.error('[Rec] error subiendo chunk', err);
+    } finally {
+      pendingOpsRef.current -= 1;
+    }
+  }, [user, participationId]);
+
+  const startRecording = useCallback((stream: MediaStream) => {
+    if (mediaRecorderRef.current) return;
+    if (typeof MediaRecorder === 'undefined') {
+      console.warn('[Rec] MediaRecorder no soportado — sin grabación');
+      return;
+    }
+    const candidates = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+    const mimeType = candidates.find(t => {
+      try { return MediaRecorder.isTypeSupported(t); } catch { return false; }
+    });
+    try {
+      const recorder = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: 400_000, // ~0.4 Mbps (B-bajo)
+        audioBitsPerSecond: 32_000,
+      });
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) void uploadChunk(ev.data, chunkIndexRef.current++);
+      };
+      recorder.onerror = (e) => console.error('[Rec] error del recorder', e);
+      recorder.start(15000); // un chunk cada 15 s
+      mediaRecorderRef.current = recorder;
+      console.debug('[Rec] grabación iniciada', mimeType ?? '(default)');
+    } catch (err) {
+      console.error('[Rec] no se pudo iniciar la grabación', err);
+    }
+  }, [uploadChunk]);
+
+  // Inicia la grabación una vez que la webcam está activa.
+  useEffect(() => {
+    if (hasVideo && streamRef.current && !mediaRecorderRef.current) {
+      startRecording(streamRef.current);
+    }
+  }, [hasVideo, startRecording]);
+
+  // Detiene la grabación al desmontar (flushea el último chunk).
+  useEffect(() => {
+    return () => {
+      try {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+      } catch { /* noop */ }
+      mediaRecorderRef.current = null;
+    };
+  }, []);
 
   // ── AI init ────────────────────────────────────────────────────────────────
   // Tarea 3: Gate AI on setupPhase === 'ready' so that:
@@ -920,7 +1033,13 @@ export function StudentCam({
           {errorMessage ? (
             <div className="text-white text-center px-4">
               <VideoOff className="h-12 w-12 mx-auto mb-2" />
-              <p className="text-sm">{errorMessage}</p>
+              <p className="text-sm mb-3">{errorMessage}</p>
+              <button
+                onClick={() => startCamera()}
+                className="px-4 py-1.5 text-sm rounded-md bg-white/10 hover:bg-white/20 border border-white/30 transition-colors"
+              >
+                Reintentar
+              </button>
             </div>
           ) : (
             <div className="text-white text-center">
