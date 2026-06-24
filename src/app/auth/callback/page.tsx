@@ -18,13 +18,9 @@ function AuthCallbackContent() {
         const response = await instance.handleRedirectPromise();
 
         if (response) {
-          const email = response.account?.username?.toLowerCase() || '';
-          const isStudent = email.endsWith('@estudiante.ugm.cl');
-          if (isStudent) {
-            router.push('/student');
-          } else {
-            router.push('/instructor');
-          }
+          // Éxito: volvemos a "/" y dejamos que la home enrute por ROL
+          // (incluye super-admin), con el perfil ya sincronizado por AuthProvider.
+          router.replace('/');
         } else {
           const errorParam = searchParams.get('error');
           const errorDescription = searchParams.get('error_description');
@@ -34,18 +30,9 @@ function AuthCallbackContent() {
             setError(errorDescription || 'Error de autenticación');
             setTimeout(() => router.push('/'), 3000);
           } else {
-            const accounts = instance.getAllAccounts();
-            if (accounts.length > 0) {
-              const email = accounts[0].username?.toLowerCase() || '';
-              const isStudent = email.endsWith('@estudiante.ugm.cl');
-              if (isStudent) {
-                router.push('/student');
-              } else {
-                router.push('/instructor');
-              }
-            } else {
-              router.push('/');
-            }
+            // Sin respuesta pendiente: AuthProvider ya procesó el redirect si
+            // había cuenta. En cualquier caso, "/" decide (login o dashboard).
+            router.replace('/');
           }
         }
       } catch (error) {

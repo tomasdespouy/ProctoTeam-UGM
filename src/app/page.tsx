@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Bug, GraduationCap, BookOpen, ShieldCheck } from 'lucide-react';
-import { signInWithAzurePopup, signInWithAzureRedirect } from '@/lib/azure-auth';
+import { signInWithAzureRedirect } from '@/lib/azure-auth';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, UserProfile } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
@@ -54,31 +54,28 @@ export default function HomePage() {
     redirectedRef.current = false; // re-arm the redirect effect for this attempt
     setIsLoading(true);
     try {
-      const result = await signInWithAzurePopup();
-      if (result.error) {
-        const code = (result.error as any)?.errorCode ?? '';
-        // 'interaction_in_progress' = quedó un login previo a medio terminar.
-        // NO hacemos fallback a redirect (lo empeora); pedimos reintentar.
-        if (code === 'interaction_in_progress') {
-          toast({
-            variant: "destructive",
-            title: "Sesión de login ocupada",
-            description: "Había un inicio de sesión a medias. Recargamos el estado; intenta de nuevo en unos segundos.",
-          });
-          setIsLoading(false);
-          return;
-        }
-        console.warn("Popup falló, intentando redirección...", result.error);
-        await signInWithAzureRedirect();
+      // Flujo de REDIRECT (sin popup): evita el COOP del popup y el doble manejo
+      // del redirect DENTRO de la ventana emergente, que provocaba el
+      // "Error procesando la autenticación". La ventana navega a Microsoft y
+      // vuelve a /auth/callback, que reenvía a "/" para enrutar por rol.
+      const { error } = await signInWithAzureRedirect();
+      if (error) {
+        setIsLoading(false);
+        toast({
+          variant: "destructive",
+          title: "Error de conexión",
+          description: "No se pudo iniciar sesión con Microsoft.",
+        });
       }
+      // En éxito el navegador ya se fue a Microsoft; nada más que hacer aquí.
     } catch (error) {
       console.error("Error en login:", error);
+      setIsLoading(false);
       toast({
         variant: "destructive",
         title: "Error de conexión",
         description: "No se pudo iniciar sesión con Microsoft.",
       });
-      setIsLoading(false);
     }
   };
 
@@ -122,6 +119,19 @@ export default function HomePage() {
       setDevLoading(false);
     }
   };
+
+  // Mientras MSAL inicializa, o ya hay perfil (a punto de enrutar por rol),
+  // mostramos un loader en lugar del formulario para no parpadear el login.
+  if (loading || userProfile) {
+    return (
+      <main
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: 'linear-gradient(135deg, #1B2A6B 0%, #0E1845 40%, #080E28 100%)' }}
+      >
+        <Loader2 className="w-10 h-10 animate-spin text-[#00D4FF]" />
+      </main>
+    );
+  }
 
   return (
     <main

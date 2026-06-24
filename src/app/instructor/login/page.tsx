@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithAzurePopup, signInWithAzureRedirect, handleAzureRedirectResult } from '@/lib/azure-auth';
+import { signInWithAzureRedirect, handleAzureRedirectResult } from '@/lib/azure-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, LogIn, ShieldAlert } from 'lucide-react';
@@ -58,13 +58,17 @@ export default function InstructorLoginPage() {
     setIsLoading(true);
 
     try {
-        const result = await signInWithAzurePopup();
-        if (result.error) {
-            console.warn('Popup falló, intentando redirección...');
-            await signInWithAzureRedirect();
+        // Flujo de REDIRECT (sin popup): la ventana navega a Microsoft y vuelve.
+        // El useEffect de arriba enruta por rol al volver con sesión.
+        const { error } = await signInWithAzureRedirect();
+        if (error) {
+            setIsLoading(false);
+            toast({
+                variant: "destructive",
+                title: "Error de conexión",
+                description: "No se pudo conectar con Microsoft.",
+            });
         }
-        // No necesitamos hacer router.push aquí, el useEffect de arriba lo hará
-        // automáticamente apenas detecte el cambio de usuario.
     } catch (err) {
         console.error("Error en login:", err);
         toast({
