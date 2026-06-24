@@ -169,3 +169,12 @@ replit.nix
 
 # Archivos de compilación TypeScript
 next-env.d.ts
+
+# Genkit local dev runtime state (traces/logs/servers, machine-specific)
+.genkit/
+
+# Generated documentation deliverables (regenerar desde scripts/, fuera de git)
+# El informe PDF es de seguridad: no publicar en repos compartidos.
+/*.docx
+/*.pdf
+/manuales/*.pptx
