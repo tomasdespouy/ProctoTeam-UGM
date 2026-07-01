@@ -198,7 +198,7 @@ export function StudentCam({
         action:      'alert',
         studentId,
         examId,
-        description: `[${alertType}] ${description}`,
+        description,
         severity,
       }),
     })
@@ -362,7 +362,7 @@ export function StudentCam({
         action:      'alert',
         studentId,
         examId,
-        description: `[${alertType}] ${description}`,
+        description,
         severity,
         ...(evidenceUrl ? { evidenceUrl } : {}),
       }),
@@ -955,6 +955,34 @@ export function StudentCam({
     const id = setInterval(() => sendSnapshotWithReason('periodic-fallback'), 8000);
     return () => clearInterval(id);
   }, [setupPhase, sendSnapshotWithReason]);
+
+  // ── Detección de múltiples pantallas ───────────────────────────────────────
+  // screen.isExtended (Chromium) indica si hay más de un monitor conectado.
+  // Alertamos al iniciar y cada vez que se CONECTA un monitor durante el examen.
+  useEffect(() => {
+    if (setupPhase !== 'ready') return;
+    const scr: any = typeof window !== 'undefined' ? window.screen : null;
+    if (!scr) return;
+
+    let wasExtended = false;
+    const check = () => {
+      try {
+        const ext = !!scr.isExtended;
+        if (ext && !wasExtended) {
+          sendAlertRef.current(
+            'multiple_screens',
+            'Se detectaron múltiples pantallas conectadas al equipo del estudiante',
+            'high',
+          );
+        }
+        wasExtended = ext;
+      } catch { /* API no disponible */ }
+    };
+
+    check(); // al iniciar el monitoreo
+    scr.addEventListener?.('change', check);
+    return () => scr.removeEventListener?.('change', check);
+  }, [setupPhase]);
 
   // ── Tab switch / window blur alerts ───────────────────────────────────────
   // FIX: removed sendAlertWithSnapshot from deps — use sendAlertRef.current instead.

@@ -38,6 +38,7 @@ import {
   X,
   Camera,
   Send,
+  CheckCircle2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { getIceServers } from '@/lib/ice-servers';
@@ -69,6 +70,7 @@ interface StudentStream {
   studentName:     string;
   participationId: string;
   connected:       boolean;
+  status?:         string;   // joined | in-progress | submitted | blocked
   /** All remote MediaStreams received via WebRTC ontrack (deduplicated by id). */
   allStreams?:     MediaStream[];
   /** Legacy field kept for backward compat (last stream received). */
@@ -183,6 +185,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
             studentName:     s.name,
             participationId: s.id,
             connected:       s.status === 'in-progress' || s.status === 'joined',
+            status:          s.status,
             alertCount:      s.alerts?.length ?? 0,
             lastSnapshot:    s.lastSnapshot ?? undefined,
             stream:          existing?.stream,
@@ -212,7 +215,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
         const knownUrls = new Map(prev.map(a => [a.id, a.evidence_url]));
         return enriched
           .map(a => ({ ...a, evidence_url: a.evidence_url ?? knownUrls.get(a.id) }))
-          .slice(0, 200);
+          .slice(0, 500);
       });
     } catch (err) {
       console.error('[ProctorView] Error cargando datos:', err);
@@ -438,7 +441,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
         setAlerts(prev => {
           // Evita duplicar si el polling de 30s ya trajo esta alerta.
           if (newAlert.id && prev.some(a => a.id === newAlert.id)) return prev;
-          return [newAlert, ...prev].slice(0, 200);
+          return [newAlert, ...prev].slice(0, 500);
         });
       })
       .on('broadcast', { event: 'webrtc-signaling' }, handleWebRTCSignaling)
@@ -489,6 +492,10 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
   const maximizedAlerts = maximizedStudent
     ? alerts.filter(a => a.student_id === maximizedStudent.studentId)
     : [];
+
+  // Estado en vivo del estudiante ampliado (para no mostrar foto congelada al terminar).
+  const maximizedStatus = maximizedStudent ? students.get(maximizedStudent.studentId)?.status : undefined;
+  const maximizedFinished = maximizedStatus === 'submitted' || maximizedStatus === 'blocked';
 
   const resolveStudentName = (alert: DbAlert) =>
     alert.studentName ??
@@ -735,7 +742,13 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
             {/* Columna izquierda: video + acciones */}
             <div className="flex flex-col min-w-0 flex-1 min-h-0">
             <div className="relative bg-black flex-shrink min-h-0" style={{ aspectRatio: '16/9', maxHeight: '52vh' }}>
-              {maximizedStudent.stream ? (
+              {maximizedFinished ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white/40 gap-2">
+                  {maximizedStatus === 'blocked'
+                    ? <><Ban className="h-16 w-16" /><p className="text-sm">Estudiante retirado</p></>
+                    : <><CheckCircle2 className="h-16 w-16" /><p className="text-sm">Examen finalizado</p></>}
+                </div>
+              ) : maximizedStudent.stream ? (
                 <VideoPlayer stream={maximizedStudent.stream} allStreams={maximizedStudent.allStreams} />
               ) : maximizedStudent.lastSnapshot ? (
                 <img
@@ -838,10 +851,32 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                           {SEVERITY_LABEL[a.severity] ?? a.severity}
                         </span>
                         <span className="text-[9px] text-white/40 tabular-nums ml-auto">
-                          {new Date(a.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(a.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </span>
                       </div>
                       <p className="text-[11px] text-white/70 break-words leading-snug">{a.description}</p>
+                      {a.evidence_url && (
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <button className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-sky-300 hover:text-sky-200">
+                              <Camera className="h-3 w-3" /> Ver foto del momento
+                            </button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl p-0 overflow-hidden">
+                            <DialogHeader className="px-5 pt-5 pb-2">
+                              <DialogTitle className="text-sm">
+                                {a.description}
+                                <span className="ml-2 font-normal text-gray-400">
+                                  {new Date(a.timestamp).toLocaleString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                </span>
+                              </DialogTitle>
+                            </DialogHeader>
+                            <div className="bg-black">
+                              <img src={a.evidence_url} alt={a.description} className="w-full object-contain max-h-[65vh]" />
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      )}
                     </div>
                   ))
                 )}
@@ -1031,18 +1066,28 @@ function StudentCard({
 function DenseStudentCell({
   student, onMaximize,
 }: { student: StudentStream; onMaximize: () => void }) {
+  const finished = student.status === 'submitted' || student.status === 'blocked';
   return (
     <div
       className={`rounded-lg overflow-hidden relative cursor-pointer group transition-base ${
-        student.alertCount > 0
-          ? 'ring-2 ring-red-500/60 border border-red-500/30'
-          : 'border border-white/5 hover:border-white/20'
+        finished
+          ? 'border border-white/5'
+          : student.alertCount > 0
+            ? 'ring-2 ring-red-500/60 border border-red-500/30'
+            : 'border border-white/5 hover:border-white/20'
       }`}
       style={{ backgroundColor: '#0A1228', aspectRatio: '4/3' }}
       onClick={onMaximize}
       title={`${student.studentName} — clic para maximizar`}
     >
-      {student.stream ? (
+      {finished ? (
+        // Al terminar/retirar ya no mostramos la última foto congelada.
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-white/40" style={{ backgroundColor: '#0A1228' }}>
+          {student.status === 'blocked'
+            ? <><Ban className="h-6 w-6" /><span className="text-[9px] font-semibold">Retirado</span></>
+            : <><CheckCircle2 className="h-6 w-6" /><span className="text-[9px] font-semibold">Finalizado</span></>}
+        </div>
+      ) : student.stream ? (
         <VideoPlayer stream={student.stream} allStreams={student.allStreams} />
       ) : student.lastSnapshot ? (
         <img
@@ -1076,9 +1121,11 @@ function DenseStudentCell({
         </p>
         <div className="flex items-center gap-1 mt-0.5">
           <div className="w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: student.connected ? '#22C55E' : '#64748B' }} />
+            style={{ backgroundColor: finished ? '#64748B' : student.connected ? '#22C55E' : '#EAB308' }} />
           <span className="text-[8px] text-white/50">
-            {student.connected ? 'activo' : 'inactivo'}
+            {finished
+              ? (student.status === 'blocked' ? 'retirado' : 'finalizado')
+              : student.connected ? 'activo' : 'inactivo'}
           </span>
         </div>
       </div>

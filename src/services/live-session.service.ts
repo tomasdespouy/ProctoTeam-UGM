@@ -329,10 +329,10 @@ export const liveSessionService = {
               'evidence_url', a.evidence_url
             ) ORDER BY a.timestamp DESC)
             FROM (
-              SELECT * FROM alerts 
+              SELECT * FROM alerts
               WHERE exam_session_id = ep.exam_session_id AND student_id = ep.student_id
               ORDER BY timestamp DESC
-              LIMIT 20
+              LIMIT 200
             ) a
           ), 
           '[]'
