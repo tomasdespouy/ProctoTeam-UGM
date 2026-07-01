@@ -12,6 +12,7 @@ import { useAuth } from '@/context/auth-context';
 interface BiometricVerificationModalProps {
   isOpen: boolean;
   onVerificationSuccess: () => void;
+  examId: string;
   studentId: string;
   studentName: string;
   participationId: string;
@@ -25,7 +26,7 @@ type ExtractionResult = {
   notes: string;
 };
 
-export function BiometricVerificationModal({ isOpen, onVerificationSuccess, studentId, studentName, participationId }: BiometricVerificationModalProps) {
+export function BiometricVerificationModal({ isOpen, onVerificationSuccess, examId, studentId, studentName, participationId }: BiometricVerificationModalProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [uploading, setUploading] = useState(false);
@@ -116,16 +117,48 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, stud
   };
 
   const confirm = async () => {
-    // Guarda la foto (estudiante + documento) como evidencia. No bloquea si falla.
+    // 1. Sube la foto del documento como evidencia y 2. la registra en el
+    //    historial del estudiante (tabla alerts) para que el docente la vea
+    //    después en "Ver Alertas". No bloquea el flujo del alumno si falla.
     setUploading(true);
     try {
       const token = user ? await user.getIdToken() : null;
       if (token && idCardPhoto) {
-        await fetch('/api/exam/evidence', {
+        const evRes = await fetch('/api/exam/evidence', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ snapshot: idCardPhoto, participationId, alertType: 'identidad' }),
         });
+        const evData = await evRes.json().catch(() => ({}));
+        const evidenceUrl: string | undefined = evData?.publicUrl;
+
+        // Registro persistente de la verificación de identidad (queda en el
+        // historial de cada estudiante que rindió). Si el nombre del documento
+        // no coincide con el registrado, se marca como 'warning' para que el
+        // docente lo revise; si coincide, queda como 'info'.
+        if (examId && studentId) {
+          const matches = result?.matchesExpected ?? true;
+          const doc = result?.documentNumber ? ` · Doc: ${result.documentNumber}` : '';
+          const detected = result?.detectedName ? `"${result.detectedName}"` : '(no leído)';
+          const description = matches
+            ? `Verificación de identidad OK — documento ${detected}${doc}`
+            : `Verificación de identidad: el documento ${detected}${doc} NO coincide con el nombre registrado (${studentName})`;
+
+          await fetch('/api/live', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'alert',
+              payload: {
+                examId,
+                studentId,
+                description,
+                severity: matches ? 'info' : 'warning',
+                evidenceUrl,
+              },
+            }),
+          });
+        }
       }
     } catch (err) {
       console.error('[Identidad] No se pudo guardar la evidencia de identidad:', err);

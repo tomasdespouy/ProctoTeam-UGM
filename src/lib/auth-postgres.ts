@@ -7,6 +7,7 @@ export interface UserProfile {
   nombre: string;
   role: 'student' | 'instructor' | 'super-admin';
   photo_url?: string | null;
+  active?: boolean;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -137,6 +138,21 @@ export async function createManagedUser(data: {
   );
 
   return result.rows[0] as UserProfile;
+}
+
+// Activar / desactivar una cuenta (soft-disable). Un usuario inactivo no puede
+// autenticarse (ver auth-middleware) pero conserva todo su historial.
+export async function setUserActive(uid: string, active: boolean): Promise<void> {
+  await query(
+    'UPDATE users SET active = $1, updated_at = NOW() WHERE uid = $2',
+    [active, uid]
+  );
+}
+
+// Eliminar un usuario de forma permanente. OJO: por las FK ON DELETE CASCADE,
+// borra en cascada sus exámenes/participaciones/alertas/mensajes.
+export async function deleteUser(uid: string): Promise<void> {
+  await query('DELETE FROM users WHERE uid = $1', [uid]);
 }
 
 // Actualizar rol de usuario

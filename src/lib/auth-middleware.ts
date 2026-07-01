@@ -171,6 +171,13 @@ export async function verifyAuth(request: NextRequest): Promise<{
       return { authenticated: false, user: null, error: 'User profile not found' };
     }
 
+    // Cuenta desactivada por un admin: se rechaza el acceso (conserva su historial).
+    // (Si la columna `active` aún no existe, el valor es undefined y NO bloquea.)
+    if (userProfile.active === false) {
+      console.warn(`Auth Error: cuenta desactivada — ${userProfile.email}`);
+      return { authenticated: false, user: null, error: 'Cuenta desactivada. Contacta al administrador.' };
+    }
+
     console.log(`Usuario autenticado: ${userProfile.email} con rol: ${userProfile.role}`);
     return {
       authenticated: true,

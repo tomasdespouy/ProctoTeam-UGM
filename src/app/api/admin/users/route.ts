@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
-import { createManagedUser, getUserByEmail } from '@/lib/auth-postgres';
+import { createManagedUser, getUserByEmail, setUserActive, deleteUser } from '@/lib/auth-postgres';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,13 +12,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 });
     }
 
-    const result = await db.query(`
+    // Seleccionamos `active` de forma tolerante: si la columna todavía no existe
+    // (migración pendiente), reintentamos sin ella y asumimos active=true.
+    const selectUsers = (withActive: boolean) => db.query(`
       SELECT
         u.id,
         u.uid,
         u.email,
         u.nombre,
         u.role,
+        ${withActive ? 'u.active,' : 'true AS active,'}
         u.created_at,
         u.updated_at,
         (SELECT COUNT(*) FROM exam_sessions es WHERE es.instructor_id = u.uid) AS exams_created
@@ -26,6 +29,17 @@ export async function GET(request: NextRequest) {
       ORDER BY u.created_at DESC
       LIMIT 200
     `);
+
+    let result;
+    try {
+      result = await selectUsers(true);
+    } catch (e: any) {
+      if (e?.code === '42703') {
+        result = await selectUsers(false); // columna `active` aún no migrada
+      } else {
+        throw e;
+      }
+    }
 
     return NextResponse.json({ users: result.rows });
   } catch (error: any) {
@@ -88,11 +102,44 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 });
     }
 
-    const { uid, role } = await request.json();
-    const validRoles = ['student', 'instructor', 'super-admin'];
+    const { uid, role, active } = await request.json();
 
-    if (!uid || !validRoles.includes(role)) {
-      return NextResponse.json({ error: 'uid y role válidos son requeridos' }, { status: 400 });
+    if (!uid) {
+      return NextResponse.json({ error: 'uid es requerido' }, { status: 400 });
+    }
+
+    // ── Rama 1: activar / desactivar cuenta ──────────────────────────────────
+    if (typeof active === 'boolean') {
+      if (!active) {
+        if (uid === user.uid) {
+          return NextResponse.json({ error: 'No puedes desactivar tu propia cuenta' }, { status: 400 });
+        }
+        const check = await db.query(
+          `SELECT COUNT(*) FROM users WHERE role = 'super-admin' AND active IS DISTINCT FROM false AND uid != $1`,
+          [uid]
+        );
+        if (parseInt(check.rows[0].count) === 0) {
+          return NextResponse.json({ error: 'No puedes desactivar al último super-admin activo' }, { status: 400 });
+        }
+      }
+      try {
+        await setUserActive(uid, active);
+      } catch (e: any) {
+        if (e?.code === '42703') {
+          return NextResponse.json(
+            { error: 'Falta aplicar la migración: ALTER TABLE users ADD COLUMN active BOOLEAN NOT NULL DEFAULT true;' },
+            { status: 503 }
+          );
+        }
+        throw e;
+      }
+      return NextResponse.json({ user: { uid, active } });
+    }
+
+    // ── Rama 2: cambiar rol ──────────────────────────────────────────────────
+    const validRoles = ['student', 'instructor', 'super-admin'];
+    if (!validRoles.includes(role)) {
+      return NextResponse.json({ error: 'role válido es requerido' }, { status: 400 });
     }
 
     // Prevent demoting the last super-admin
@@ -118,6 +165,53 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ user: result.rows[0] });
   } catch (error: any) {
     console.error('Admin PATCH user error:', error);
+    if (error.message === 'Authentication required') {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const user = await getAuthenticatedUser(request);
+    if (user.role !== 'super-admin') {
+      return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 });
+    }
+
+    const uid = new URL(request.url).searchParams.get('uid');
+    if (!uid) {
+      return NextResponse.json({ error: 'uid es requerido' }, { status: 400 });
+    }
+    if (uid === user.uid) {
+      return NextResponse.json({ error: 'No puedes eliminar tu propia cuenta' }, { status: 400 });
+    }
+
+    // No permitir eliminar al último super-admin.
+    const check = await db.query(
+      `SELECT role FROM users WHERE uid = $1`,
+      [uid]
+    );
+    if (check.rows.length === 0) {
+      return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
+    }
+    if (check.rows[0].role === 'super-admin') {
+      const others = await db.query(
+        `SELECT COUNT(*) FROM users WHERE role = 'super-admin' AND uid != $1`,
+        [uid]
+      );
+      if (parseInt(others.rows[0].count) === 0) {
+        return NextResponse.json({ error: 'No puedes eliminar al último super-admin' }, { status: 400 });
+      }
+    }
+
+    await deleteUser(uid);
+    return NextResponse.json({ success: true, uid });
+  } catch (error: any) {
+    console.error('Admin DELETE user error:', error);
+    if (error.message === 'Authentication required') {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

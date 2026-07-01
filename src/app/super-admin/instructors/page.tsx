@@ -20,13 +20,17 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
   Users, Search, Loader2, ChevronDown, GraduationCap, BookOpen, ShieldCheck, RefreshCw,
-  UserPlus, Clock,
+  UserPlus, Clock, Ban, CheckCircle2, Trash2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -38,6 +42,7 @@ interface UserRow {
   email:         string;
   nombre:        string;
   role:          'student' | 'instructor' | 'super-admin';
+  active:        boolean;
   created_at:    string;
   updated_at:    string;
   exams_created: number;
@@ -132,6 +137,10 @@ export default function InstructorsPage() {
   const [newEmail,     setNewEmail]     = useState('');
   const [newRole,      setNewRole]      = useState<UserRow['role']>('student');
 
+  // Eliminar / desactivar
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+  const [deleting,     setDeleting]     = useState(false);
+
   // Auth guard
   useEffect(() => {
     if (!loading && userProfile && userProfile.role !== 'super-admin') router.push('/');
@@ -175,6 +184,54 @@ export default function InstructorsPage() {
       toast({ variant: 'destructive', title: 'Error', description: err.message });
     } finally {
       setUpdating(null);
+    }
+  };
+
+  const handleToggleActive = async (u: UserRow) => {
+    if (!user) return;
+    const nextActive = !u.active;
+    setUpdating(u.uid);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/admin/users', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ uid: u.uid, active: nextActive }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Error al actualizar');
+
+      setUsers(prev => prev.map(x => x.uid === u.uid ? { ...x, active: nextActive } : x));
+      toast({
+        title: nextActive ? 'Cuenta activada' : 'Cuenta desactivada',
+        description: `${u.email}${nextActive ? ' puede volver a iniciar sesión.' : ' ya no podrá iniciar sesión (su historial se conserva).'}`,
+      });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.message });
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!user || !deleteTarget) return;
+    setDeleting(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/admin/users?uid=${encodeURIComponent(deleteTarget.uid)}`, {
+        method:  'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Error al eliminar');
+
+      setUsers(prev => prev.filter(x => x.uid !== deleteTarget.uid));
+      toast({ title: 'Usuario eliminado', description: `${deleteTarget.email} fue eliminado permanentemente.` });
+      setDeleteTarget(null);
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.message });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -320,7 +377,7 @@ export default function InstructorsPage() {
           <TableBody>
             {filtered.length > 0 ? (
               filtered.map(u => (
-                <TableRow key={u.uid} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
+                <TableRow key={u.uid} className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${!u.active ? 'opacity-55' : ''}`}>
 
                   {/* User */}
                   <TableCell className="py-3.5">
@@ -337,6 +394,11 @@ export default function InstructorsPage() {
                           {u.uid.startsWith('pending:') && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
                               <Clock className="h-2.5 w-2.5" /> Pendiente
+                            </span>
+                          )}
+                          {!u.active && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-200 px-1.5 py-0.5 text-[10px] font-semibold text-red-500">
+                              <Ban className="h-2.5 w-2.5" /> Inactivo
                             </span>
                           )}
                         </div>
@@ -365,11 +427,35 @@ export default function InstructorsPage() {
 
                   {/* Actions */}
                   <TableCell className="py-3.5 text-right">
-                    <RoleDropdown
-                      user={u}
-                      onRoleChange={handleRoleChange}
-                      isUpdating={updating === u.uid}
-                    />
+                    <div className="flex items-center justify-end gap-1.5">
+                      <RoleDropdown
+                        user={u}
+                        onRoleChange={handleRoleChange}
+                        isUpdating={updating === u.uid}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={updating === u.uid}
+                        onClick={() => handleToggleActive(u)}
+                        title={u.active ? 'Desactivar cuenta' : 'Activar cuenta'}
+                        className={`h-7 px-2 text-xs gap-1 ${u.active
+                          ? 'border-slate-200 text-slate-600'
+                          : 'border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-100'}`}
+                      >
+                        {u.active ? <Ban className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                        {u.active ? 'Desactivar' : 'Activar'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDeleteTarget(u)}
+                        title="Eliminar usuario"
+                        className="h-7 w-7 p-0 border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -451,6 +537,40 @@ export default function InstructorsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmación de eliminación */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-4 w-4" />
+              Eliminar usuario
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                Vas a eliminar permanentemente a <span className="font-semibold text-slate-700">{deleteTarget?.nombre}</span>{' '}
+                (<span className="text-slate-500">{deleteTarget?.email}</span>).
+              </span>
+              {deleteTarget && !deleteTarget.uid.startsWith('pending:') && (
+                <span className="block rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600">
+                  ⚠️ Esto también borra en cascada sus exámenes, participaciones, alertas y mensajes.
+                  Si solo quieres impedirle el acceso, usa <span className="font-semibold">Desactivar</span> en su lugar.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 gap-2"
+            >
+              {deleting ? <><Loader2 className="h-4 w-4 animate-spin" /> Eliminando…</> : <><Trash2 className="h-4 w-4" /> Eliminar</>}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

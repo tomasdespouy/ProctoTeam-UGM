@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   nombre TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('student', 'instructor', 'super-admin')),
   photo_url TEXT,
+  active BOOLEAN NOT NULL DEFAULT true, -- soft-disable: un usuario inactivo no puede autenticarse
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

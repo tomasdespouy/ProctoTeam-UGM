@@ -251,6 +251,7 @@ export default function StudentExamLivePage() {
       <BiometricVerificationModal
         isOpen={step === 'identity'}
         onVerificationSuccess={handleIdentityVerified}
+        examId={examId}
         studentId={studentId}
         studentName={studentName}
         participationId={participationId ?? ''}
