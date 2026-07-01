@@ -5,7 +5,7 @@ export interface UserProfile {
   uid: string;
   email: string;
   nombre: string;
-  role: 'student' | 'instructor' | 'super-admin';
+  role: 'student' | 'instructor' | 'observer' | 'super-admin';
   photo_url?: string | null;
   active?: boolean;
   created_at?: Date;
@@ -125,7 +125,7 @@ export async function upsertUser(userData: {
 export async function createManagedUser(data: {
   email: string;
   nombre: string;
-  role: 'student' | 'instructor' | 'super-admin';
+  role: 'student' | 'instructor' | 'observer' | 'super-admin';
 }): Promise<UserProfile> {
   const emailLower = data.email.toLowerCase().trim();
   const pendingUid = `${PENDING_UID_PREFIX}${emailLower}`;
@@ -158,7 +158,7 @@ export async function deleteUser(uid: string): Promise<void> {
 // Actualizar rol de usuario
 export async function updateUserRole(
   uid: string,
-  role: 'student' | 'instructor' | 'super-admin'
+  role: 'student' | 'instructor' | 'observer' | 'super-admin'
 ): Promise<void> {
   try {
     await query(
@@ -172,7 +172,7 @@ export async function updateUserRole(
 }
 
 // Obtener todos los usuarios por rol
-export async function getUsersByRole(role: 'student' | 'instructor' | 'super-admin'): Promise<UserProfile[]> {
+export async function getUsersByRole(role: 'student' | 'instructor' | 'observer' | 'super-admin'): Promise<UserProfile[]> {
   try {
     const result = await query(
       'SELECT * FROM users WHERE role = $1 ORDER BY created_at DESC',

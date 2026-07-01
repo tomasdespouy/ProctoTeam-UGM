@@ -62,14 +62,14 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Forzado de rol — ya protegido por la clave de acceso de arriba.
-    const validRoles = ['student', 'instructor', 'super-admin'];
+    const validRoles = ['student', 'instructor', 'observer', 'super-admin'];
     const requestedRole = forceRole && validRoles.includes(forceRole) ? forceRole : null;
     if (requestedRole && user.role !== requestedRole) {
       await query(
         `UPDATE users SET role = $1, updated_at = NOW() WHERE uid = $2`,
         [requestedRole, user.uid]
       );
-      user = { ...user, role: requestedRole as 'student' | 'instructor' | 'super-admin' };
+      user = { ...user, role: requestedRole as 'student' | 'instructor' | 'observer' | 'super-admin' };
     }
 
     // Token de desarrollo (HS256 + claim dev:true) que auth-middleware sabe verificar.

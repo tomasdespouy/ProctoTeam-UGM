@@ -765,6 +765,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                 </div>
               )}
             </div>
+            {!readOnly && (
             <div className="px-5 py-3 border-t border-white/10 space-y-3 flex-shrink-0"
               style={{ backgroundColor: '#111827' }}>
               {/* Enviar mensaje al estudiante */}
@@ -822,6 +823,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                 </AlertDialog>
               </div>
             </div>
+            )}
             </div>{/* /columna izquierda */}
 
             {/* Columna derecha: alertas en vivo de este estudiante */}

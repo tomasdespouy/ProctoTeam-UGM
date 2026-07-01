@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/select';
 import {
   Users, Search, Loader2, ChevronDown, GraduationCap, BookOpen, ShieldCheck, RefreshCw,
-  UserPlus, Clock, Ban, CheckCircle2, Trash2,
+  UserPlus, Clock, Ban, CheckCircle2, Trash2, Eye,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { isProtectedEmail } from '@/lib/protected-users';
@@ -42,7 +42,7 @@ interface UserRow {
   uid:           string;
   email:         string;
   nombre:        string;
-  role:          'student' | 'instructor' | 'super-admin';
+  role:          'student' | 'instructor' | 'observer' | 'super-admin';
   active:        boolean;
   created_at:    string;
   updated_at:    string;
@@ -60,6 +60,11 @@ function RoleBadge({ role }: { role: UserRow['role'] }) {
   if (role === 'instructor') return (
     <Badge className="gap-1 bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-100">
       <BookOpen className="h-3 w-3" /> Docente
+    </Badge>
+  );
+  if (role === 'observer') return (
+    <Badge className="gap-1 bg-violet-100 text-violet-700 border border-violet-200 hover:bg-violet-100">
+      <Eye className="h-3 w-3" /> Observador
     </Badge>
   );
   return (
@@ -83,6 +88,7 @@ function RoleDropdown({
   const roles: { value: UserRow['role']; label: string; icon: React.ElementType }[] = [
     { value: 'student',     label: 'Estudiante', icon: GraduationCap },
     { value: 'instructor',  label: 'Docente',    icon: BookOpen      },
+    { value: 'observer',    label: 'Observador', icon: Eye           },
     { value: 'super-admin', label: 'Super Admin', icon: ShieldCheck   },
   ];
 
@@ -540,6 +546,7 @@ export default function InstructorsPage() {
                 <SelectContent>
                   <SelectItem value="student">Estudiante</SelectItem>
                   <SelectItem value="instructor">Docente</SelectItem>
+                  <SelectItem value="observer">Observador</SelectItem>
                   <SelectItem value="super-admin">Super Admin</SelectItem>
                 </SelectContent>
               </Select>

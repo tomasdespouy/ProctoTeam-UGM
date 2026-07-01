@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   uid TEXT UNIQUE NOT NULL, -- ID proveniente de Azure AD
   email TEXT UNIQUE NOT NULL,
   nombre TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('student', 'instructor', 'super-admin')),
+  role TEXT NOT NULL CHECK (role IN ('student', 'instructor', 'observer', 'super-admin')),
   photo_url TEXT,
   active BOOLEAN NOT NULL DEFAULT true, -- soft-disable: un usuario inactivo no puede autenticarse
   created_at TIMESTAMPTZ DEFAULT NOW(),

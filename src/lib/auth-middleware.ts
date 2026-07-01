@@ -51,13 +51,13 @@ export interface AuthenticatedRequest extends NextRequest {
   user?: {
     uid: string;
     email: string;
-    role: 'student' | 'instructor' | 'super-admin';
+    role: 'student' | 'instructor' | 'observer' | 'super-admin';
   };
 }
 
 export async function verifyAuth(request: NextRequest): Promise<{
   authenticated: boolean;
-  user: { uid: string; email: string; role: 'student' | 'instructor' | 'super-admin' } | null;
+  user: { uid: string; email: string; role: 'student' | 'instructor' | 'observer' | 'super-admin' } | null;
   error: string | null;
 }> {
   try {
@@ -242,7 +242,7 @@ export async function verifyAzureToken(
   }
 }
 
-export function requireRole(allowedRoles: ('student' | 'instructor' | 'super-admin')[]) {
+export function requireRole(allowedRoles: ('student' | 'instructor' | 'observer' | 'super-admin')[]) {
   return async (request: NextRequest) => {
     const result = await verifyAuth(request);
 

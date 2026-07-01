@@ -10,7 +10,7 @@ export interface UserProfile {
   uid: string;
   nombre: string;
   correo: string;
-  role: 'student' | 'instructor' | 'super-admin';
+  role: 'student' | 'instructor' | 'observer' | 'super-admin';
   photoURL?: string | null;
   created_at?: Date;
   updated_at?: Date;
