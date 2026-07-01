@@ -21,6 +21,7 @@ import {
 import { supabase } from '@/lib/supabase-client';
 import { getIceServers } from '@/lib/ice-servers';
 import { useAuth } from '@/context/auth-context';
+import { useToast } from '@/hooks/use-toast';
 import {
   initAICoordinator,
   startDetection,
@@ -44,6 +45,27 @@ interface StudentCamProps {
 
 type SetupPhase = 'camera' | 'screen' | 'ready';
 
+// Beep corto para avisar de un mensaje del supervisor (Web Audio).
+function playBeep() {
+  try {
+    const AC = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.45);
+    osc.onended = () => ctx.close().catch(() => {});
+  } catch { /* audio bloqueado — no crítico */ }
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function StudentCam({
@@ -57,6 +79,7 @@ export function StudentCam({
 }: StudentCamProps) {
   // ── Auth — needed to attach Bearer token to /api/exam/evidence ────────────
   const { user } = useAuth();
+  const { toast } = useToast();
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [isConnected,      setIsConnected]      = useState(false);
@@ -354,6 +377,22 @@ export function StudentCam({
   // Called by the AI coordinator's onRequestSnapshot for periodic frames.
   // Sends the composite Base64 as a heartbeat imgSrc to update
   // exam_participations.last_snapshot in the DB — no Supabase Storage used.
+  // Muestra un mensaje del supervisor de forma prominente: sonido + notificación
+  // del sistema (visible aunque el alumno esté en la pestaña de Blackboard) + toast.
+  const notifyMessage = useCallback((message: string) => {
+    playBeep();
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('📢 Mensaje del supervisor', { body: message, requireInteraction: true });
+      }
+    } catch { /* noop */ }
+    toast({
+      title: '📢 Mensaje del supervisor',
+      description: message,
+      duration: 15000,
+    });
+  }, [toast]);
+
   const sendSnapshotWithReason = useCallback((reason: string) => {
     const base64 = captureSnapshot();
     if (!base64) return;
@@ -361,9 +400,15 @@ export function StudentCam({
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'heartbeat', studentId, examId, imgSrc: base64 }),
-    }).catch(err => console.debug('[Snapshot] Heartbeat error:', err));
-    console.debug(`[Snapshot] Periodic frame sent — reason: ${reason}`);
-  }, [examId, studentId, captureSnapshot]);
+    })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        // El heartbeat devuelve los mensajes NO leídos del supervisor (una vez).
+        const msgs: string[] = data?.data?.messages ?? [];
+        msgs.forEach(m => notifyMessage(m));
+      })
+      .catch(err => console.debug('[Snapshot] Heartbeat error:', err));
+  }, [examId, studentId, captureSnapshot, notifyMessage]);
 
   // ── AI callbacks ────────────────────────────────────────────────────────────
   // handleAIAlert uses sendAlertWithSnapshot so high/critical detections
@@ -879,11 +924,23 @@ export function StudentCam({
     };
   }, [examId, studentId, studentName, participationId, setupPhase]);
 
+  // Pide permiso de notificaciones para poder avisar mensajes del supervisor
+  // aunque el alumno esté en otra pestaña (Blackboard).
+  useEffect(() => {
+    if (setupPhase !== 'ready') return;
+    try {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch { /* noop */ }
+  }, [setupPhase]);
+
   // ── Snapshot de respaldo periódico ─────────────────────────────────────────
   // Garantiza que el docente vea frames recientes aunque WebRTC no logre
   // conectar (redes tras NAT/firewall sin servidor TURN → video en negro).
   // Envía un heartbeat con imagen compuesta cada ~8s; ProctorView lo muestra
-  // como `lastSnapshot` cuando no hay stream WebRTC.
+  // como `lastSnapshot` cuando no hay stream WebRTC. También entrega los
+  // mensajes del supervisor (ver sendSnapshotWithReason).
   useEffect(() => {
     if (setupPhase !== 'ready') return;
     sendSnapshotWithReason('periodic-fallback'); // uno de inmediato

@@ -10,36 +10,48 @@ import { Button } from '@/components/ui/button';
 // ─── Inner component (needs Suspense for useSearchParams) ─────────────────────
 
 function LiveMonitorContent() {
-  const searchParams    = useSearchParams();
-  const router          = useRouter();
-  const { user }        = useAuth();
-  const examId          = searchParams.get('examId');
-  const hasRedirected   = useRef(false);
+  const searchParams        = useSearchParams();
+  const router              = useRouter();
+  const { user, userProfile } = useAuth();
+  const examId              = searchParams.get('examId');
+  const hasRedirected       = useRef(false);
 
-  // ── Auto-redirect: if no examId try to find the instructor's active session ─
+  // ── Sin examId: buscar la sesión activa y, si no hay, VOLVER al dashboard ──
+  // (Antes se quedaba pegado en "Buscando examen activo…" para siempre: los
+  //  super-admin no tienen exámenes propios, y un docente sin examen activo
+  //  tampoco resolvía nunca.)
   useEffect(() => {
-    if (examId || hasRedirected.current) return;
+    if (examId || hasRedirected.current || !userProfile) return;
+    hasRedirected.current = true;
 
-    const fetchActive = async () => {
+    const go = async () => {
+      // El super-admin no crea exámenes → no hay "activo propio"; a su panel.
+      if (userProfile.role === 'super-admin') {
+        router.replace('/super-admin/dashboard');
+        return;
+      }
       try {
         const token = user ? await user.getIdToken() : null;
         const res = await fetch('/api/exam-sessions/by-instructor', {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
-        if (!res.ok) return;
-        const data = await res.json();
-        const active = (data.sessions ?? []).find((s: any) => s.status === 'active');
-        if (active) {
-          hasRedirected.current = true;
-          router.replace(`/instructor/live-monitor?examId=${active.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          const active = (data.sessions ?? []).find((s: any) => s.status === 'active');
+          if (active) {
+            router.replace(`/instructor/live-monitor?examId=${active.id}`);
+            return;
+          }
         }
       } catch {
-        // silent — if fetch fails show the empty state
+        /* cae al redirect de abajo */
       }
+      // No hay examen activo → volver al dashboard (como promete el texto).
+      router.replace('/instructor');
     };
 
-    fetchActive();
-  }, [examId, user, router]);
+    go();
+  }, [examId, user, userProfile, router]);
 
   if (!examId) {
     return (

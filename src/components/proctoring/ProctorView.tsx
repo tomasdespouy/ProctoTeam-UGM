@@ -484,6 +484,12 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
     ? alerts
     : alerts.filter(a => a.severity === alertFilter);
 
+  // Alertas del estudiante ampliado — se actualizan en vivo (el estado `alerts`
+  // se refresca por realtime + polling).
+  const maximizedAlerts = maximizedStudent
+    ? alerts.filter(a => a.student_id === maximizedStudent.studentId)
+    : [];
+
   const resolveStudentName = (alert: DbAlert) =>
     alert.studentName ??
     students.get(alert.student_id)?.studentName ??
@@ -686,7 +692,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
           onClick={() => setMaximizedStudent(null)}
         >
           <div
-            className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 w-full max-w-3xl flex flex-col max-h-[92vh]"
+            className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 w-full max-w-5xl flex flex-col max-h-[92vh]"
             style={{ backgroundColor: '#0A0E1A' }}
             onClick={e => e.stopPropagation()}
           >
@@ -725,6 +731,9 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                 </button>
               </div>
             </div>
+            <div className="flex flex-col lg:flex-row min-h-0 flex-1 overflow-hidden">
+            {/* Columna izquierda: video + acciones */}
+            <div className="flex flex-col min-w-0 flex-1 min-h-0">
             <div className="relative bg-black flex-shrink min-h-0" style={{ aspectRatio: '16/9', maxHeight: '52vh' }}>
               {maximizedStudent.stream ? (
                 <VideoPlayer stream={maximizedStudent.stream} allStreams={maximizedStudent.allStreams} />
@@ -800,6 +809,45 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                 </AlertDialog>
               </div>
             </div>
+            </div>{/* /columna izquierda */}
+
+            {/* Columna derecha: alertas en vivo de este estudiante */}
+            <div
+              className="lg:w-72 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col min-h-0"
+              style={{ backgroundColor: '#0A0E1A' }}
+            >
+              <div className="px-4 py-2.5 border-b border-white/10 flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs font-bold text-white/80 uppercase tracking-wide">Alertas en vivo</span>
+                {maximizedAlerts.length > 0 && (
+                  <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#EF4444' }}>
+                    {maximizedAlerts.length}
+                  </span>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-[120px] max-h-[40vh] lg:max-h-none">
+                {maximizedAlerts.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-white/25 text-xs py-8">Sin alertas aún</div>
+                ) : (
+                  maximizedAlerts.map(a => (
+                    <div key={a.id} className="rounded-lg px-2.5 py-2 border border-white/10" style={{ backgroundColor: '#111827' }}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span
+                          className="text-[9px] font-bold text-white px-1.5 py-0.5 rounded-full"
+                          style={{ backgroundColor: SEVERITY_COLOR[a.severity] ?? '#6B7280' }}
+                        >
+                          {SEVERITY_LABEL[a.severity] ?? a.severity}
+                        </span>
+                        <span className="text-[9px] text-white/40 tabular-nums ml-auto">
+                          {new Date(a.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-white/70 break-words leading-snug">{a.description}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            </div>{/* /flex row */}
           </div>
         </div>
       )}
@@ -1060,7 +1108,7 @@ function AlertRow({ alert, studentName }: { alert: DbAlert; studentName: string 
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-gray-800 truncate">{studentName}</p>
-        <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{alert.description}</p>
+        <p className="text-xs text-gray-600 mt-0.5 break-words leading-snug">{alert.description}</p>
       </div>
 
       {/* Evidence photo button — only shown when a snapshot URL exists */}
