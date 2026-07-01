@@ -22,29 +22,25 @@ export async function GET(
     // Regex para UUID v4 estándar
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId);
 
-    let query = '';
+    // 3. Construcción de Query Segura. Incluimos audio_disabled (modo presencial);
+    //    si la columna no está migrada, reintentamos con `false` por defecto.
+    const buildQuery = (withAudio: boolean) => `
+      SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status,
+             ${withAudio ? 'es.audio_disabled' : 'false AS audio_disabled'},
+             ep.id as participation_id, ep.status as student_status, ep.started_at as student_started_at
+      FROM exam_sessions es
+      LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
+      WHERE ${isUUID ? 'es.id' : 'es.access_code'} = $1
+    `;
 
-    // 3. Construcción de Query Segura
-    // [CORRECCIÓN BACKEND]: Se incluye ep.started_at en el SELECT de ambas queries
-    if (isUUID) {
-        query = `
-          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status,
-                 ep.id as participation_id, ep.status as student_status, ep.started_at as student_started_at
-          FROM exam_sessions es
-          LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
-          WHERE es.id = $1
-        `;
-    } else {
-        query = `
-          SELECT es.id, es.title, es.subject, es.section, es.duration, es.status as exam_status,
-                 ep.id as participation_id, ep.status as student_status, ep.started_at as student_started_at
-          FROM exam_sessions es
-          LEFT JOIN exam_participations ep ON es.id = ep.exam_session_id AND ep.student_id = $2
-          WHERE es.access_code = $1
-        `;
+    let result;
+    try {
+      result = await db.query(buildQuery(true), [examId, user.uid]);
+    } catch (e: any) {
+      const missing = e?.code === '42703' || /column .*audio_disabled.* does not exist/i.test(e?.message ?? '');
+      if (missing) result = await db.query(buildQuery(false), [examId, user.uid]);
+      else throw e;
     }
-
-    const result = await db.query(query, [examId, user.uid]);
 
     if (result.rows.length === 0) {
       return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
@@ -60,6 +56,7 @@ export async function GET(
         section: data.section,
         duration: data.duration,
         status: data.exam_status,
+        audioDisabled: data.audio_disabled ?? false,
         startedAt: data.student_started_at
           ? (typeof data.student_started_at === 'string' ? data.student_started_at : data.student_started_at.toISOString())
           : null,

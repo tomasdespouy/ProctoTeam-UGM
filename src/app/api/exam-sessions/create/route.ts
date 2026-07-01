@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, subject, section, duration, accessCode } = body;
+    const { title, subject, section, duration, accessCode, audioDisabled } = body;
 
     // 3. Validación de campos
     if (!title || !subject || !section || !duration || !accessCode) {
@@ -36,32 +36,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Código de acceso inválido' }, { status: 400 });
     }
 
-    // 5. Insertar en PostgreSQL (Nuevo Esquema)
-    // Nota: Ya no insertamos 'students' aquí. Los estudiantes se unen después.
-    const query = `
-      INSERT INTO exam_sessions (
-        title, 
-        subject, 
-        section, 
-        duration, 
-        access_code, 
-        instructor_id, 
-        instructor_name, 
-        status
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
-      RETURNING id, access_code, title
-    `;
+    // 5. Insertar en PostgreSQL. Incluimos audio_disabled (modo presencial); si
+    // la columna aún no está migrada, reintentamos sin ella.
+    const baseCols = 'title, subject, section, duration, access_code, instructor_id, instructor_name, status';
+    const baseVals = [title, subject, section, parseInt(duration), accessCode, user.uid, user.email];
+    const doInsert = (withAudio: boolean) => db.query(
+      withAudio
+        ? `INSERT INTO exam_sessions (${baseCols}, audio_disabled)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
+           RETURNING id, access_code, title`
+        : `INSERT INTO exam_sessions (${baseCols})
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+           RETURNING id, access_code, title`,
+      withAudio ? [...baseVals, !!audioDisabled] : baseVals,
+    );
 
-    const result = await db.query(query, [
-      title,
-      subject,
-      section,
-      parseInt(duration), // Asegurar entero
-      accessCode,
-      user.uid,   // ID real de Azure AD
-      user.email  // Usamos email como nombre de respaldo si no hay nombre display
-    ]);
+    let result;
+    try {
+      result = await doInsert(true);
+    } catch (e: any) {
+      const missing = e?.code === '42703' || /column .*audio_disabled.* does not exist/i.test(e?.message ?? '');
+      if (missing) result = await doInsert(false); // columna aún no migrada
+      else throw e;
+    }
 
     return NextResponse.json(result.rows[0], { status: 201 });
 

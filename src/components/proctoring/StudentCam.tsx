@@ -39,6 +39,8 @@ interface StudentCamProps {
   studentName: string;
   participationId: string;
   enableAI?: boolean;
+  /** Modo presencial: no captura ni graba el micrófono del alumno. */
+  disableAudio?: boolean;
   onAlert?: (alertType: string, description: string, severity: 'low' | 'medium' | 'high' | 'critical') => void;
   onReady?: () => void;
 }
@@ -74,12 +76,17 @@ export function StudentCam({
   studentName,
   participationId,
   enableAI = true,
+  disableAudio = false,
   onAlert,
   onReady,
 }: StudentCamProps) {
   // ── Auth — needed to attach Bearer token to /api/exam/evidence ────────────
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // Ref para leer disableAudio desde callbacks estables (sin re-crear efectos).
+  const disableAudioRef = useRef(disableAudio);
+  useEffect(() => { disableAudioRef.current = disableAudio; }, [disableAudio]);
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [isConnected,      setIsConnected]      = useState(false);
@@ -541,9 +548,10 @@ export function StudentCam({
     // Limpia cualquier intento previo antes de reintentar.
     streamRef.current?.getTracks().forEach(t => t.stop());
 
+    // Modo presencial: sin micrófono (no se captura ni se graba audio).
     const constraints: MediaStreamConstraints = {
       video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-      audio: true,
+      audio: !disableAudioRef.current,
     };
     const MAX = 3;
     let lastErr: any = null;

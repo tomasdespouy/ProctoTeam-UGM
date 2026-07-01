@@ -52,6 +52,7 @@ interface ExamData {
   section: string;
   duration: number;
   status: 'pending' | 'active' | 'finished';
+  audioDisabled?: boolean;
 }
 
 // ─── Professional loader ────────────────────────────────────────────────────
@@ -273,6 +274,7 @@ export default function StudentExamLivePage() {
                   studentName={studentName}
                   participationId={participationId}
                   enableAI={true}
+                  disableAudio={examData.audioDisabled ?? false}
                   onAlert={handleStudentAlert}
                   onReady={handleStudentReady}
                 />
@@ -386,7 +388,10 @@ export default function StudentExamLivePage() {
               <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#00D4FF]/30 shadow-sm" style={{ backgroundColor: '#1A1D47' }}>
                 <ShieldCheck className="h-4 w-4 flex-shrink-0" style={{ color: '#00D4FF' }} />
                 <p className="text-xs" style={{ color: '#00D4FF' }}>
-                  Esta sesión está siendo vigilada en tiempo real por el instructor. Tu audio y video son monitoreados.
+                  Esta sesión está siendo vigilada en tiempo real por el instructor.{' '}
+                  {examData.audioDisabled
+                    ? 'Se monitorean tu video y pantalla (modo presencial: sin audio).'
+                    : 'Tu audio y video son monitoreados.'}
                 </p>
               </div>
             </div>

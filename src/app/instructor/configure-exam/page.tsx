@@ -22,6 +22,7 @@ export default function ConfigureExamPage() {
   const [section, setSection] = useState('');
   const [duration, setDuration] = useState<number>(60);
   const [accessCode, setAccessCode] = useState('');
+  const [audioDisabled, setAudioDisabled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -43,7 +44,7 @@ export default function ConfigureExamPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ title, subject, section, duration, accessCode }),
+        body: JSON.stringify({ title, subject, section, duration, accessCode, audioDisabled }),
       });
       if (!response.ok) throw new Error('Error al crear la sesión de examen');
       toast({ title: 'Examen Creado', description: 'La sala ha sido configurada correctamente.' });
@@ -157,6 +158,26 @@ export default function ConfigureExamPage() {
                 </p>
               </div>
             </div>
+
+            {/* Modo presencial: desactiva el micrófono del alumno */}
+            <label
+              htmlFor="audioDisabled"
+              className="flex items-start gap-3 rounded-lg border border-slate-200 p-4 cursor-pointer hover:bg-slate-50 transition-colors"
+            >
+              <input
+                id="audioDisabled"
+                type="checkbox"
+                checked={audioDisabled}
+                onChange={(e) => setAudioDisabled(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[#161F45]"
+              />
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold text-slate-800">Modo presencial (sin micrófono)</p>
+                <p className="text-xs text-slate-500">
+                  Para exámenes rendidos en sala. No se captura ni graba el audio de los alumnos; solo video y pantalla.
+                </p>
+              </div>
+            </label>
 
           </CardContent>
           <CardFooter className="flex justify-end gap-2 bg-muted/20 p-6">
