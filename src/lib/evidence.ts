@@ -47,3 +47,29 @@ export async function signEvidenceRows<T extends { evidence_url?: string | null 
     ),
   );
 }
+
+// Firma muchas URLs de una sola vez (createSignedUrls). Devuelve un arreglo del
+// mismo largo/orden que la entrada; conserva el valor original si no se pudo firmar.
+export async function signEvidencePaths(
+  storedValues: (string | null | undefined)[],
+  expiresIn = 3600,
+): Promise<(string | null)[]> {
+  const out: (string | null)[] = storedValues.map(v => v ?? null);
+  const sb = admin();
+  if (!sb) return out;
+
+  const targets = storedValues
+    .map((v, i) => ({ path: evidenceObjectPath(v), i }))
+    .filter((x): x is { path: string; i: number } => !!x.path);
+  if (targets.length === 0) return out;
+
+  const { data, error } = await sb.storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrls(targets.map(t => t.path), expiresIn);
+  if (error || !data) return out;
+
+  data.forEach((d, k) => {
+    if (d?.signedUrl) out[targets[k].i] = d.signedUrl;
+  });
+  return out;
+}

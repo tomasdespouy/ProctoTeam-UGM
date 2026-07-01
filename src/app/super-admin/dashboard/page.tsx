@@ -433,6 +433,28 @@ export default function SuperAdminDashboard() {
   const [sheetOpen,    setSheetOpen]    = useState(false);
   const [selectedExam, setSelectedExam] = useState<ExamSessionData | null>(null);
 
+  const [loadingXlsx, setLoadingXlsx] = useState(false);
+  const handleAdminExcel = async () => {
+    if (!user) return;
+    setLoadingXlsx(true);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/reports/admin', { headers: { Authorization: `Bearer ${idToken}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'reporte_global_proctoteam.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('[Report/admin] Error descargando Excel:', err);
+    } finally {
+      setLoadingXlsx(false);
+    }
+  };
+
   // Auth guard
   useEffect(() => {
     if (!loading && userProfile && userProfile.role !== 'super-admin') {
@@ -507,9 +529,23 @@ export default function SuperAdminDashboard() {
               Visión unificada del sistema de proctoring — exámenes, docentes y alertas en tiempo real.
             </p>
           </div>
-          <p className="text-xs text-slate-400 whitespace-nowrap">
-            {new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleAdminExcel}
+              disabled={loadingXlsx}
+              className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg border text-sm font-semibold transition-colors hover:bg-emerald-50 disabled:opacity-50"
+              style={{ borderColor: '#10b981', color: '#161F45' }}
+              title="Descargar reporte global (Excel)"
+            >
+              {loadingXlsx
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Download className="h-4 w-4" style={{ color: '#10b981' }} />}
+              Descargar Excel
+            </button>
+            <p className="text-xs text-slate-400 whitespace-nowrap hidden md:block">
+              {new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
         </div>
 
         {/* ── KPI Grid ────────────────────────────────────────────────── */}
