@@ -31,7 +31,6 @@ import {
   ScanFace,
   Ban,
   Download,
-  Filter,
   Copy,
   Square,
   Loader2,
@@ -606,40 +605,18 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
         </div>
       </div>
 
-      {/* ── Metric cards ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard
-          label="Estudiantes Activos"
-          value={activeCount.toString()}
-          sub="Estudiantes en línea"
-          gradient="linear-gradient(135deg, #00BBFF 0%, #0095FF 100%)"
-          icon="👥"
-        />
-        {/* Bug 3: real timer card */}
-        <MetricCard
-          label="Tiempo de Monitoreo"
-          value={timerValue}
-          sub={timerSub}
-          color={isOvertime ? '#EF4444' : '#0095FF'}
-          icon="🕐"
-        />
-        <MetricCard
-          label="Estudiantes con Alertas"
-          value={studentsArray.filter(s => s.alertCount > 0).length.toString()}
-          sub="Estadísticas en línea"
-          color="#EF4444"
-          icon="🔔"
-        />
-        <MetricCard
-          label="Total de Alertas"
-          value={alertCount.toString()}
-          sub="Alertas registradas"
-          color="#10B981"
-          icon="🛡"
-        />
+      {/* ── Stat strip (compacto) ─────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <StatPill icon="👥" value={activeCount.toString()} label="Activos" color="#0095FF" />
+        <StatPill icon="🕐" value={timerValue} label={timerSub} color={isOvertime ? '#EF4444' : '#0095FF'} />
+        <StatPill icon="🔔" value={studentsArray.filter(s => s.alertCount > 0).length.toString()} label="Con alertas" color="#EF4444" />
+        <StatPill icon="🛡" value={alertCount.toString()} label="Alertas totales" color="#10B981" />
       </div>
 
-      {/* ── Student grid ─────────────────────────────────────────────────── */}
+      {/* ── Dos columnas: videos (izq) + alertas (der, fijo) ──────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(320px,380px)] gap-4 items-start">
+
+      {/* ── Student grid (columna izquierda) ─────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold text-gray-800">
@@ -811,11 +788,19 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
         </div>
       )}
 
-      {/* ── Alert panel ──────────────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-bold text-gray-800">Panel de alertas</h2>
-          <div className="flex items-center gap-2">
+      {/* ── Alert panel (columna derecha, fija) ──────────────────────────── */}
+      <section className="lg:sticky lg:top-4">
+        <div
+          className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden"
+          style={{ maxHeight: 'calc(100vh - 2rem)' }}
+        >
+          <div className="flex items-center justify-between px-4 pt-4 pb-3">
+            <h2 className="text-base font-bold text-gray-800">
+              Panel de alertas
+              {filteredAlerts.length > 0 && (
+                <span className="ml-2 text-xs font-normal text-gray-400">{filteredAlerts.length}</span>
+              )}
+            </h2>
             <Button
               size="sm"
               variant="outline"
@@ -823,28 +808,17 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
               onClick={handleExportAlerts}
             >
               <Download className="h-3.5 w-3.5" />
-              Exportar alertas
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5 text-xs h-8"
-              onClick={handleExportAlerts}
-            >
-              <Filter className="h-3.5 w-3.5" />
-              Exportar Estadísticas
+              Exportar
             </Button>
           </div>
-        </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-1.5 flex-wrap px-4 pb-3">
             {(['all', 'critical', 'warning', 'info'] as AlertFilter[]).map(f => (
               <button
                 key={f}
                 onClick={() => setAlertFilter(f)}
                 className={[
-                  'px-4 py-1.5 rounded-full text-sm font-medium border transition-colors',
+                  'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
                   alertFilter === f
                     ? 'bg-gray-800 text-white border-gray-800'
                     : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400',
@@ -856,12 +830,9 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                   : 'Info'}
               </button>
             ))}
-            {filteredAlerts.length > 0 && (
-              <span className="ml-auto text-xs text-gray-400">{filteredAlerts.length} alertas</span>
-            )}
           </div>
 
-          <ScrollArea className="h-64">
+          <ScrollArea className="flex-1 px-4 pb-4 min-h-[200px]">
             {filteredAlerts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-gray-400">
                 <p className="text-sm">Sin alertas{alertFilter !== 'all' ? ' para este filtro' : ''}</p>
@@ -880,29 +851,22 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
           </ScrollArea>
         </div>
       </section>
+
+      </div>{/* /dos columnas */}
     </div>
   );
 }
 
-// ─── MetricCard ───────────────────────────────────────────────────────────────
+// ─── StatPill (barra de stats compacta) ────────────────────────────────────────
 
-function MetricCard({
-  label, value, sub, icon, gradient, color,
-}: {
-  label: string; value: string; sub: string; icon: string;
-  gradient?: string; color?: string;
-}) {
+function StatPill({ icon, value, label, color }: { icon: string; value: string; label: string; color: string }) {
   return (
-    <div
-      className="rounded-xl p-5 text-white shadow-md"
-      style={{ background: gradient ?? color }}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-lg">{icon}</span>
-        <span className="text-sm font-semibold opacity-90">{label}</span>
+    <div className="flex items-center gap-2.5 px-4 py-2.5 bg-white rounded-xl border border-gray-200 shadow-sm">
+      <span className="text-xl">{icon}</span>
+      <div className="leading-none">
+        <p className="text-xl font-bold font-mono" style={{ color }}>{value}</p>
+        <p className="text-[11px] text-gray-500 mt-1">{label}</p>
       </div>
-      <p className="text-3xl font-bold leading-none font-mono">{value}</p>
-      <p className="text-sm opacity-70 mt-1.5">{sub}</p>
     </div>
   );
 }
