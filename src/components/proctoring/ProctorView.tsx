@@ -693,11 +693,11 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
           onClick={() => setMaximizedStudent(null)}
         >
           <div
-            className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 w-full max-w-3xl"
+            className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 w-full max-w-3xl flex flex-col max-h-[92vh]"
             style={{ backgroundColor: '#0A0E1A' }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10"
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 flex-shrink-0"
               style={{ backgroundColor: '#111827' }}>
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
@@ -732,7 +732,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                 </button>
               </div>
             </div>
-            <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
+            <div className="relative bg-black flex-shrink min-h-0" style={{ aspectRatio: '16/9', maxHeight: '52vh' }}>
               {maximizedStudent.stream ? (
                 <VideoPlayer stream={maximizedStudent.stream} allStreams={maximizedStudent.allStreams} />
               ) : maximizedStudent.lastSnapshot ? (
@@ -750,7 +750,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                 </div>
               )}
             </div>
-            <div className="px-5 py-3 border-t border-white/10 space-y-3"
+            <div className="px-5 py-3 border-t border-white/10 space-y-3 flex-shrink-0"
               style={{ backgroundColor: '#111827' }}>
               {/* Enviar mensaje al estudiante */}
               <div className="flex items-center gap-2">

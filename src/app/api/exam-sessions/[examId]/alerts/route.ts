@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/auth-middleware';
 import { db } from '@/lib/db';
+import { signEvidenceRows } from '@/lib/evidence';
 
 export async function GET(
   request: NextRequest,
@@ -48,7 +49,7 @@ export async function GET(
     );
 
     return NextResponse.json({
-      alerts: alertsResult.rows,
+      alerts: await signEvidenceRows(alertsResult.rows),
       studentDetails: studentDetailsResult.rows,
     });
   } catch (error) {

@@ -267,6 +267,16 @@ export async function GET(request: NextRequest) {
             ),
         ]);
 
+        // Firmar las URLs de evidencia (bucket privado) para que las <img> carguen.
+        const { signEvidenceUrl } = await import('@/lib/evidence');
+        await Promise.all(
+            students.flatMap(s =>
+                (s.alerts ?? []).map(async (a: any) => {
+                    if (a.evidence_url) a.evidence_url = await signEvidenceUrl(a.evidence_url);
+                })
+            )
+        );
+
         const examRow = examResult.rows[0] ?? null;
         const exam = examRow ? {
             id:          examRow.id,

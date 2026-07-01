@@ -3,23 +3,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Loader2, Bug, GraduationCap, BookOpen, ShieldCheck } from 'lucide-react';
+import { Loader2, GraduationCap } from 'lucide-react';
 import { signInWithAzureRedirect } from '@/lib/azure-auth';
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, UserProfile } from '@/context/auth-context';
+import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
-
-const SHOW_DEV_LOGIN = process.env.NEXT_PUBLIC_SHOW_DEV_LOGIN === 'true';
-const DEV_TEACHER_EMAIL = 'docente@ugm.cl';
 
 export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
-  const [devEmail, setDevEmail] = useState(DEV_TEACHER_EMAIL);
-  const [devPassword, setDevPassword] = useState('');
-  const [devLoading, setDevLoading] = useState(false);
   const { toast } = useToast();
-  const { setDevUser, user, userProfile, loading } = useAuth();
+  const { user, userProfile, loading } = useAuth();
   const router = useRouter();
   const redirectedRef = useRef(false);
 
@@ -76,47 +69,6 @@ export default function HomePage() {
         title: "Error de conexión",
         description: "No se pudo iniciar sesión con Microsoft.",
       });
-    }
-  };
-
-  const handleDevLogin = async (email: string, forceRole?: string, password?: string) => {
-    if (devLoading) return;
-    setDevLoading(true);
-    try {
-      const response = await fetch('/api/auth/dev-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          ...(forceRole ? { role: forceRole } : {}),
-          ...(password ? { password } : {}),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Error en dev login');
-
-      const profile: UserProfile = {
-        id: data.user.id,
-        uid: data.user.uid,
-        nombre: data.user.nombre,
-        correo: data.user.email,
-        role: data.user.role,
-        photoURL: data.user.photo_url,
-      };
-      setDevUser(profile, data.devToken);
-      toast({ title: "Dev Login exitoso", description: `Entrando como ${profile.role}: ${profile.correo}` });
-
-      if (profile.role === 'student') {
-        router.push('/student');
-      } else if (profile.role === 'super-admin') {
-        router.push('/super-admin/dashboard');
-      } else {
-        router.push('/instructor');
-      }
-    } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
-    } finally {
-      setDevLoading(false);
     }
   };
 
@@ -258,83 +210,6 @@ export default function HomePage() {
           />
         </div>
 
-        {/* ── Dev login panel ── */}
-        {SHOW_DEV_LOGIN && (
-          <div
-            className="mt-6 w-full max-w-md rounded-2xl p-4 border"
-            style={{
-              background: 'rgba(255,255,255,0.07)',
-              borderColor: 'rgba(255,200,50,0.35)',
-              backdropFilter: 'blur(8px)',
-            }}
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <Bug className="h-4 w-4 text-amber-400" />
-              <span className="text-amber-300 text-xs font-semibold tracking-wide uppercase">
-                Modo Desarrollo
-              </span>
-            </div>
-            <Input
-              type="email"
-              placeholder="Usuario docente..."
-              value={devEmail}
-              onChange={(e) => setDevEmail(e.target.value)}
-              className="mb-2 h-9 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-amber-400"
-            />
-            <Input
-              type="password"
-              placeholder="Clave de acceso de desarrollo (requerida)..."
-              value={devPassword}
-              onChange={(e) => setDevPassword(e.target.value)}
-              className="mb-1 h-9 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-amber-400"
-            />
-            <p className="text-amber-200/60 text-[10px] mb-2">
-              Requerida para todos los accesos de desarrollo (DEV_LOGIN_PASSWORD).
-            </p>
-            <Button
-              onClick={() => handleDevLogin(devEmail || DEV_TEACHER_EMAIL, 'instructor', devPassword)}
-              disabled={devLoading || !devEmail || !devPassword}
-              size="sm"
-              className="mb-2 w-full h-8 text-xs bg-green-600/90 hover:bg-green-600 text-white"
-            >
-              {devLoading ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Entrando...</> : 'Entrar como Docente'}
-            </Button>
-            <div className="flex gap-2 mb-2">
-              <Button
-                variant="outline" size="sm"
-                onClick={() => { setDevEmail('test@estudiante.ugm.cl'); handleDevLogin('test@estudiante.ugm.cl', 'student', devPassword); }}
-                disabled={devLoading || !devPassword}
-                className="flex-1 h-8 text-xs border-blue-400/50 text-blue-300 bg-transparent hover:bg-blue-400/10"
-              >
-                <GraduationCap className="h-3 w-3 mr-1" /> Estudiante
-              </Button>
-              <Button
-                variant="outline" size="sm"
-                onClick={() => { setDevEmail('test@ugm.cl'); handleDevLogin('test@ugm.cl', 'instructor', devPassword); }}
-                disabled={devLoading || !devPassword}
-                className="flex-1 h-8 text-xs border-green-400/50 text-green-300 bg-transparent hover:bg-green-400/10"
-              >
-                <BookOpen className="h-3 w-3 mr-1" /> Instructor
-              </Button>
-              <Button
-                variant="outline" size="sm"
-                onClick={() => { setDevEmail('admin@ugm.cl'); handleDevLogin('admin@ugm.cl', 'super-admin', devPassword); }}
-                disabled={devLoading || !devPassword}
-                className="flex-1 h-8 text-xs border-purple-400/50 text-purple-300 bg-transparent hover:bg-purple-400/10"
-              >
-                <ShieldCheck className="h-3 w-3 mr-1" /> Admin
-              </Button>
-            </div>
-            <Button
-              onClick={() => handleDevLogin(devEmail, undefined, devPassword)}
-              disabled={devLoading || !devEmail || !devPassword}
-              size="sm"
-              className="w-full h-8 text-xs bg-amber-500/80 hover:bg-amber-500 text-white"
-            >
-              {devLoading ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Entrando...</> : 'Entrar con email personalizado'}
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* ── Footer ── */}

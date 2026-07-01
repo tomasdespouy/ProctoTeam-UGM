@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
+import { signEvidenceRows } from '@/lib/evidence';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
         topAlertType:  m.top_alert_type ?? '—',
         withEvidence:  parseInt(m.with_evidence  ?? '0'),
       },
-      alerts: recentResult.rows,
+      alerts: await signEvidenceRows(recentResult.rows),
     });
   } catch (error: any) {
     console.error('Admin alerts API error:', error);

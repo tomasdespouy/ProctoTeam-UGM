@@ -137,12 +137,13 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
         // no coincide con el registrado, se marca como 'warning' para que el
         // docente lo revise; si coincide, queda como 'info'.
         if (examId && studentId) {
+          // Privacidad: NO guardamos el número de documento/registro en la BD,
+          // solo el nombre leído (para el cotejo) y la foto como evidencia.
           const matches = result?.matchesExpected ?? true;
-          const doc = result?.documentNumber ? ` · Doc: ${result.documentNumber}` : '';
           const detected = result?.detectedName ? `"${result.detectedName}"` : '(no leído)';
           const description = matches
-            ? `Verificación de identidad OK — documento ${detected}${doc}`
-            : `Verificación de identidad: el documento ${detected}${doc} NO coincide con el nombre registrado (${studentName})`;
+            ? `Verificación de identidad OK — documento ${detected}`
+            : `Verificación de identidad: el documento ${detected} NO coincide con el nombre registrado (${studentName})`;
 
           await fetch('/api/live', {
             method: 'POST',
