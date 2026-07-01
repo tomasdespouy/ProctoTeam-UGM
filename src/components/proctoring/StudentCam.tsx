@@ -727,8 +727,74 @@ export function StudentCam({
     const channel = supabase.channel(`exam-room-${examId}`);
     channelRef.current = channel;
 
+    // Construye la conexión WebRTC del alumno (tracks + handlers ICE).
+    const buildPeer = async () => {
+      const iceServers = await getIceServers();
+      const pc = new RTCPeerConnection({ iceServers });
+      peerConnectionRef.current = pc;
+
+      streamRef.current?.getTracks().forEach(track => pc.addTrack(track, streamRef.current!));
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getVideoTracks().forEach(track =>
+          pc.addTrack(track, screenStreamRef.current!),
+        );
+      }
+
+      pc.onicecandidate = ({ candidate }) => {
+        if (candidate) {
+          channel.send({
+            type: 'broadcast', event: 'webrtc-signaling',
+            payload: { type: 'ice-candidate', fromId: studentId, toId: 'instructor', data: candidate.toJSON() },
+          });
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+          console.warn('[StudentCam] ICE', pc.iceConnectionState, '— reintentando oferta');
+          void sendOffer(true);
+        }
+      };
+
+      return pc;
+    };
+
+    // (Re)envía una oferta al instructor. Crea el peer si no existe. Se reintenta
+    // cuando el instructor anuncia "instructor-ready", de modo que el video
+    // conecte aunque el instructor haya entrado DESPUÉS que el alumno (la causa
+    // del video en negro: la oferta inicial se perdía sin nadie escuchando).
+    const sendOffer = async (isRenegotiation = false) => {
+      if (!streamRef.current) return;
+      try {
+        const pc = peerConnectionRef.current ?? (await buildPeer());
+        const offer = await pc.createOffer(isRenegotiation ? { iceRestart: true } : {});
+        await pc.setLocalDescription(offer);
+        channel.send({
+          type: 'broadcast', event: 'webrtc-signaling',
+          payload: {
+            type: 'offer', fromId: studentId, toId: 'instructor',
+            data: { type: offer.type, sdp: offer.sdp },
+            ...(isRenegotiation ? { isRenegotiation: true } : {}),
+          },
+        });
+      } catch (err) {
+        console.error('[StudentCam] Error enviando oferta:', err);
+      }
+    };
+
     channel
       .on('broadcast', { event: 'webrtc-signaling' }, async ({ payload }: any) => {
+        // El instructor anuncia que está listo → (re)enviamos la oferta si aún
+        // no estamos conectados. Resuelve la carrera de "quién entró primero".
+        if (payload.type === 'instructor-ready') {
+          const pc = peerConnectionRef.current;
+          const st = pc?.iceConnectionState;
+          const needsOffer = !pc || pc.signalingState === 'have-local-offer'
+            || st === 'failed' || st === 'disconnected' || st === 'closed';
+          if (needsOffer) await sendOffer(!!pc);
+          return;
+        }
+
         if (payload.toId !== studentId) return;
 
         const pc = peerConnectionRef.current;
@@ -776,28 +842,9 @@ export function StudentCam({
             break;
           }
 
-          // ── Tarea 2: Instructor detected ICE failure — re-send offer ────────
+          // Instructor pidió renegociar (detectó fallo de ICE).
           case 'request-renegotiation': {
-            const pc = peerConnectionRef.current;
-            if (!pc) break;
-            try {
-              const offer = await pc.createOffer({ iceRestart: true });
-              await pc.setLocalDescription(offer);
-              channel.send({
-                type:  'broadcast',
-                event: 'webrtc-signaling',
-                payload: {
-                  type:            'offer',
-                  fromId:          studentId,
-                  toId:            'instructor',
-                  data:            { type: offer.type, sdp: offer.sdp },
-                  isRenegotiation: true,
-                },
-              });
-              console.info('[StudentCam] Renegotiation offer sent (instructor requested)');
-            } catch (err) {
-              console.error('[StudentCam] Renegotiation failed:', err);
-            }
+            await sendOffer(true);
             break;
           }
         }
@@ -813,78 +860,7 @@ export function StudentCam({
             payload: { type: 'student-joined', fromId: studentId, toId: 'instructor', studentName, participationId },
           });
 
-          if (!streamRef.current) return;
-
-          const iceServers = await getIceServers();
-          const pc = new RTCPeerConnection({ iceServers });
-          peerConnectionRef.current = pc;
-
-          streamRef.current.getTracks().forEach(track => pc.addTrack(track, streamRef.current!));
-
-          if (screenStreamRef.current) {
-            screenStreamRef.current.getVideoTracks().forEach(track =>
-              pc.addTrack(track, screenStreamRef.current!),
-            );
-          }
-
-          pc.onicecandidate = ({ candidate }) => {
-            if (candidate) {
-              channel.send({
-                type:  'broadcast',
-                event: 'webrtc-signaling',
-                payload: {
-                  type:   'ice-candidate',
-                  fromId: studentId,
-                  toId:   'instructor',
-                  data:   candidate.toJSON(),
-                },
-              });
-            }
-          };
-
-          // ── Tarea 2: Self-triggered ICE reconnection ─────────────────────────
-          // If our own ICE state goes to disconnected/failed, immediately send a
-          // new offer with iceRestart:true. The instructor's existing PC will
-          // handle it via the isRenegotiation flag (no teardown needed).
-          pc.oniceconnectionstatechange = () => {
-            if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-              console.warn('[StudentCam] ICE', pc.iceConnectionState, '— self-initiating renegotiation');
-              const renegotiate = async () => {
-                try {
-                  const offer = await pc.createOffer({ iceRestart: true });
-                  await pc.setLocalDescription(offer);
-                  channel.send({
-                    type:  'broadcast',
-                    event: 'webrtc-signaling',
-                    payload: {
-                      type:            'offer',
-                      fromId:          studentId,
-                      toId:            'instructor',
-                      data:            { type: offer.type, sdp: offer.sdp },
-                      isRenegotiation: true,
-                    },
-                  });
-                } catch (err) {
-                  console.error('[StudentCam] Self-renegotiation failed:', err);
-                }
-              };
-              renegotiate();
-            }
-          };
-
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-
-          channel.send({
-            type:  'broadcast',
-            event: 'webrtc-signaling',
-            payload: {
-              type:   'offer',
-              fromId: studentId,
-              toId:   'instructor',
-              data:   { type: offer.type, sdp: offer.sdp },
-            },
-          });
+          await sendOffer(false);
 
         } else if (status === 'CHANNEL_ERROR') {
           setIsConnected(false);

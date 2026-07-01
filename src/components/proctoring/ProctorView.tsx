@@ -442,12 +442,32 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
         });
       })
       .on('broadcast', { event: 'webrtc-signaling' }, handleWebRTCSignaling)
-      .subscribe((status: string) => setIsConnected(status === 'SUBSCRIBED'));
+      .subscribe((status: string) => {
+        const ok = status === 'SUBSCRIBED';
+        setIsConnected(ok);
+        if (ok) {
+          // Anunciar disponibilidad para que los alumnos (re)envíen su oferta.
+          channel.send({
+            type: 'broadcast', event: 'webrtc-signaling',
+            payload: { type: 'instructor-ready', fromId: 'instructor', toId: 'all' },
+          });
+        }
+      });
 
     signalingChannel.current = channel;
 
+    // Re-anunciar cada 7s: reconecta a alumnos que se unieron antes que el
+    // instructor, recargaron, o cuya oferta inicial se perdió (video en negro).
+    const announceInterval = setInterval(() => {
+      signalingChannel.current?.send({
+        type: 'broadcast', event: 'webrtc-signaling',
+        payload: { type: 'instructor-ready', fromId: 'instructor', toId: 'all' },
+      });
+    }, 7_000);
+
     return () => {
       clearInterval(pollInterval);
+      clearInterval(announceInterval);
       peerConnections.current.forEach(pc => pc.close());
       peerConnections.current.clear();
       signalingChannel.current = null;
