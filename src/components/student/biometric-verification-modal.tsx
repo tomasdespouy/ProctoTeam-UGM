@@ -18,13 +18,66 @@ interface BiometricVerificationModalProps {
   participationId: string;
 }
 
+type BoxNorm = { x: number; y: number; width: number; height: number } | null;
+
 type ExtractionResult = {
   detectedName: string;
   documentNumber: string;
   matchesExpected: boolean;
   readable: boolean;
   notes: string;
+  faceBox?: BoxNorm;
+  nameBox?: BoxNorm;
 };
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// Privacidad: compone la imagen que SE GUARDA revelando solo el rostro y el
+// nombre del documento; el resto (número, vigencia, dirección…) queda en blanco.
+// Si el modelo no ubicó ninguna caja, difumina toda la imagen como respaldo.
+async function buildRedactedIdImage(dataUri: string, faceBox?: BoxNorm, nameBox?: BoxNorm): Promise<string> {
+  try {
+    const img = await loadImage(dataUri);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || 640;
+    canvas.height = img.naturalHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return dataUri;
+
+    const boxes = [faceBox, nameBox].filter(Boolean) as Exclude<BoxNorm, null>[];
+
+    if (boxes.length === 0) {
+      // Sin cajas confiables → no exponemos ningún dato: difuminamos todo.
+      ctx.filter = 'blur(12px)';
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.filter = 'none';
+      return canvas.toDataURL('image/jpeg', 0.6);
+    }
+
+    // Fondo blanco; solo se revelan las regiones permitidas (con algo de margen).
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const pad = 0.02;
+    for (const b of boxes) {
+      const x = Math.max(0, b.x - pad) * canvas.width;
+      const y = Math.max(0, b.y - pad) * canvas.height;
+      const w = Math.min(1, b.width + pad * 2) * canvas.width;
+      const h = Math.min(1, b.height + pad * 2) * canvas.height;
+      ctx.drawImage(img, x, y, w, h, x, y, w, h);
+    }
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } catch {
+    // Ante cualquier fallo, preferimos NO guardar datos legibles.
+    return dataUri;
+  }
+}
 
 export function BiometricVerificationModal({ isOpen, onVerificationSuccess, examId, studentId, studentName, participationId }: BiometricVerificationModalProps) {
   const { toast } = useToast();
@@ -124,10 +177,13 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
     try {
       const token = user ? await user.getIdToken() : null;
       if (token && idCardPhoto) {
+        // Privacidad: se sube SOLO la versión redactada (cara + nombre); el
+        // resto del documento nunca se almacena.
+        const redacted = await buildRedactedIdImage(idCardPhoto, result?.faceBox, result?.nameBox);
         const evRes = await fetch('/api/exam/evidence', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ snapshot: idCardPhoto, participationId, alertType: 'identidad' }),
+          body: JSON.stringify({ snapshot: redacted, participationId, alertType: 'identidad' }),
         });
         const evData = await evRes.json().catch(() => ({}));
         const evidenceUrl: string | undefined = evData?.publicUrl;
@@ -179,7 +235,7 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
         <DialogHeader>
           <DialogTitle className="text-2xl font-headline text-primary">Verificación de Identidad</DialogTitle>
           <DialogDescription>
-            Tómate una foto sosteniendo tu documento de identidad (cédula o carnet) junto a tu rostro, de modo que se vean ambos con claridad. Leeremos tu nombre del documento para que lo confirmes; la foto se guarda como evidencia.
+            Tómate una foto sosteniendo tu documento de identidad (cédula o carnet) junto a tu rostro, de modo que se vean ambos con claridad. Leeremos tu nombre del documento para que lo confirmes. Por privacidad, la evidencia guardada muestra <strong>solo tu nombre y tu foto</strong>; el resto de los datos (número, vigencia, dirección) se oculta automáticamente.
           </DialogDescription>
         </DialogHeader>
 
