@@ -19,6 +19,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { getIceServers } from '@/lib/ice-servers';
 import { useAuth } from '@/context/auth-context';
 import {
   initAICoordinator,
@@ -42,12 +43,6 @@ interface StudentCamProps {
 }
 
 type SetupPhase = 'camera' | 'screen' | 'ready';
-
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -820,7 +815,8 @@ export function StudentCam({
 
           if (!streamRef.current) return;
 
-          const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+          const iceServers = await getIceServers();
+          const pc = new RTCPeerConnection({ iceServers });
           peerConnectionRef.current = pc;
 
           streamRef.current.getTracks().forEach(track => pc.addTrack(track, streamRef.current!));

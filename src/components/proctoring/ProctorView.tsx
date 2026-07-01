@@ -40,6 +40,7 @@ import {
   Send,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { getIceServers } from '@/lib/ice-servers';
 import { useToast } from '@/hooks/use-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -85,12 +86,6 @@ interface ProctorViewProps {
 }
 
 type AlertFilter = 'all' | 'critical' | 'warning' | 'info';
-
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-];
 
 // ─── Severity helpers ─────────────────────────────────────────────────────────
 
@@ -352,7 +347,8 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
           peerConnections.current.delete(fromId);
         }
 
-        pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        const iceServers = await getIceServers();
+        pc = new RTCPeerConnection({ iceServers });
         peerConnections.current.set(fromId, pc);
 
         pc.onicecandidate = ({ candidate }) => {
