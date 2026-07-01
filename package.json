@@ -53,6 +53,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
+    "exceljs": "^4.4.0",
     "framer-motion": "^11.5.7",
     "google-auth-library": "^10.5.0",
     "jsonwebtoken": "^9.0.2",

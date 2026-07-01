@@ -524,6 +524,29 @@ function ActionButtons({
   onViewAlerts: (session: ExamSession) => void;
 }) {
   const [loadingStats, setLoadingStats] = useState(false);
+  const [loadingXlsx, setLoadingXlsx] = useState(false);
+
+  const handleExcel = async () => {
+    if (!token) return;
+    setLoadingXlsx(true);
+    try {
+      const res = await fetch(`/api/reports/exam/${session.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `reporte_${session.title.replace(/\s+/g, '_')}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('[Report] Error descargando Excel:', err);
+    } finally {
+      setLoadingXlsx(false);
+    }
+  };
 
   const handleStats = () => {
     setLoadingStats(true);
@@ -573,6 +596,20 @@ function ActionButtons({
           ? <Loader2 className="h-3 w-3 animate-spin" />
           : <BarChart2 className="h-3 w-3 flex-shrink-0" style={{ color: '#0ad3c2' }} />}
         Estadísticas
+      </button>
+
+      {/* Reporte Excel — descarga xlsx con Resumen + Estudiantes + Alertas */}
+      <button
+        onClick={handleExcel}
+        disabled={loadingXlsx}
+        className="flex items-center gap-1.5 h-6 px-2.5 rounded-[5px] border text-xs font-normal transition-colors hover:bg-green-50 disabled:opacity-50"
+        style={{ borderColor: '#10b981', color: '#242f62' }}
+        title="Descargar reporte Excel"
+      >
+        {loadingXlsx
+          ? <Loader2 className="h-3 w-3 animate-spin" />
+          : <Download className="h-3 w-3 flex-shrink-0" style={{ color: '#10b981' }} />}
+        Excel
       </button>
 
       {/* Grabaciones — abre el reproductor de video por estudiante */}
