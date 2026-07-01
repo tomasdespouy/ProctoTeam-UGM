@@ -33,6 +33,7 @@ import {
   UserPlus, Clock, Ban, CheckCircle2, Trash2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { isProtectedEmail } from '@/lib/protected-users';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -384,7 +385,9 @@ export default function InstructorsPage() {
           </TableHeader>
           <TableBody>
             {filtered.length > 0 ? (
-              filtered.map(u => (
+              filtered.map(u => {
+                const locked = isProtectedEmail(u.email);
+                return (
                 <TableRow key={u.uid} className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${!u.active ? 'opacity-55' : ''}`}>
 
                   {/* User */}
@@ -407,6 +410,11 @@ export default function InstructorsPage() {
                           {!u.active && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-200 px-1.5 py-0.5 text-[10px] font-semibold text-red-500">
                               <Ban className="h-2.5 w-2.5" /> Inactivo
+                            </span>
+                          )}
+                          {locked && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600">
+                              <ShieldCheck className="h-2.5 w-2.5" /> Protegido
                             </span>
                           )}
                         </div>
@@ -435,6 +443,11 @@ export default function InstructorsPage() {
 
                   {/* Actions */}
                   <TableCell className="py-3.5 text-right">
+                    {locked ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-400 justify-end w-full" title="Cuenta protegida: no puede modificarse desde el panel">
+                        <ShieldCheck className="h-3.5 w-3.5" /> Protegida
+                      </span>
+                    ) : (
                     <div className="flex items-center justify-end gap-1.5">
                       <RoleDropdown
                         user={u}
@@ -464,9 +477,11 @@ export default function InstructorsPage() {
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
+                    )}
                   </TableCell>
                 </TableRow>
-              ))
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={6} className="h-40 text-center">

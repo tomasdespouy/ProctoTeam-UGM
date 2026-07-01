@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
 import { createManagedUser, getUserByEmail, setUserActive, deleteUser } from '@/lib/auth-postgres';
+import { isProtectedEmail } from '@/lib/protected-users';
 
 export const dynamic = 'force-dynamic';
 
@@ -109,6 +110,21 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'uid es requerido' }, { status: 400 });
     }
 
+    // ── Cuenta protegida (super-admin dueño): no se puede degradar ni desactivar ──
+    const targetRow = await db.query('SELECT email FROM users WHERE uid = $1', [uid]);
+    if (targetRow.rows.length === 0) {
+      return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
+    }
+    if (isProtectedEmail(targetRow.rows[0].email)) {
+      const isDemotion = (typeof active === 'boolean' && !active) || (typeof role === 'string' && role !== 'super-admin');
+      if (isDemotion) {
+        return NextResponse.json(
+          { error: 'Esta cuenta está protegida (super-admin dueño) y no puede cambiarse de rol ni desactivarse desde el panel.' },
+          { status: 403 }
+        );
+      }
+    }
+
     // ── Rama 1: activar / desactivar cuenta ──────────────────────────────────
     if (typeof active === 'boolean') {
       if (!active) {
@@ -191,11 +207,17 @@ export async function DELETE(request: NextRequest) {
 
     // No permitir eliminar al último super-admin.
     const check = await db.query(
-      `SELECT role FROM users WHERE uid = $1`,
+      `SELECT role, email FROM users WHERE uid = $1`,
       [uid]
     );
     if (check.rows.length === 0) {
       return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
+    }
+    if (isProtectedEmail(check.rows[0].email)) {
+      return NextResponse.json(
+        { error: 'Esta cuenta está protegida (super-admin dueño) y no puede eliminarse desde el panel.' },
+        { status: 403 }
+      );
     }
     if (check.rows[0].role === 'super-admin') {
       const others = await db.query(

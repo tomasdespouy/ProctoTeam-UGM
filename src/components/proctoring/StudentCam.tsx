@@ -907,6 +907,18 @@ export function StudentCam({
     };
   }, [examId, studentId, studentName, participationId, setupPhase]);
 
+  // ── Snapshot de respaldo periódico ─────────────────────────────────────────
+  // Garantiza que el docente vea frames recientes aunque WebRTC no logre
+  // conectar (redes tras NAT/firewall sin servidor TURN → video en negro).
+  // Envía un heartbeat con imagen compuesta cada ~8s; ProctorView lo muestra
+  // como `lastSnapshot` cuando no hay stream WebRTC.
+  useEffect(() => {
+    if (setupPhase !== 'ready') return;
+    sendSnapshotWithReason('periodic-fallback'); // uno de inmediato
+    const id = setInterval(() => sendSnapshotWithReason('periodic-fallback'), 8000);
+    return () => clearInterval(id);
+  }, [setupPhase, sendSnapshotWithReason]);
+
   // ── Tab switch / window blur alerts ───────────────────────────────────────
   // FIX: removed sendAlertWithSnapshot from deps — use sendAlertRef.current instead.
   useEffect(() => {
