@@ -30,15 +30,16 @@ export async function GET(request: NextRequest) {
       LIMIT 200
     `);
 
+    // Reintento robusto: si la consulta con `active` falla por CUALQUIER motivo
+    // (típicamente porque la columna aún no está migrada — y en la ruta REST el
+    // error NO trae `.code`), reintentamos sin ella. Si el reintento también
+    // falla, ese error se propaga al catch externo.
     let result;
     try {
       result = await selectUsers(true);
     } catch (e: any) {
-      if (e?.code === '42703') {
-        result = await selectUsers(false); // columna `active` aún no migrada
-      } else {
-        throw e;
-      }
+      console.warn('[admin/users] SELECT con `active` falló, reintentando sin ella:', e?.message ?? e);
+      result = await selectUsers(false);
     }
 
     return NextResponse.json({ users: result.rows });
@@ -125,9 +126,10 @@ export async function PATCH(request: NextRequest) {
       try {
         await setUserActive(uid, active);
       } catch (e: any) {
-        if (e?.code === '42703') {
+        const missingColumn = e?.code === '42703' || /column .*active.* does not exist/i.test(e?.message ?? '');
+        if (missingColumn) {
           return NextResponse.json(
-            { error: 'Falta aplicar la migración: ALTER TABLE users ADD COLUMN active BOOLEAN NOT NULL DEFAULT true;' },
+            { error: 'Falta aplicar la migración en la BD: ALTER TABLE users ADD COLUMN active BOOLEAN NOT NULL DEFAULT true;' },
             { status: 503 }
           );
         }

@@ -155,9 +155,17 @@ export default function InstructorsPage() {
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users ?? []);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo cargar la lista de usuarios',
+          description: data.error ?? `Error ${res.status}`,
+        });
       }
     } catch (err) {
       console.error('Error fetching users:', err);
+      toast({ variant: 'destructive', title: 'Error de red', description: 'No se pudo contactar al servidor.' });
     } finally {
       setIsLoading(false);
     }
