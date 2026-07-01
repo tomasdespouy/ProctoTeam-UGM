@@ -18,7 +18,15 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
   Users, Search, Loader2, ChevronDown, GraduationCap, BookOpen, ShieldCheck, RefreshCw,
+  UserPlus, Clock,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -117,6 +125,13 @@ export default function InstructorsPage() {
   const [searchTerm,  setSearchTerm]  = useState('');
   const [updating,    setUpdating]    = useState<string | null>(null);
 
+  // Crear usuario (pre-aprovisionamiento)
+  const [createOpen,   setCreateOpen]   = useState(false);
+  const [creating,     setCreating]     = useState(false);
+  const [newNombre,    setNewNombre]    = useState('');
+  const [newEmail,     setNewEmail]     = useState('');
+  const [newRole,      setNewRole]      = useState<UserRow['role']>('student');
+
   // Auth guard
   useEffect(() => {
     if (!loading && userProfile && userProfile.role !== 'super-admin') router.push('/');
@@ -163,6 +178,40 @@ export default function InstructorsPage() {
     }
   };
 
+  const handleCreateUser = async () => {
+    if (!user) return;
+    const email = newEmail.trim().toLowerCase();
+    if (!newNombre.trim() || !email.includes('@')) {
+      toast({ variant: 'destructive', title: 'Datos incompletos', description: 'Ingresa un nombre y un email válido.' });
+      return;
+    }
+    setCreating(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/admin/users', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ email, nombre: newNombre.trim(), role: newRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Error al crear el usuario');
+
+      toast({
+        title: 'Usuario creado',
+        description: `${data.user.email} quedará pendiente hasta que inicie sesión con su cuenta Microsoft.`,
+      });
+      setCreateOpen(false);
+      setNewNombre('');
+      setNewEmail('');
+      setNewRole('student');
+      fetchUsers();
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.message });
+    } finally {
+      setCreating(false);
+    }
+  };
+
   if (loading || isLoading) {
     return (
       <div className="flex h-[calc(100vh-73px)] items-center justify-center">
@@ -195,15 +244,25 @@ export default function InstructorsPage() {
             Administra roles y permisos de todos los usuarios registrados en la plataforma.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchUsers}
-          className="gap-2 self-start md:self-auto"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Actualizar
-        </Button>
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchUsers}
+            className="gap-2"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Actualizar
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setCreateOpen(true)}
+            className="gap-2 bg-[#161F45] hover:bg-[#161F45]/90 text-white"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Crear usuario
+          </Button>
+        </div>
       </div>
 
       {/* Summary pills */}
@@ -273,7 +332,14 @@ export default function InstructorsPage() {
                         {u.nombre?.[0]?.toUpperCase() ?? u.email[0].toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-800 truncate">{u.nombre || '—'}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{u.nombre || '—'}</p>
+                          {u.uid.startsWith('pending:') && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                              <Clock className="h-2.5 w-2.5" /> Pendiente
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-400 truncate">{u.email}</p>
                       </div>
                     </div>
@@ -320,6 +386,71 @@ export default function InstructorsPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Crear usuario dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-4 w-4 text-[#161F45]" />
+              Crear usuario
+            </DialogTitle>
+            <DialogDescription>
+              Pre-registra a un docente o estudiante por su correo institucional. Quedará
+              <span className="font-medium text-amber-600"> pendiente</span> hasta que inicie sesión
+              una vez con su cuenta Microsoft; ahí se activa con el rol asignado.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="new-nombre">Nombre completo</Label>
+              <Input
+                id="new-nombre"
+                placeholder="Ej: María Pérez"
+                value={newNombre}
+                onChange={e => setNewNombre(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-email">Correo institucional</Label>
+              <Input
+                id="new-email"
+                type="email"
+                placeholder="nombre@ugm.cl"
+                value={newEmail}
+                onChange={e => setNewEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Rol</Label>
+              <Select value={newRole} onValueChange={v => setNewRole(v as UserRow['role'])}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="student">Estudiante</SelectItem>
+                  <SelectItem value="instructor">Docente</SelectItem>
+                  <SelectItem value="super-admin">Super Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCreateUser}
+              disabled={creating}
+              className="gap-2 bg-[#161F45] hover:bg-[#161F45]/90 text-white"
+            >
+              {creating ? <><Loader2 className="h-4 w-4 animate-spin" /> Creando…</> : <><UserPlus className="h-4 w-4" /> Crear usuario</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

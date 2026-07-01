@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
+import { createManagedUser, getUserByEmail } from '@/lib/auth-postgres';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,50 @@ export async function GET(request: NextRequest) {
     console.error('Admin users API error:', error);
     if (error.message === 'Authentication required') {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getAuthenticatedUser(request);
+    if (user.role !== 'super-admin') {
+      return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 });
+    }
+
+    const { email, nombre, role } = await request.json();
+    const validRoles = ['student', 'instructor', 'super-admin'];
+
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return NextResponse.json({ error: 'Email válido requerido' }, { status: 400 });
+    }
+    if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
+      return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 });
+    }
+    if (!validRoles.includes(role)) {
+      return NextResponse.json({ error: 'Rol inválido' }, { status: 400 });
+    }
+
+    const emailLower = email.toLowerCase().trim();
+    const existing = await getUserByEmail(emailLower);
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Ya existe un usuario con ese email' },
+        { status: 409 }
+      );
+    }
+
+    const created = await createManagedUser({ email: emailLower, nombre, role });
+    return NextResponse.json({ user: created }, { status: 201 });
+  } catch (error: any) {
+    console.error('Admin POST user error:', error);
+    if (error.message === 'Authentication required') {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    // 23505 = unique_violation (email duplicado, carrera con otra petición)
+    if (error?.code === '23505') {
+      return NextResponse.json({ error: 'Ya existe un usuario con ese email' }, { status: 409 });
     }
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
