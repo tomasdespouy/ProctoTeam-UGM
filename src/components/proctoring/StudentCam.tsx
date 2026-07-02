@@ -101,6 +101,8 @@ export function StudentCam({
   const [screenError,      setScreenError]      = useState<string | null>(null);
   /** True while draining in-flight ops after 'exam-closed' broadcast. */
   const [isSyncing,        setIsSyncing]        = useState(false);
+  /** Aviso in-page tras volver de otra pestaña. */
+  const [awayWarning,      setAwayWarning]      = useState<string | null>(null);
 
   // ── Media / WebRTC refs ────────────────────────────────────────────────────
   const videoRef          = useRef<HTMLVideoElement>(null); // ← camera (webcam) — AI always reads this
@@ -998,6 +1000,17 @@ export function StudentCam({
       if (awayStart) return;
       awayStart = Date.now();
       sendAlertRef.current('tab_switch', 'El estudiante salió de la pantalla del examen', 'high');
+      // Aviso al estudiante EN SU PANTALLA (visible aunque esté en otra pestaña).
+      playBeep();
+      try {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const n = new Notification('⚠ Vuelve al examen', {
+            body: 'Saliste de la pantalla del examen. Vuelve a la ventana de ProctoTeam de inmediato.',
+            requireInteraction: true,
+          });
+          n.onclick = () => { try { window.focus(); } catch { /* noop */ } n.close(); };
+        }
+      } catch { /* noop */ }
       awayTimer = setInterval(() => {
         const secs = Math.round((Date.now() - awayStart) / 1000);
         sendAlertRef.current('tab_away', `El estudiante SIGUE fuera de la pantalla (${secs}s)`, 'critical');
@@ -1010,6 +1023,8 @@ export function StudentCam({
       awayStart = 0;
       if (awayTimer) { clearInterval(awayTimer); awayTimer = null; }
       sendAlertRef.current('tab_return', `El estudiante volvió tras ${secs}s fuera de la pantalla`, 'low');
+      setAwayWarning(`Saliste ${secs}s de la pantalla del examen. Mantente en esta ventana.`);
+      setTimeout(() => setAwayWarning(null), 7000);
     };
 
     const onVisibility = () => { if (document.hidden) startedAway(); else cameBack(); };
@@ -1184,6 +1199,14 @@ export function StudentCam({
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-red-900/50 z-20">
             <VideoOff className="h-12 w-12 mb-2" />
             <p className="text-sm text-center px-4">{errorMessage}</p>
+          </div>
+        )}
+
+        {/* Aviso al volver de otra pestaña (#1) */}
+        {awayWarning && (
+          <div className="absolute top-0 left-0 right-0 z-30 bg-red-600 text-white text-xs font-semibold px-3 py-2 flex items-center gap-2 shadow-lg">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            {awayWarning}
           </div>
         )}
 

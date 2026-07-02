@@ -27,20 +27,17 @@ type ExtractionResult = {
 };
 
 // ─── Geometría del marco de la Cédula (TESTEO — ajustable) ─────────────────────
-// La cédula chilena (formato ID-1) tiene un layout FIJO, así que en vez de
-// detectar cajas con IA (impreciso), usamos posiciones fijas.
 const CI_ASPECT = 1.585;        // ancho / alto de la cédula (85.6 × 54 mm)
 const FRAME_WIDTH_FRAC = 0.80;  // ancho del marco como fracción del ancho del video
 
 // Zonas que SÍ se revelan, normalizadas 0..1 DENTRO del marco de la cédula.
-// Cédula chilena (frente): foto a la izquierda; nombre (Apellidos/Nombres)
-// arriba a la derecha. Si al testear la máscara no calza, mover estos valores.
 const REVEAL_ZONES: { x: number; y: number; w: number; h: number; label: string }[] = [
   { x: 0.05, y: 0.28, w: 0.29, h: 0.66, label: 'Foto'   },
   { x: 0.37, y: 0.12, w: 0.60, h: 0.33, label: 'Nombre' },
 ];
 
-// Alto del marco (fracción de la altura) para un aspecto de video dado.
+const HOLD_MS = 2000; // mantener quieto 2 s → captura automática
+
 function frameHeightFrac(videoAspect: number): number {
   return Math.min(0.94, FRAME_WIDTH_FRAC * videoAspect / CI_ASPECT);
 }
@@ -51,26 +48,34 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
   const [uploading, setUploading] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const zoneVideos = useRef<(HTMLVideoElement | null)[]>([]);
   const [hasCameraPermission, setHasCameraPermission] = useState(true);
   const [idCardPhoto, setIdCardPhoto] = useState<string | null>(null); // ← ya enmascarada
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<ExtractionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [videoAspect, setVideoAspect] = useState(4 / 3);
+  const [holdSecs, setHoldSecs] = useState<number | null>(null); // countdown de estabilidad
 
-  // ── startCamera — con reintento automático (cámara ocupada/timeout es transitorio) ──
+  // Adjunta el stream a todos los <video> (fondo difuminado + ventanas nítidas).
+  const attachStream = useCallback(() => {
+    const s = streamRef.current;
+    if (videoRef.current && videoRef.current.srcObject !== s) videoRef.current.srcObject = s;
+    zoneVideos.current.forEach(v => { if (v && v.srcObject !== s) v.srcObject = s; });
+  }, []);
+
   const startCamera = useCallback(async () => {
-    if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      videoRef.current.srcObject = null;
-    }
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
 
     const MAX = 3;
     let lastErr: any = null;
     for (let attempt = 1; attempt <= MAX; attempt++) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 } } });
-        if (videoRef.current) videoRef.current.srcObject = stream;
+        streamRef.current = stream;
+        attachStream();
         setHasCameraPermission(true);
         return;
       } catch (err: any) {
@@ -83,7 +88,7 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
     }
     console.error('Error accessing camera:', lastErr);
     setHasCameraPermission(false);
-  }, []);
+  }, [attachStream]);
 
   useEffect(() => {
     if (isOpen) {
@@ -92,21 +97,20 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
       setResult(null);
       setError(null);
       setIsLoading(false);
-    } else if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      videoRef.current.srcObject = null;
+    } else {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
     }
   }, [isOpen, startCamera]);
 
-  const takePhoto = async () => {
+  const takePhoto = useCallback(async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || !video.videoWidth) return;
 
     const W = video.videoWidth, H = video.videoHeight;
-    const va = W / H;
     const fwFrac = FRAME_WIDTH_FRAC;
-    const fhFrac = frameHeightFrac(va);
+    const fhFrac = frameHeightFrac(W / H);
     const fx = ((1 - fwFrac) / 2) * W;
     const fy = ((1 - fhFrac) / 2) * H;
     const fw = fwFrac * W;
@@ -136,12 +140,12 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
     }
     const maskedCrop = mask.toDataURL('image/jpeg', 0.85);
 
+    setHoldSecs(null);
     setIdCardPhoto(maskedCrop);
     setIsLoading(true);
     setError(null);
 
     try {
-      // OCR sobre el recorte completo (lee mejor); guardamos solo el enmascarado.
       const res = await extractIdCardName({ idCardPhoto: fullCrop, expectedName: studentName });
       if (!res.readable || !res.detectedName) {
         setError('No pudimos leer el documento. Alinea la cédula dentro del marco, sin reflejos ni desenfoque, e intenta de nuevo.');
@@ -155,7 +159,65 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [studentName]);
+
+  // ── Captura automática por ESTABILIDAD ─────────────────────────────────────
+  // Muestrea el área del marco; cuando la imagen deja de moverse (y tiene
+  // contenido) por HOLD_MS, captura sola. Muestra el conteo "Mantén… Ns".
+  const autoRef = useRef({ stableSince: 0, prev: null as Uint8ClampedArray | null, capturing: false });
+  useEffect(() => {
+    if (!isOpen || idCardPhoto || isLoading || !hasCameraPermission) {
+      autoRef.current.stableSince = 0;
+      autoRef.current.prev = null;
+      autoRef.current.capturing = false;
+      setHoldSecs(null);
+      return;
+    }
+    autoRef.current.capturing = false;
+    const SW = 64, SH = 48;
+    const c = document.createElement('canvas');
+    c.width = SW; c.height = SH;
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    const DIFF_T = 9;     // diferencia media máx. para considerar "quieto"
+    const VAR_FLOOR = 10; // varianza mín. para evitar capturar una escena vacía
+
+    const id = setInterval(() => {
+      const v = videoRef.current;
+      if (!v || !v.videoWidth || !cx || autoRef.current.capturing) return;
+      const W = v.videoWidth, H = v.videoHeight;
+      const fh = frameHeightFrac(W / H);
+      const fx = ((1 - FRAME_WIDTH_FRAC) / 2) * W, fy = ((1 - fh) / 2) * H;
+      const fw = FRAME_WIDTH_FRAC * W, fhpx = fh * H;
+      try { cx.drawImage(v, fx, fy, fw, fhpx, 0, 0, SW, SH); } catch { return; }
+
+      const cur = cx.getImageData(0, 0, SW, SH).data;
+      let mean = 0; for (let i = 0; i < cur.length; i += 4) mean += cur[i];
+      mean /= (cur.length / 4);
+      let varc = 0; for (let i = 0; i < cur.length; i += 4) { const d = cur[i] - mean; varc += d * d; }
+      varc = Math.sqrt(varc / (cur.length / 4));
+
+      let diff = 999;
+      const prev = autoRef.current.prev;
+      if (prev) { let s = 0, n = 0; for (let i = 0; i < cur.length; i += 4) { s += Math.abs(cur[i] - prev[i]); n++; } diff = s / n; }
+      autoRef.current.prev = cur;
+
+      const now = Date.now();
+      if (diff < DIFF_T && varc > VAR_FLOOR) {
+        if (!autoRef.current.stableSince) autoRef.current.stableSince = now;
+        const held = now - autoRef.current.stableSince;
+        setHoldSecs(Math.max(0, Math.ceil((HOLD_MS - held) / 1000)));
+        if (held >= HOLD_MS) {
+          autoRef.current.capturing = true;
+          takePhoto();
+        }
+      } else {
+        autoRef.current.stableSince = 0;
+        setHoldSecs(null);
+      }
+    }, 200);
+
+    return () => clearInterval(id);
+  }, [isOpen, idCardPhoto, isLoading, hasCameraPermission, takePhoto]);
 
   const retake = () => {
     setIdCardPhoto(null);
@@ -164,8 +226,6 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
   };
 
   const confirm = async () => {
-    // Sube la imagen (YA enmascarada: solo foto + nombre) como evidencia y la
-    // registra en el historial del estudiante. No bloquea el flujo si falla.
     setUploading(true);
     try {
       const token = user ? await user.getIdToken() : null;
@@ -207,15 +267,18 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
     onVerificationSuccess();
   };
 
-  // Geometría del marco para el overlay (en %). Coincide con el recorte porque el
-  // contenedor usa el mismo aspecto que el video nativo (object-cover no recorta).
+  // ── Geometría del marco / zonas (en %) ─────────────────────────────────────
   const fhFrac    = frameHeightFrac(videoAspect);
+  const frameLeft = (1 - FRAME_WIDTH_FRAC) / 2;
+  const frameTop  = (1 - fhFrac) / 2;
   const frameStyle = {
-    left:   `${((1 - FRAME_WIDTH_FRAC) / 2) * 100}%`,
-    top:    `${((1 - fhFrac) / 2) * 100}%`,
+    left:   `${frameLeft * 100}%`,
+    top:    `${frameTop * 100}%`,
     width:  `${FRAME_WIDTH_FRAC * 100}%`,
     height: `${fhFrac * 100}%`,
   } as React.CSSProperties;
+
+  const liveOverlay = !idCardPhoto && hasCameraPermission && !isLoading;
 
   return (
     <Dialog open={isOpen}>
@@ -223,7 +286,7 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
         <DialogHeader>
           <DialogTitle className="text-2xl font-headline text-primary">Verificación de Identidad</DialogTitle>
           <DialogDescription>
-            Coloca tu <strong>cédula de identidad</strong> dentro del marco, bien alineada. Por privacidad, solo se guarda lo que cae en las zonas verdes (<strong>tu foto y tu nombre</strong>); el resto (RUN, fecha, número) se oculta automáticamente.
+            Coloca tu <strong>cédula</strong> dentro del marco. Solo se ven (y se guardan) las zonas <strong>verdes</strong> — tu <strong>foto y nombre</strong>; el resto queda difuminado. Al mantenerla quieta, se captura sola.
           </DialogDescription>
         </DialogHeader>
 
@@ -232,27 +295,44 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
             className="relative w-full rounded-lg border bg-muted overflow-hidden"
             style={{ aspectRatio: videoAspect }}
           >
+            {/* Fondo: video DIFUMINADO (la captura sigue leyendo el frame nítido) */}
             <video
               ref={videoRef}
               className={`w-full h-full object-cover transition-opacity ${idCardPhoto ? 'opacity-0' : 'opacity-100'}`}
-              autoPlay
-              muted
-              playsInline
+              style={{ filter: idCardPhoto ? 'none' : 'blur(7px) brightness(0.88)' }}
+              autoPlay muted playsInline
               onLoadedMetadata={() => {
                 const v = videoRef.current;
                 if (v?.videoWidth) setVideoAspect(v.videoWidth / v.videoHeight);
               }}
             />
 
-            {/* ── Overlay del marco + zonas reveladas (solo en vivo) ── */}
-            {!idCardPhoto && hasCameraPermission && (
+            {/* Ventanas NÍTIDAS: una copia del video recortada a cada zona verde */}
+            {liveOverlay && REVEAL_ZONES.map((z, i) => {
+              const ax = frameLeft + z.x * FRAME_WIDTH_FRAC;
+              const ay = frameTop + z.y * fhFrac;
+              const aw = z.w * FRAME_WIDTH_FRAC;
+              const ah = z.h * fhFrac;
+              const inset = `inset(${ay * 100}% ${(1 - ax - aw) * 100}% ${(1 - ay - ah) * 100}% ${ax * 100}%)`;
+              return (
+                <video
+                  key={`zone-${i}`}
+                  ref={el => { zoneVideos.current[i] = el; if (el && streamRef.current) el.srcObject = streamRef.current; }}
+                  autoPlay muted playsInline
+                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                  style={{ clipPath: inset, WebkitClipPath: inset as any }}
+                />
+              );
+            })}
+
+            {/* Marco punteado + bordes verdes + etiquetas */}
+            {liveOverlay && (
               <div className="absolute pointer-events-none" style={frameStyle}>
                 <div className="absolute inset-0 border-2 border-dashed border-cyan-300 rounded-md" />
-                <div className="absolute inset-0 bg-black/30 rounded-md" />
                 {REVEAL_ZONES.map(z => (
                   <div
                     key={z.label}
-                    className="absolute border border-emerald-300 bg-emerald-400/25 rounded-sm"
+                    className="absolute border-2 border-emerald-400 rounded-sm"
                     style={{ left: `${z.x * 100}%`, top: `${z.y * 100}%`, width: `${z.w * 100}%`, height: `${z.h * 100}%` }}
                   >
                     <span className="absolute -top-0.5 left-0 text-[8px] font-bold text-white bg-emerald-600/90 px-1 rounded-br">
@@ -260,6 +340,21 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Indicador de captura / instrucción */}
+            {liveOverlay && (
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
+                {holdSecs !== null ? (
+                  <span className="flex items-center gap-2 bg-emerald-600 text-white text-sm font-bold px-3 py-1.5 rounded-full shadow-lg animate-pulse">
+                    <Camera className="h-4 w-4" /> Mantén firme… {holdSecs}s
+                  </span>
+                ) : (
+                  <span className="bg-black/70 text-white text-xs px-3 py-1.5 rounded-full">
+                    Coloca tu cédula dentro del marco
+                  </span>
+                )}
               </div>
             )}
 
@@ -286,12 +381,6 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
               </div>
             )}
           </div>
-
-          {!idCardPhoto && hasCameraPermission && (
-            <p className="text-xs text-muted-foreground text-center -mt-1">
-              Alinea la cédula con el marco. Solo se guardará lo que quede en las zonas <span className="text-emerald-600 font-semibold">verdes</span>.
-            </p>
-          )}
 
           {error && (
             <Alert variant="destructive">
@@ -320,9 +409,9 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
 
         <DialogFooter className="flex-col sm:flex-col sm:space-x-0 gap-2">
           {!idCardPhoto ? (
-            <Button onClick={takePhoto} disabled={!hasCameraPermission || isLoading}>
+            <Button variant="outline" onClick={takePhoto} disabled={!hasCameraPermission || isLoading}>
               <Camera className="mr-2 h-4 w-4" />
-              Capturar Cédula
+              Capturar ahora (o mantén la cédula quieta)
             </Button>
           ) : result ? (
             <>
