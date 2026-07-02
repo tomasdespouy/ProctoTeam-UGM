@@ -550,12 +550,17 @@ export default function SuperAdminDashboard() {
     </TableHead>
   );
 
-  const fmtTime = (d: string | null) =>
-    d ? new Date(d).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null;
+  const fmtTime = (d: string | null) => {
+    if (!d) return null;
+    const dt = new Date(d);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${p(dt.getDate())}/${p(dt.getMonth() + 1)} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+  };
+  const fmtFull = (d: string | null) => (d ? new Date(d).toLocaleString('es-CL') : '');
 
   return (
     <>
-      <div className="container mx-auto px-6 py-8 space-y-8 max-w-7xl">
+      <div className="container mx-auto px-6 py-8 space-y-8 max-w-[1700px]">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-2">
@@ -650,13 +655,15 @@ export default function SuperAdminDashboard() {
           <Table>
             <TableHeader>
               <TableRow className="bg-slate-50 hover:bg-slate-50">
-                {sortHead('Estado',           'status',          'w-28')}
+                {sortHead('Estado',           'status',          'w-24')}
                 {sortHead('Examen / Materia', 'subject')}
+                {sortHead('Facultad',         'faculty',         'w-40')}
+                {sortHead('Escuela',          'school',          'w-40')}
                 {sortHead('Docente',          'instructor_name')}
-                {sortHead('Alumnos',          'student_count',   'text-center w-24')}
-                {sortHead('Alertas',          'critical_alerts', 'text-center w-32')}
-                {sortHead('Inicio',           'started_at',      'text-right w-32')}
-                {sortHead('Fin',              'ended_at',        'text-right w-32')}
+                {sortHead('Alumnos',          'student_count',   'text-center w-20')}
+                {sortHead('Alertas',          'critical_alerts', 'text-center w-28')}
+                {sortHead('Inicio',           'started_at',      'text-right w-28')}
+                {sortHead('Fin',              'ended_at',        'text-right w-28')}
                 <TableHead className="w-16" />
               </TableRow>
             </TableHeader>
@@ -676,13 +683,15 @@ export default function SuperAdminDashboard() {
                         <span className="font-mono text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
                           {exam.access_code}
                         </span>
-                        <span className="text-xs text-slate-400 truncate max-w-[180px]">{exam.title}</span>
+                        <span className="text-xs text-slate-400 truncate max-w-[160px]">{exam.title}</span>
                       </div>
-                      {(exam.faculty || exam.school) && (
-                        <p className="text-[10px] text-slate-400 mt-0.5 truncate max-w-[220px]">
-                          {[exam.faculty, exam.school].filter(Boolean).join(' · ')}
-                        </p>
-                      )}
+                    </TableCell>
+
+                    <TableCell className="py-4">
+                      <span className="text-xs text-slate-600 block truncate max-w-[150px]" title={exam.faculty ?? ''}>{exam.faculty || '—'}</span>
+                    </TableCell>
+                    <TableCell className="py-4">
+                      <span className="text-xs text-slate-600 block truncate max-w-[150px]" title={exam.school ?? ''}>{exam.school || '—'}</span>
                     </TableCell>
 
                     <TableCell className="py-4">
@@ -738,17 +747,17 @@ export default function SuperAdminDashboard() {
 
                     {/* Inicio */}
                     <TableCell className="py-4 text-right">
-                      <span className="text-xs text-slate-500 tabular-nums">
-                        {fmtTime(exam.started_at) ?? new Date(exam.created_at).toLocaleDateString('es-CL')}
+                      <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap" title={fmtFull(exam.started_at ?? exam.created_at)}>
+                        {fmtTime(exam.started_at ?? exam.created_at)}
                       </span>
                     </TableCell>
 
                     {/* Fin */}
                     <TableCell className="py-4 text-right">
                       {exam.ended_at ? (
-                        <span className="text-xs text-slate-500 tabular-nums">{fmtTime(exam.ended_at)}</span>
+                        <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap" title={fmtFull(exam.ended_at)}>{fmtTime(exam.ended_at)}</span>
                       ) : exam.status === 'active' ? (
-                        <span className="text-[10px] font-semibold text-green-600">En curso</span>
+                        <span className="text-[10px] font-semibold text-green-600 whitespace-nowrap">En curso</span>
                       ) : (
                         <span className="text-slate-300 text-xs">—</span>
                       )}
@@ -788,7 +797,7 @@ export default function SuperAdminDashboard() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-40 text-center">
+                  <TableCell colSpan={10} className="h-40 text-center">
                     <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
                       <FileText className="h-8 w-8 opacity-30" />
                       <p className="text-sm">No se encontraron exámenes.</p>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
@@ -24,12 +24,19 @@ import { useToast } from '@/hooks/use-toast';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AlertMetrics {
-  totalToday:    number;
-  criticalToday: number;
-  warningToday:  number;
-  infoToday:     number;
-  topAlertType:  string;
-  withEvidence:  number;
+  total:        number;
+  critical:     number;
+  warning:      number;
+  info:         number;
+  topAlertType: string;
+  withEvidence: number;
+}
+
+// YYYY-MM-DD de hoy (hora local).
+function todayStr(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 interface AlertRow {
@@ -105,18 +112,33 @@ export default function AlertsAuditPage() {
   const [alerts,     setAlerts]     = useState<AlertRow[]>([]);
   const [isLoading,  setIsLoading]  = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [from,       setFrom]       = useState<string>(todayStr());
+  const [to,         setTo]         = useState<string>(todayStr());
 
   // Auth guard
   useEffect(() => {
     if (!loading && userProfile && userProfile.role !== 'super-admin') router.push('/');
   }, [loading, userProfile, router]);
 
-  const fetchData = async () => {
+  const setPreset = (days: number | 'all') => {
+    if (days === 'all') { setFrom(''); setTo(''); return; }
+    const p = (n: number) => String(n).padStart(2, '0');
+    const fmt = (d: Date) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    const today = new Date();
+    const start = new Date(); start.setDate(today.getDate() - days);
+    setFrom(fmt(start));
+    setTo(fmt(today));
+  };
+
+  const fetchData = useCallback(async () => {
     if (!user) return;
     setIsLoading(true);
     try {
       const token = await user.getIdToken();
-      const res   = await fetch('/api/admin/alerts', { headers: { Authorization: `Bearer ${token}` } });
+      const qs = new URLSearchParams();
+      if (from) qs.set('from', from);
+      if (to)   qs.set('to', to);
+      const res = await fetch(`/api/admin/alerts?${qs.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
         setMetrics(data.metrics);
@@ -127,11 +149,17 @@ export default function AlertsAuditPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user, from, to]);
 
-  useEffect(() => { if (user) fetchData(); }, [user]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  if (loading || isLoading) {
+  const periodLabel = (!from && !to)
+    ? 'Todo el historial'
+    : from === to && from === todayStr()
+      ? 'Hoy'
+      : `${from || '…'} → ${to || 'hoy'}`;
+
+  if (loading || (isLoading && !metrics)) {
     return (
       <div className="flex h-[calc(100vh-73px)] items-center justify-center">
         <Loader2 className="h-10 w-10 animate-spin text-[#00d4ff]" />
@@ -163,29 +191,60 @@ export default function AlertsAuditPage() {
         </Button>
       </div>
 
+      {/* ── Filtro por fecha ── */}
+      <div className="flex flex-wrap items-center gap-2 bg-white rounded-xl border border-slate-100 p-3 shadow-sm">
+        <span className="text-xs font-semibold text-slate-500 mr-1">Período:</span>
+        {([['Hoy', 0], ['7 días', 7], ['30 días', 30], ['Todo', 'all']] as [string, number | 'all'][]).map(([label, v]) => {
+          const isActive =
+            (v === 'all' && !from && !to) ||
+            (v === 0 && from === todayStr() && to === todayStr()) ||
+            (typeof v === 'number' && v > 0 && to === todayStr() && from !== '' && (() => {
+              const s = new Date(); s.setDate(new Date().getDate() - v);
+              const p = (n: number) => String(n).padStart(2, '0');
+              return from === `${s.getFullYear()}-${p(s.getMonth() + 1)}-${p(s.getDate())}`;
+            })());
+          return (
+            <button
+              key={label}
+              onClick={() => setPreset(v)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                isActive ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+        <span className="mx-1 text-slate-200">|</span>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-8 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs text-slate-600" />
+        <span className="text-slate-400 text-xs">a</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="h-8 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs text-slate-600" />
+        <span className="ml-auto text-xs text-slate-400">Mostrando: <span className="font-semibold text-slate-600">{periodLabel}</span></span>
+      </div>
+
       {/* KPI metrics */}
       {metrics && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <MetricCard
-            label="Total alertas hoy"
-            value={metrics.totalToday}
+            label={`Total alertas — ${periodLabel}`}
+            value={metrics.total}
             accent="#3b82f6"
             icon={ShieldAlert}
-            sub={`${metrics.criticalToday} críticas · ${metrics.warningToday} advertencias · ${metrics.infoToday} info`}
+            sub={`${metrics.critical} críticas · ${metrics.warning} advertencias · ${metrics.info} info`}
           />
           <MetricCard
-            label="Tipo más frecuente (hoy)"
-            value={metrics.topAlertType || '—'}
+            label="Tipo más frecuente"
+            value={cleanDesc(metrics.topAlertType) || '—'}
             accent="#f59e0b"
             icon={AlertTriangle}
-            sub="Infracción más común en las últimas 24 h"
+            sub={`Infracción más común (${periodLabel.toLowerCase()})`}
           />
           <MetricCard
-            label="Con evidencia (hoy)"
+            label="Con evidencia fotográfica"
             value={metrics.withEvidence}
             accent="#22c55e"
             icon={ImageIcon}
-            sub="Alertas de hoy con snapshot adjunto"
+            sub={`Alertas con snapshot (${periodLabel.toLowerCase()})`}
           />
         </div>
       )}
@@ -197,9 +256,9 @@ export default function AlertsAuditPage() {
           <div>
             <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-slate-400" />
-              Feed de Alertas Recientes
+              Alertas — {periodLabel}
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">{filtered.length} alertas</p>
+            <p className="text-xs text-slate-400 mt-0.5">{filtered.length} alerta{filtered.length !== 1 ? 's' : ''} en el período seleccionado</p>
           </div>
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
