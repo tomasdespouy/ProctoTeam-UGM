@@ -22,6 +22,7 @@ import { supabase } from '@/lib/supabase-client';
 import { getIceServers } from '@/lib/ice-servers';
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
+import { StepProgress } from '@/components/student/step-progress';
 import {
   initAICoordinator,
   startDetection,
@@ -1085,7 +1086,10 @@ export function StudentCam({
     const canShare   = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
 
     return (
-      <Card className="overflow-hidden">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-50 p-4">
+        <div className="w-full max-w-lg">
+          <StepProgress current={4} />
+          <Card className="overflow-hidden shadow-xl">
         <div className="aspect-video bg-black relative">
           <video
             ref={videoRef}
@@ -1130,18 +1134,23 @@ export function StudentCam({
         </div>
         <CardContent className="p-3">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Paso 2 de 2: Compartir pantalla</span>
+            <span className="text-muted-foreground">Comparte tu pantalla completa para continuar</span>
             <Badge variant="secondary"><CheckCircle className="h-3 w-3 mr-1" /> Cámara lista</Badge>
           </div>
         </CardContent>
-      </Card>
+          </Card>
+        </div>
+      </div>
     );
   }
 
-  // ── Render: camera permissions pending ────────────────────────────────────
+  // ── Render: camera permissions pending (paso 3) ───────────────────────────
   if (setupPhase === 'camera') {
     return (
-      <Card className="overflow-hidden">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-50 p-4">
+        <div className="w-full max-w-lg">
+          <StepProgress current={3} />
+          <Card className="overflow-hidden shadow-xl">
         <div className="aspect-video bg-black relative flex items-center justify-center">
           {errorMessage ? (
             <div className="text-white text-center px-4">
@@ -1163,11 +1172,13 @@ export function StudentCam({
         </div>
         <CardContent className="p-3">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Paso 1 de 2: Permisos de cámara</span>
+            <span className="text-muted-foreground">Permite el acceso a tu cámara y micrófono</span>
             <Badge variant="secondary">Esperando...</Badge>
           </div>
         </CardContent>
-      </Card>
+          </Card>
+        </div>
+      </div>
     );
   }
 

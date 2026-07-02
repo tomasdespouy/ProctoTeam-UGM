@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 // [CORRECCIÓN]: Cambiado MicOff por FileText para la prohibición de materiales
 import { CheckCircle, ShieldAlert, UserCheck, FileText, Users, MonitorOff } from 'lucide-react';
+import { StepProgress } from './step-progress';
 
 interface RequirementsModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ export function RequirementsModal({ isOpen, onAcceptRequirements }: Requirements
   return (
     <Dialog open={isOpen}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col overflow-hidden" onInteractOutside={(e) => e.preventDefault()}>
+        <StepProgress current={1} />
         <DialogHeader>
           <DialogTitle className="text-2xl font-headline text-primary flex items-center gap-2">
             <ShieldAlert className="h-7 w-7" />

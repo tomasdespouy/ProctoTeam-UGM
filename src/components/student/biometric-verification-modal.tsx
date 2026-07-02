@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { extractIdCardName } from '@/ai/flows/verify-student-identity';
 import { useAuth } from '@/context/auth-context';
+import { StepProgress } from './step-progress';
 
 interface BiometricVerificationModalProps {
   isOpen: boolean;
@@ -283,6 +284,7 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
   return (
     <Dialog open={isOpen}>
       <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+        <StepProgress current={2} />
         <DialogHeader>
           <DialogTitle className="text-2xl font-headline text-primary">Verificación de Identidad</DialogTitle>
           <DialogDescription>
