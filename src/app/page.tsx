@@ -28,7 +28,7 @@ export default function HomePage() {
       setIsLoading(false);
       if (userProfile.role === 'student') router.replace('/student');
       else if (userProfile.role === 'super-admin') router.replace('/super-admin/dashboard');
-      else if (userProfile.role === 'observer') router.replace('/observer');
+      else if (userProfile.role === 'admin') router.replace('/admin');
       else router.replace('/instructor');
     } else if (user) {
       // Sesión iniciada pero el perfil no sincronizó (p.ej. /api/auth/get-user

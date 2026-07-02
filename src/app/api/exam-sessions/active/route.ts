@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser(request);
-    if (user.role !== 'observer' && user.role !== 'super-admin' && user.role !== 'instructor') {
+    if (user.role !== 'admin' && user.role !== 'super-admin' && user.role !== 'instructor') {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
 

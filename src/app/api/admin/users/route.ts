@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, nombre, role } = await request.json();
-    const validRoles = ['student', 'instructor', 'observer', 'super-admin'];
+    const validRoles = ['student', 'instructor', 'admin', 'super-admin'];
 
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return NextResponse.json({ error: 'Email válido requerido' }, { status: 400 });
@@ -93,10 +93,10 @@ export async function POST(request: NextRequest) {
     if (error?.code === '23505') {
       return NextResponse.json({ error: 'Ya existe un usuario con ese email' }, { status: 409 });
     }
-    // 23514 = check_violation → falta migrar el CHECK de roles para 'observer'.
+    // 23514 = check_violation → falta migrar el CHECK de roles para 'admin'.
     if (error?.code === '23514' || /violates check constraint/i.test(error?.message ?? '')) {
       return NextResponse.json(
-        { error: "Falta migrar el rol en la BD. Ejecuta el ALTER del CHECK de users.role para permitir 'observer'." },
+        { error: "Falta migrar el rol en la BD. Ejecuta el ALTER del CHECK de users.role para permitir 'admin'." },
         { status: 503 }
       );
     }
@@ -162,7 +162,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // ── Rama 2: cambiar rol ──────────────────────────────────────────────────
-    const validRoles = ['student', 'instructor', 'observer', 'super-admin'];
+    const validRoles = ['student', 'instructor', 'admin', 'super-admin'];
     if (!validRoles.includes(role)) {
       return NextResponse.json({ error: 'role válido es requerido' }, { status: 400 });
     }
@@ -193,10 +193,10 @@ export async function PATCH(request: NextRequest) {
     if (error.message === 'Authentication required') {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
-    // 23514 = check_violation → falta migrar el CHECK de roles para 'observer'.
+    // 23514 = check_violation → falta migrar el CHECK de roles para 'admin'.
     if (error?.code === '23514' || /violates check constraint/i.test(error?.message ?? '')) {
       return NextResponse.json(
-        { error: "Falta migrar el rol en la BD. Ejecuta el ALTER del CHECK de users.role para permitir 'observer'." },
+        { error: "Falta migrar el rol en la BD. Ejecuta el ALTER del CHECK de users.role para permitir 'admin'." },
         { status: 503 }
       );
     }

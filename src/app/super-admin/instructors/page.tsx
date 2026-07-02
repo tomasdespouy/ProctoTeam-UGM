@@ -42,7 +42,7 @@ interface UserRow {
   uid:           string;
   email:         string;
   nombre:        string;
-  role:          'student' | 'instructor' | 'observer' | 'super-admin';
+  role:          'student' | 'instructor' | 'admin' | 'super-admin';
   active:        boolean;
   created_at:    string;
   updated_at:    string;
@@ -54,7 +54,7 @@ interface UserRow {
 function RoleBadge({ role }: { role: UserRow['role'] }) {
   if (role === 'super-admin') return (
     <Badge className="gap-1 bg-amber-100 text-amber-700 border border-amber-300 hover:bg-amber-100">
-      <ShieldCheck className="h-3 w-3" /> Admin
+      <ShieldCheck className="h-3 w-3" /> Super Admin
     </Badge>
   );
   if (role === 'instructor') return (
@@ -62,9 +62,9 @@ function RoleBadge({ role }: { role: UserRow['role'] }) {
       <BookOpen className="h-3 w-3" /> Docente
     </Badge>
   );
-  if (role === 'observer') return (
+  if (role === 'admin') return (
     <Badge className="gap-1 bg-violet-100 text-violet-700 border border-violet-200 hover:bg-violet-100">
-      <Eye className="h-3 w-3" /> Observador
+      <Eye className="h-3 w-3" /> Admin
     </Badge>
   );
   return (
@@ -88,7 +88,7 @@ function RoleDropdown({
   const roles: { value: UserRow['role']; label: string; icon: React.ElementType }[] = [
     { value: 'student',     label: 'Estudiante', icon: GraduationCap },
     { value: 'instructor',  label: 'Docente',    icon: BookOpen      },
-    { value: 'observer',    label: 'Observador', icon: Eye           },
+    { value: 'admin',    label: 'Admin', icon: Eye           },
     { value: 'super-admin', label: 'Super Admin', icon: ShieldCheck   },
   ];
 
@@ -352,7 +352,7 @@ export default function InstructorsPage() {
         <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-amber-100 shadow-sm">
           <ShieldCheck className="h-4 w-4 text-amber-400" />
           <span className="text-sm font-semibold text-amber-700">{counts.superAdmin}</span>
-          <span className="text-xs text-slate-400">Admins</span>
+          <span className="text-xs text-slate-400">Super Admins</span>
         </div>
       </div>
 
@@ -546,7 +546,7 @@ export default function InstructorsPage() {
                 <SelectContent>
                   <SelectItem value="student">Estudiante</SelectItem>
                   <SelectItem value="instructor">Docente</SelectItem>
-                  <SelectItem value="observer">Observador</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="super-admin">Super Admin</SelectItem>
                 </SelectContent>
               </Select>

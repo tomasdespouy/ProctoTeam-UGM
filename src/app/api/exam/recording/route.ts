@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser(request);
-    if (user.role !== 'instructor' && user.role !== 'super-admin') {
+    if (user.role !== 'instructor' && user.role !== 'super-admin' && user.role !== 'admin') {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
 
