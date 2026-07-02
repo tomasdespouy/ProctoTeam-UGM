@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
+import { liveSessionService } from '@/services/live-session.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,8 @@ export async function GET(request: NextRequest) {
     if (user.role !== 'admin' && user.role !== 'super-admin' && user.role !== 'instructor') {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
+
+    try { await liveSessionService.autoCloseStaleExams(); } catch (e) { console.error('[autoClose] error:', e); }
 
     const result = await db.query(`
       SELECT es.id, es.title, es.subject, es.section, es.created_at,

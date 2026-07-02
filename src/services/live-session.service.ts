@@ -308,6 +308,50 @@ export const liveSessionService = {
   },
 
   /**
+   * Auto-cierre de salas abandonadas. Marca como 'finished' los exámenes que
+   * siguen 'active' pero (a) tuvieron participantes y no hay actividad de alumnos
+   * (heartbeat) hace más de INACTIVITY_MIN minutos, o (b) llevan abiertos más de
+   * MAX_HOURS horas. Se invoca de forma perezosa desde los endpoints de auditoría.
+   * Devuelve cuántas salas cerró. Defensivo si started_at/ended_at no están migradas.
+   */
+  autoCloseStaleExams: async (): Promise<number> => {
+    const INACTIVITY_MIN = 30;
+    const MAX_HOURS = 6;
+    const staleCond = `
+      ( EXISTS (SELECT 1 FROM exam_participations ep WHERE ep.exam_session_id = es.id)
+        AND (SELECT MAX(COALESCE(ep.finished_at, ep.started_at))
+               FROM exam_participations ep WHERE ep.exam_session_id = es.id)
+            < NOW() - INTERVAL '${INACTIVITY_MIN} minutes' )
+      OR COALESCE(es.started_at, es.created_at) < NOW() - INTERVAL '${MAX_HOURS} hours'`;
+
+    const run = (withCols: boolean) => db.query(
+      withCols
+        ? `UPDATE exam_sessions es SET status = 'finished', ended_at = NOW(), updated_at = NOW()
+             WHERE es.status = 'active' AND (${staleCond})`
+        : `UPDATE exam_sessions es SET status = 'finished', updated_at = NOW()
+             WHERE es.status = 'active'
+               AND (
+                 ( EXISTS (SELECT 1 FROM exam_participations ep WHERE ep.exam_session_id = es.id)
+                   AND (SELECT MAX(COALESCE(ep.finished_at, ep.started_at))
+                          FROM exam_participations ep WHERE ep.exam_session_id = es.id)
+                      < NOW() - INTERVAL '${INACTIVITY_MIN} minutes' )
+                 OR es.created_at < NOW() - INTERVAL '${MAX_HOURS} hours'
+               )`
+    );
+
+    try {
+      const r = await run(true);
+      return (r as any).rowCount ?? 0;
+    } catch (e: any) {
+      if (e?.code === '42703' || /column .* does not exist/i.test(e?.message ?? '')) {
+        const r = await run(false);
+        return (r as any).rowCount ?? 0;
+      }
+      throw e;
+    }
+  },
+
+  /**
    * OBTIENE EL ESTADO COMPLETO DEL EXAMEN (Para el Dashboard del Profesor)
    * Devuelve: Lista de alumnos, sus estados, últimas alertas y mensajes pendientes.
    */

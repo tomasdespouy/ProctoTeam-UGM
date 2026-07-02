@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
+import { liveSessionService } from '@/services/live-session.service';
 
 // Forzar que esta ruta sea dinámica (no cacheada estáticamente) para tener datos frescos
 export const dynamic = 'force-dynamic';
@@ -13,6 +14,9 @@ export async function GET(request: NextRequest) {
     if (user.role !== 'super-admin') {
       return NextResponse.json({ error: 'Acceso denegado. Se requiere rol de Super Admin.' }, { status: 403 });
     }
+
+    // Auto-cierre perezoso de salas abandonadas (no rompe el endpoint si falla).
+    try { await liveSessionService.autoCloseStaleExams(); } catch (e) { console.error('[autoClose] error:', e); }
 
     // Query B: lista de exámenes. Incluye columnas nuevas (section, started_at,
     // ended_at, faculty, school) + conteo de alertas críticas y de advertencia.
