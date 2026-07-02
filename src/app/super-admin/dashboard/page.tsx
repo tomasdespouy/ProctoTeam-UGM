@@ -17,10 +17,11 @@ import {
 } from '@/components/ui/dialog';
 import {
   Users, FileText, Activity, ShieldAlert, AlertTriangle, Info,
-  Search, Loader2, Calendar, UserCheck, Eye, Camera, Download, BellRing,
+  Search, Loader2, Calendar, UserCheck, Eye, Camera, Download, BellRing, Video,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { RecordingsDialog } from '@/components/proctoring/recordings-dialog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -687,17 +688,34 @@ export default function SuperAdminDashboard() {
                       </span>
                     </TableCell>
 
-                    {/* Eye — opens AlertsSheet for ANY exam (not just active) */}
+                    {/* Acciones: alertas + grabaciones de cámara */}
                     <TableCell className="py-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 w-7 p-0 border-blue-200 text-blue-500 hover:bg-blue-50 hover:border-blue-400"
-                        title="Ver alertas e incidencias de este examen"
-                        onClick={() => handleOpenSheet(exam)}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 p-0 border-blue-200 text-blue-500 hover:bg-blue-50 hover:border-blue-400"
+                          title="Ver alertas e incidencias de este examen"
+                          onClick={() => handleOpenSheet(exam)}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        <RecordingsDialog
+                          examId={exam.id}
+                          title={exam.title}
+                          token={token}
+                          trigger={
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 w-7 p-0 border-indigo-200 text-indigo-500 hover:bg-indigo-50 hover:border-indigo-400"
+                              title="Ver grabaciones de cámara de este examen"
+                            >
+                              <Video className="h-3.5 w-3.5" />
+                            </Button>
+                          }
+                        />
+                      </div>
                     </TableCell>
 
                   </TableRow>
