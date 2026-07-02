@@ -62,8 +62,27 @@ export async function handleAzureRedirectResult() {
 
 export async function signOut() {
   try {
+    // Limpia cualquier sesión de desarrollo (sessionStorage) para que también
+    // cierre en ese flujo. Mismos nombres que en auth-context.
+    try {
+      sessionStorage.removeItem('dev_user_profile');
+      sessionStorage.removeItem('dev_token');
+    } catch { /* SSR / storage no disponible */ }
+
     const instance = await initializeMsal();
-    await instance.logoutPopup();
+    const account = instance.getActiveAccount() ?? instance.getAllAccounts()[0];
+
+    if (account) {
+      // Flujo de REDIRECT (no popup): evita el popup que quedaba colgado por COOP.
+      // Pasamos la cuenta activa para que Microsoft NO pregunte "¿qué sesión cerrar?".
+      await instance.logoutRedirect({
+        account,
+        postLogoutRedirectUri: window.location.origin,
+      });
+    } else {
+      // Sin cuenta de Azure (p.ej. sesión de desarrollo): nada que cerrar en Microsoft.
+      window.location.href = '/';
+    }
     return { error: null };
   } catch (error: any) {
     console.error('Error en logout:', error);
