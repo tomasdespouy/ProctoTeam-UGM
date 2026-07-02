@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   Users, FileText, Activity, ShieldAlert, AlertTriangle, Info,
-  Search, Loader2, Calendar, UserCheck, Eye, Camera, Download, BellRing, Video,
+  Search, Loader2, UserCheck, Eye, Camera, Download, BellRing, Video, ChevronDown,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -36,13 +36,19 @@ interface ExamSessionData {
   id:               string;
   title:            string;
   subject:          string;
+  section:          string | null;
   status:           'pending' | 'active' | 'finished';
   created_at:       string;
+  started_at:       string | null;
+  ended_at:         string | null;
+  faculty:          string | null;
+  school:           string | null;
   access_code:      string;
   instructor_name:  string;
   instructor_email: string;
   student_count:    number;
   critical_alerts:  number;
+  warning_alerts:   number;
 }
 
 interface ExamAlert {
@@ -429,6 +435,13 @@ export default function SuperAdminDashboard() {
   const [token,         setToken]         = useState<string | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [searchTerm,    setSearchTerm]    = useState('');
+  const [sortKey,       setSortKey]       = useState<keyof ExamSessionData>('created_at');
+  const [sortDir,       setSortDir]       = useState<'asc' | 'desc'>('desc');
+
+  const toggleSort = (k: keyof ExamSessionData) => {
+    if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(k); setSortDir('asc'); }
+  };
 
   // Sheet state
   const [sheetOpen,    setSheetOpen]    = useState(false);
@@ -463,34 +476,36 @@ export default function SuperAdminDashboard() {
     }
   }, [loading, userProfile, router]);
 
-  // Data fetch
+  // Data fetch + auto-refresh cada 15s (para que el estado en vivo se actualice)
   useEffect(() => {
     if (!user) return;
+    let active = true;
 
     const fetchData = async () => {
       try {
         const idToken = await user.getIdToken();
+        if (!active) return;
         setToken(idToken);
 
         const res = await fetch('/api/admin/dashboard-data', {
           headers: { Authorization: `Bearer ${idToken}` },
         });
 
-        if (res.ok) {
+        if (res.ok && active) {
           const data = await res.json();
           setStats(data.stats);
           setExams(data.exams ?? []);
-        } else {
-          console.error('Admin fetch error:', res.status);
         }
       } catch (err) {
         console.error('Admin fetch error:', err);
       } finally {
-        setIsLoadingData(false);
+        if (active) setIsLoadingData(false);
       }
     };
 
     fetchData();
+    const id = setInterval(fetchData, 15000);
+    return () => { active = false; clearInterval(id); };
   }, [user]);
 
   const handleOpenSheet = useCallback((exam: ExamSessionData) => {
@@ -509,11 +524,34 @@ export default function SuperAdminDashboard() {
 
   if (!userProfile || userProfile.role !== 'super-admin') return null;
 
+  const q = searchTerm.toLowerCase();
   const filteredExams = exams.filter(e =>
-    e.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.instructor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.subject?.toLowerCase().includes(searchTerm.toLowerCase())
+    e.title?.toLowerCase().includes(q) ||
+    e.instructor_name?.toLowerCase().includes(q) ||
+    e.subject?.toLowerCase().includes(q) ||
+    e.faculty?.toLowerCase().includes(q) ||
+    e.school?.toLowerCase().includes(q)
   );
+
+  const sortedExams = [...filteredExams].sort((a, b) => {
+    const av = a[sortKey]; const bv = b[sortKey];
+    let r: number;
+    if (typeof av === 'number' || typeof bv === 'number') r = (Number(av) || 0) - (Number(bv) || 0);
+    else r = String(av ?? '').localeCompare(String(bv ?? ''));
+    return sortDir === 'asc' ? r : -r;
+  });
+
+  const sortHead = (label: string, k: keyof ExamSessionData, className?: string) => (
+    <TableHead key={String(k)} className={`text-xs text-slate-400 font-semibold uppercase tracking-wide ${className ?? ''}`}>
+      <button onClick={() => toggleSort(k)} className="inline-flex items-center gap-1 hover:text-slate-700 transition-colors">
+        {label}
+        <ChevronDown className={`h-3 w-3 transition-all ${sortKey === k ? 'opacity-100 text-slate-600' : 'opacity-30'} ${sortKey === k && sortDir === 'asc' ? 'rotate-180' : ''}`} />
+      </button>
+    </TableHead>
+  );
+
+  const fmtTime = (d: string | null) =>
+    d ? new Date(d).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null;
 
   return (
     <>
@@ -612,19 +650,20 @@ export default function SuperAdminDashboard() {
           <Table>
             <TableHeader>
               <TableRow className="bg-slate-50 hover:bg-slate-50">
-                <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide w-28">Estado</TableHead>
-                <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Examen / Materia</TableHead>
-                <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Docente</TableHead>
-                <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide text-center w-24">Alumnos</TableHead>
-                <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide text-center w-28">Alertas</TableHead>
-                <TableHead className="text-xs text-slate-400 font-semibold uppercase tracking-wide text-right w-36">Fecha</TableHead>
+                {sortHead('Estado',           'status',          'w-28')}
+                {sortHead('Examen / Materia', 'subject')}
+                {sortHead('Docente',          'instructor_name')}
+                {sortHead('Alumnos',          'student_count',   'text-center w-24')}
+                {sortHead('Alertas',          'critical_alerts', 'text-center w-32')}
+                {sortHead('Inicio',           'started_at',      'text-right w-32')}
+                {sortHead('Fin',              'ended_at',        'text-right w-32')}
                 <TableHead className="w-16" />
               </TableRow>
             </TableHeader>
 
             <TableBody>
-              {filteredExams.length > 0 ? (
-                filteredExams.map((exam) => (
+              {sortedExams.length > 0 ? (
+                sortedExams.map((exam) => (
                   <TableRow key={exam.id} className="border-b border-slate-50 hover:bg-slate-50/70 transition-colors">
 
                     <TableCell className="py-4">
@@ -639,6 +678,11 @@ export default function SuperAdminDashboard() {
                         </span>
                         <span className="text-xs text-slate-400 truncate max-w-[180px]">{exam.title}</span>
                       </div>
+                      {(exam.faculty || exam.school) && (
+                        <p className="text-[10px] text-slate-400 mt-0.5 truncate max-w-[220px]">
+                          {[exam.faculty, exam.school].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
                     </TableCell>
 
                     <TableCell className="py-4">
@@ -663,29 +707,51 @@ export default function SuperAdminDashboard() {
                       </span>
                     </TableCell>
 
-                    {/* Critical alerts count — navigates to full audit page */}
-                    <TableCell className="py-4 text-center">
-                      {exam.critical_alerts > 0 ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-2.5 text-xs border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 gap-1"
-                          onClick={() => router.push('/super-admin/alerts')}
-                          title="Ver todas las alertas en Auditoría IA"
-                        >
-                          <ShieldAlert className="h-3 w-3" />
-                          {exam.critical_alerts}
-                        </Button>
+                    {/* Alertas: críticas (rojo) + advertencias (ámbar) */}
+                    <TableCell className="py-4">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {exam.critical_alerts > 0 && (
+                          <Button
+                            variant="outline" size="sm"
+                            className="h-7 px-2 text-xs border-red-300 text-red-600 hover:bg-red-50 gap-1"
+                            onClick={() => handleOpenSheet(exam)}
+                            title="Alertas críticas"
+                          >
+                            <ShieldAlert className="h-3 w-3" /> {exam.critical_alerts}
+                          </Button>
+                        )}
+                        {exam.warning_alerts > 0 && (
+                          <Button
+                            variant="outline" size="sm"
+                            className="h-7 px-2 text-xs border-amber-300 text-amber-600 hover:bg-amber-50 gap-1"
+                            onClick={() => handleOpenSheet(exam)}
+                            title="Advertencias"
+                          >
+                            <AlertTriangle className="h-3 w-3" /> {exam.warning_alerts}
+                          </Button>
+                        )}
+                        {exam.critical_alerts === 0 && exam.warning_alerts === 0 && (
+                          <span className="text-slate-300 text-xs">—</span>
+                        )}
+                      </div>
+                    </TableCell>
+
+                    {/* Inicio */}
+                    <TableCell className="py-4 text-right">
+                      <span className="text-xs text-slate-500 tabular-nums">
+                        {fmtTime(exam.started_at) ?? new Date(exam.created_at).toLocaleDateString('es-CL')}
+                      </span>
+                    </TableCell>
+
+                    {/* Fin */}
+                    <TableCell className="py-4 text-right">
+                      {exam.ended_at ? (
+                        <span className="text-xs text-slate-500 tabular-nums">{fmtTime(exam.ended_at)}</span>
+                      ) : exam.status === 'active' ? (
+                        <span className="text-[10px] font-semibold text-green-600">En curso</span>
                       ) : (
                         <span className="text-slate-300 text-xs">—</span>
                       )}
-                    </TableCell>
-
-                    <TableCell className="py-4 text-right">
-                      <span className="flex items-center justify-end gap-1 text-xs text-slate-400">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(exam.created_at).toLocaleDateString('es-CL')}
-                      </span>
                     </TableCell>
 
                     {/* Acciones: alertas + grabaciones de cámara */}
@@ -722,7 +788,7 @@ export default function SuperAdminDashboard() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-40 text-center">
+                  <TableCell colSpan={8} className="h-40 text-center">
                     <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
                       <FileText className="h-8 w-8 opacity-30" />
                       <p className="text-sm">No se encontraron exámenes.</p>

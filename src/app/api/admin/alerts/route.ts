@@ -21,14 +21,15 @@ export async function GET(request: NextRequest) {
           COUNT(*) FILTER (WHERE severity = 'warning'  AND timestamp >= NOW() - INTERVAL '24 hours') AS warning_today,
           COUNT(*) FILTER (WHERE severity = 'info'     AND timestamp >= NOW() - INTERVAL '24 hours') AS info_today,
           (
-            SELECT description
+            -- Tipo más frecuente HOY, sin el tag "[tipo]" del texto antiguo.
+            SELECT regexp_replace(description, '^\s*\[[^\]]*\]\s*', '')
             FROM alerts
-            WHERE timestamp >= NOW() - INTERVAL '7 days'
-            GROUP BY description
+            WHERE timestamp >= NOW() - INTERVAL '24 hours'
+            GROUP BY regexp_replace(description, '^\s*\[[^\]]*\]\s*', '')
             ORDER BY COUNT(*) DESC
             LIMIT 1
           ) AS top_alert_type,
-          COUNT(*) FILTER (WHERE evidence_url IS NOT NULL) AS with_evidence
+          COUNT(*) FILTER (WHERE evidence_url IS NOT NULL AND timestamp >= NOW() - INTERVAL '24 hours') AS with_evidence
         FROM alerts
       `),
 

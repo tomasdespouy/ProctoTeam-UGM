@@ -14,39 +14,44 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Acceso denegado. Se requiere rol de Super Admin.' }, { status: 403 });
     }
 
-    // 2. Obtener Estadísticas Globales (KPIs) y Lista de Exámenes
-    // Ejecutamos ambas consultas en paralelo para mayor velocidad
-    const [statsResult, examsResult] = await Promise.all([
-      // Query A: Contadores generales
-      db.query(`
-        SELECT 
-          (SELECT COUNT(*) FROM exam_sessions) as total_exams,
-          (SELECT COUNT(*) FROM exam_sessions WHERE status = 'active') as active_exams,
-          (SELECT COUNT(*) FROM users WHERE role = 'student') as total_students,
-          (SELECT COUNT(*) FROM users WHERE role = 'instructor') as total_instructors
-      `),
-
-      // Query B: Lista de exámenes con detalles (Join con instructor y conteo de alertas/alumnos)
-      db.query(`
-        SELECT 
-          es.id,
-          es.title,
-          es.subject,
-          es.status,
-          es.created_at,
-          es.access_code,
+    // Query B: lista de exámenes. Incluye columnas nuevas (section, started_at,
+    // ended_at, faculty, school) + conteo de alertas críticas y de advertencia.
+    // Si alguna columna no está migrada, cae a una versión mínima.
+    const examsQuery = (full: boolean) => db.query(`
+        SELECT
+          es.id, es.title, es.subject, es.section, es.status, es.created_at, es.access_code,
+          ${full
+            ? 'es.started_at, es.ended_at, es.faculty, es.school,'
+            : 'NULL AS started_at, NULL AS ended_at, NULL AS faculty, NULL AS school,'}
           u.nombre as instructor_name,
           u.email as instructor_email,
-          -- Subquery para contar alumnos en este examen
           (SELECT COUNT(*) FROM exam_participations ep WHERE ep.exam_session_id = es.id) as student_count,
-          -- Subquery para contar alertas críticas en este examen
-          (SELECT COUNT(*) FROM alerts a WHERE a.exam_session_id = es.id AND a.severity = 'critical') as critical_alerts
+          (SELECT COUNT(*) FROM alerts a WHERE a.exam_session_id = es.id AND a.severity = 'critical') as critical_alerts,
+          (SELECT COUNT(*) FROM alerts a WHERE a.exam_session_id = es.id AND a.severity = 'warning') as warning_alerts
         FROM exam_sessions es
         LEFT JOIN users u ON es.instructor_id = u.uid
         ORDER BY es.created_at DESC
-        LIMIT 50
-      `)
-    ]);
+        LIMIT 100
+    `);
+
+    const statsResult = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM exam_sessions) as total_exams,
+        (SELECT COUNT(*) FROM exam_sessions WHERE status = 'active') as active_exams,
+        (SELECT COUNT(*) FROM users WHERE role = 'student') as total_students,
+        (SELECT COUNT(*) FROM users WHERE role = 'instructor') as total_instructors
+    `);
+
+    let examsResult;
+    try {
+      examsResult = await examsQuery(true);
+    } catch (e: any) {
+      if (e?.code === '42703' || /column .* does not exist/i.test(e?.message ?? '')) {
+        examsResult = await examsQuery(false);
+      } else {
+        throw e;
+      }
+    }
 
     // Procesar resultados
     const statsRow = statsResult.rows[0];

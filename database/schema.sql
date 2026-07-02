@@ -37,8 +37,16 @@ CREATE TABLE IF NOT EXISTS exam_sessions (
 
   status TEXT NOT NULL CHECK (status IN ('pending', 'active', 'finished')) DEFAULT 'pending',
 
+  -- Organización (para auditoría por escuela/facultad)
+  faculty TEXT,
+  school  TEXT,
+
   -- Modo presencial: desactiva el micrófono del alumno (no se captura ni graba audio)
   audio_disabled BOOLEAN NOT NULL DEFAULT false,
+
+  -- Ciclo de vida real del examen
+  started_at TIMESTAMPTZ,   -- cuando la sala se abre (status -> active)
+  ended_at   TIMESTAMPTZ,   -- cuando se finaliza (status -> finished)
 
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()

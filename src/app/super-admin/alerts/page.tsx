@@ -43,6 +43,9 @@ interface AlertRow {
   exam_title:           string;
 }
 
+// Quita el tag "[tipo]" que traían las descripciones antiguas de alertas.
+const cleanDesc = (d: string) => (d ?? '').replace(/^\s*\[[^\]]*\]\s*/, '');
+
 // ─── Severity badge ───────────────────────────────────────────────────────────
 
 function SeverityBadge({ severity }: { severity: AlertRow['severity'] }) {
@@ -171,18 +174,18 @@ export default function AlertsAuditPage() {
             sub={`${metrics.criticalToday} críticas · ${metrics.warningToday} advertencias · ${metrics.infoToday} info`}
           />
           <MetricCard
-            label="Tipo más frecuente (7d)"
+            label="Tipo más frecuente (hoy)"
             value={metrics.topAlertType || '—'}
             accent="#f59e0b"
             icon={AlertTriangle}
-            sub="Infracción dominante en la última semana"
+            sub="Infracción más común en las últimas 24 h"
           />
           <MetricCard
-            label="Con evidencia fotográfica"
+            label="Con evidencia (hoy)"
             value={metrics.withEvidence}
             accent="#22c55e"
             icon={ImageIcon}
-            sub="Alertas con snapshot adjunto disponible"
+            sub="Alertas de hoy con snapshot adjunto"
           />
         </div>
       )}
@@ -249,7 +252,7 @@ export default function AlertsAuditPage() {
 
                   {/* Alert type */}
                   <TableCell className="py-3.5">
-                    <span className="text-sm text-slate-700">{alert.description}</span>
+                    <span className="text-sm text-slate-700">{cleanDesc(alert.description)}</span>
                   </TableCell>
 
                   {/* Severity */}
@@ -277,7 +280,7 @@ export default function AlertsAuditPage() {
                               Evidencia fotográfica
                               <span className="ml-2 font-normal text-slate-400">— {alert.student_email_masked}</span>
                             </DialogTitle>
-                            <p className="text-xs text-slate-400 mt-0.5">{alert.description}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">{cleanDesc(alert.description)}</p>
                             <div className="flex items-center gap-2 mt-1">
                               <SeverityBadge severity={alert.severity} />
                               <span className="text-[10px] text-slate-400">

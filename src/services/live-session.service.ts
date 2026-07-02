@@ -289,11 +289,22 @@ export const liveSessionService = {
       [examId]
     );
 
-    // 2. Marcar el examen como finalizado
-    await db.query(
-      `UPDATE exam_sessions SET status = 'finished', updated_at = NOW() WHERE id = $1`,
-      [examId]
-    );
+    // 2. Marcar el examen como finalizado (con ended_at; defensivo si no migró)
+    try {
+      await db.query(
+        `UPDATE exam_sessions SET status = 'finished', ended_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [examId]
+      );
+    } catch (e: any) {
+      if (e?.code === '42703' || /column .* does not exist/i.test(e?.message ?? '')) {
+        await db.query(
+          `UPDATE exam_sessions SET status = 'finished', updated_at = NOW() WHERE id = $1`,
+          [examId]
+        );
+      } else {
+        throw e;
+      }
+    }
   },
 
   /**

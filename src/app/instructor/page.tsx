@@ -37,6 +37,8 @@ export default function InstructorHome() {
   const { toast }             = useToast();
 
   const [title,      setTitle]      = useState('');
+  const [faculty,    setFaculty]    = useState('');
+  const [school,     setSchool]     = useState('');
   const [subject,    setSubject]    = useState('');
   const [section,    setSection]    = useState('');
   const [duration,   setDuration]   = useState<number>(60);
@@ -83,7 +85,7 @@ export default function InstructorHome() {
       const response = await fetch('/api/exam-sessions/create', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body:    JSON.stringify({ title, subject, section, duration, accessCode, audioDisabled }),
+        body:    JSON.stringify({ title, faculty, school, subject, section, duration, accessCode, audioDisabled }),
       });
 
       if (!response.ok) {
@@ -254,6 +256,33 @@ export default function InstructorHome() {
                 required
                 className="h-11 border-gray-200 focus-visible:ring-[#00D4FF]"
               />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="faculty" className="text-sm font-semibold text-gray-700">
+                  Facultad
+                </Label>
+                <Input
+                  id="faculty"
+                  placeholder="Ej: Facultad de Ingeniería"
+                  value={faculty}
+                  onChange={e => setFaculty(e.target.value)}
+                  className="h-11 border-gray-200 focus-visible:ring-[#00D4FF]"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="school" className="text-sm font-semibold text-gray-700">
+                  Escuela / Carrera
+                </Label>
+                <Input
+                  id="school"
+                  placeholder="Ej: Ingeniería Civil Informática"
+                  value={school}
+                  onChange={e => setSchool(e.target.value)}
+                  className="h-11 border-gray-200 focus-visible:ring-[#00D4FF]"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

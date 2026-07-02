@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, subject, section, duration, accessCode, audioDisabled } = body;
+    const { title, subject, section, duration, accessCode, audioDisabled, faculty, school } = body;
 
     // 3. Validación de campos
     if (!title || !subject || !section || !duration || !accessCode) {
@@ -36,27 +36,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Código de acceso inválido' }, { status: 400 });
     }
 
-    // 5. Insertar en PostgreSQL. Incluimos audio_disabled (modo presencial); si
-    // la columna aún no está migrada, reintentamos sin ella.
+    // 5. Insertar en PostgreSQL. La sala nace en estado 'active' (en vivo) y con
+    //    started_at = ahora, para que aparezca de inmediato en el monitoreo del
+    //    admin y en el guard de "examen en curso" del docente.
+    //    Incluimos columnas nuevas (started_at, audio_disabled, faculty, school);
+    //    si alguna no está migrada, caemos a un INSERT mínimo.
     const baseCols = 'title, subject, section, duration, access_code, instructor_id, instructor_name, status';
-    const baseVals = [title, subject, section, parseInt(duration), accessCode, user.uid, user.email];
-    const doInsert = (withAudio: boolean) => db.query(
-      withAudio
-        ? `INSERT INTO exam_sessions (${baseCols}, audio_disabled)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
-           RETURNING id, access_code, title`
-        : `INSERT INTO exam_sessions (${baseCols})
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
-           RETURNING id, access_code, title`,
-      withAudio ? [...baseVals, !!audioDisabled] : baseVals,
+    const baseVals = [title, subject, section, parsedDuration, accessCode, user.uid, user.email];
+
+    const fullInsert = () => db.query(
+      `INSERT INTO exam_sessions (${baseCols}, started_at, audio_disabled, faculty, school)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', NOW(), $8, $9, $10)
+       RETURNING id, access_code, title`,
+      [...baseVals, !!audioDisabled, faculty || null, school || null],
+    );
+    const minInsert = () => db.query(
+      `INSERT INTO exam_sessions (${baseCols})
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+       RETURNING id, access_code, title`,
+      baseVals,
     );
 
     let result;
     try {
-      result = await doInsert(true);
+      result = await fullInsert();
     } catch (e: any) {
-      const missing = e?.code === '42703' || /column .*audio_disabled.* does not exist/i.test(e?.message ?? '');
-      if (missing) result = await doInsert(false); // columna aún no migrada
+      const missingColumn = e?.code === '42703' || /column .* does not exist/i.test(e?.message ?? '');
+      if (missingColumn) result = await minInsert(); // alguna columna aún no migrada
       else throw e;
     }
 
