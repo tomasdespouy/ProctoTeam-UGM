@@ -984,26 +984,47 @@ export function StudentCam({
     return () => scr.removeEventListener?.('change', check);
   }, [setupPhase]);
 
-  // ── Tab switch / window blur alerts ───────────────────────────────────────
-  // FIX: removed sendAlertWithSnapshot from deps — use sendAlertRef.current instead.
+  // ── Cambio de pestaña / ventana — con temporizador de ausencia ─────────────
+  // Al salir: alerta crítica. Mientras siga fuera: recordatorio cada ~30 s con el
+  // tiempo acumulado. Al volver: alerta 'info' con la duración (el docente ve
+  // cuánto estuvo fuera y el semáforo del panel vuelve a verde).
   useEffect(() => {
     if (setupPhase !== 'ready') return;
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        sendAlertRef.current('tab_switch', 'El estudiante cambió de pestaña', 'high');
-      }
-    };
-    const handleBlur = () => {
-      sendAlertRef.current('window_blur', 'El estudiante salió de la ventana', 'medium');
+    let awayStart = 0;
+    let awayTimer: ReturnType<typeof setInterval> | null = null;
+
+    const startedAway = () => {
+      if (awayStart) return;
+      awayStart = Date.now();
+      sendAlertRef.current('tab_switch', 'El estudiante salió de la pantalla del examen', 'high');
+      awayTimer = setInterval(() => {
+        const secs = Math.round((Date.now() - awayStart) / 1000);
+        sendAlertRef.current('tab_away', `El estudiante SIGUE fuera de la pantalla (${secs}s)`, 'critical');
+      }, 30000);
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('blur', handleBlur);
+    const cameBack = () => {
+      if (!awayStart) return;
+      const secs = Math.round((Date.now() - awayStart) / 1000);
+      awayStart = 0;
+      if (awayTimer) { clearInterval(awayTimer); awayTimer = null; }
+      sendAlertRef.current('tab_return', `El estudiante volvió tras ${secs}s fuera de la pantalla`, 'low');
+    };
+
+    const onVisibility = () => { if (document.hidden) startedAway(); else cameBack(); };
+    const onBlur = () => startedAway();
+    const onFocus = () => cameBack();
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      if (awayTimer) clearInterval(awayTimer);
     };
   }, [setupPhase]); // ← only setupPhase gates this; no sendAlert dep
 

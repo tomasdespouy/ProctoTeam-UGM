@@ -39,6 +39,8 @@ import {
   Camera,
   Send,
   CheckCircle2,
+  Flag,
+  AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { getIceServers } from '@/lib/ice-servers';
@@ -103,6 +105,9 @@ const SEVERITY_LABEL: Record<string, string> = {
   info:     'Info',
 };
 
+const RECENT_MS = 25_000;   // una alerta se considera "reciente" por 25 s (semáforo)
+const CRIT_SUGGEST = 3;     // ≥ N críticas → sugerir retirar
+
 // ─── Timer helpers ────────────────────────────────────────────────────────────
 
 function formatDuration(seconds: number): string {
@@ -127,6 +132,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
   const [isClosing,         setIsClosing]         = useState(false);
   const [gridMode,          setGridMode]          = useState<'normal' | 'dense'>('dense');
   const [maximizedStudent,  setMaximizedStudent]  = useState<StudentStream | null>(null);
+  const [now,               setNow]               = useState<number>(() => Date.now());
 
   // Acciones por estudiante (enviar mensaje / retirar) desde el modal maximizado
   const [msgText,           setMsgText]           = useState('');
@@ -141,6 +147,33 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Tick para refrescar el semáforo (rojo/ámbar → verde tras el período de calma).
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Aviso proactivo al docente cuando un estudiante cruza las 3 alertas críticas.
+  const suggestedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const crit = new Map<string, number>();
+    for (const a of alerts) {
+      if (a.severity === 'critical') crit.set(a.student_id, (crit.get(a.student_id) ?? 0) + 1);
+    }
+    crit.forEach((n, sid) => {
+      if (n >= CRIT_SUGGEST && !suggestedRef.current.has(sid)) {
+        suggestedRef.current.add(sid);
+        const name = students.get(sid)?.studentName ?? `ID:${sid.slice(0, 8)}`;
+        toast({
+          variant: 'destructive',
+          title: '⚠ Se sugiere retirar',
+          description: `${name} acumula ${n} alertas críticas. Considera retirarlo de la evaluación.`,
+          duration: 12000,
+        });
+      }
+    });
+  }, [alerts, students, toast]);
 
   // Limpia el borrador de mensaje al cambiar de estudiante o cerrar el modal.
   useEffect(() => { setMsgText(''); }, [maximizedStudent?.studentId]);
@@ -483,6 +516,23 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
   const activeCount   = studentsArray.filter(s => s.connected).length;
   const alertCount    = studentsArray.reduce((sum, s) => sum + s.alertCount, 0);
 
+  // ── Resumen por estudiante (semáforo + sugerencia de retiro) ───────────────
+  const statByStudent = new Map<string, { crit: number; warn: number; lastCrit: number; lastWarn: number }>();
+  for (const a of alerts) {
+    const s = statByStudent.get(a.student_id) ?? { crit: 0, warn: 0, lastCrit: 0, lastWarn: 0 };
+    const ts = new Date(a.timestamp).getTime();
+    if (a.severity === 'critical') { s.crit++; if (ts > s.lastCrit) s.lastCrit = ts; }
+    else if (a.severity === 'warning') { s.warn++; if (ts > s.lastWarn) s.lastWarn = ts; }
+    statByStudent.set(a.student_id, s);
+  }
+  const studentLight = (sid: string): 'red' | 'orange' | 'green' => {
+    const s = statByStudent.get(sid);
+    if (!s) return 'green';
+    if (s.lastCrit && now - s.lastCrit < RECENT_MS) return 'red';
+    if (s.lastWarn && now - s.lastWarn < RECENT_MS) return 'orange';
+    return 'green';
+  };
+
   const filteredAlerts = alertFilter === 'all'
     ? alerts
     : alerts.filter(a => a.severity === alertFilter);
@@ -496,6 +546,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
   // Estado en vivo del estudiante ampliado (para no mostrar foto congelada al terminar).
   const maximizedStatus = maximizedStudent ? students.get(maximizedStudent.studentId)?.status : undefined;
   const maximizedFinished = maximizedStatus === 'submitted' || maximizedStatus === 'blocked';
+  const maximizedCrit = maximizedStudent ? (statByStudent.get(maximizedStudent.studentId)?.crit ?? 0) : 0;
 
   const resolveStudentName = (alert: DbAlert) =>
     alert.studentName ??
@@ -656,9 +707,12 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
               </span>
             )}
           </h2>
-          {gridMode === 'dense' && (
-            <span className="text-xs text-gray-400 italic">Clic en video para maximizar</span>
-          )}
+          {/* Leyenda del semáforo */}
+          <div className="flex items-center gap-3 text-[11px] text-gray-500">
+            <span className="flex items-center gap-1"><Flag className="h-3 w-3 fill-green-500 text-green-500" /> En orden</span>
+            <span className="flex items-center gap-1"><Flag className="h-3 w-3 fill-amber-500 text-amber-500" /> Advertencia</span>
+            <span className="flex items-center gap-1"><Flag className="h-3 w-3 fill-red-500 text-red-500" /> Crítica</span>
+          </div>
         </div>
 
         <div className="rounded-xl p-3 border border-white/10" style={{ backgroundColor: '#111827' }}>
@@ -683,6 +737,9 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
                 <DenseStudentCell
                   key={student.studentId}
                   student={student}
+                  light={studentLight(student.studentId)}
+                  criticalCount={statByStudent.get(student.studentId)?.crit ?? 0}
+                  suggestRemove={(statByStudent.get(student.studentId)?.crit ?? 0) >= CRIT_SUGGEST}
                   onMaximize={() => setMaximizedStudent(student)}
                 />
               ))}
@@ -768,6 +825,16 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
             {!readOnly && (
             <div className="px-5 py-3 border-t border-white/10 space-y-3 flex-shrink-0"
               style={{ backgroundColor: '#111827' }}>
+              {/* Sugerencia de retiro (≥ 3 alertas críticas) */}
+              {maximizedCrit >= 3 && (
+                <div className="flex items-center gap-2 rounded-lg bg-red-500/15 border border-red-500/40 px-3 py-2">
+                  <AlertTriangle className="h-4 w-4 text-red-400 flex-shrink-0" />
+                  <p className="text-xs text-red-200">
+                    <span className="font-bold">{maximizedCrit} alertas críticas.</span> Se sugiere <span className="font-semibold">retirar</span> a este estudiante de la evaluación.
+                  </p>
+                </div>
+              )}
+
               {/* Enviar mensaje al estudiante */}
               <div className="flex items-center gap-2">
                 <input
@@ -1066,17 +1133,23 @@ function StudentCard({
 // ─── DenseStudentCell (vista grid densificada) ─────────────────────────────────
 
 function DenseStudentCell({
-  student, onMaximize,
-}: { student: StudentStream; onMaximize: () => void }) {
+  student, onMaximize, light, criticalCount, suggestRemove,
+}: {
+  student: StudentStream;
+  onMaximize: () => void;
+  light: 'red' | 'orange' | 'green';
+  criticalCount: number;
+  suggestRemove: boolean;
+}) {
   const finished = student.status === 'submitted' || student.status === 'blocked';
   return (
     <div
       className={`rounded-lg overflow-hidden relative cursor-pointer group transition-base ${
         finished
           ? 'border border-white/5'
-          : student.alertCount > 0
-            ? 'ring-2 ring-red-500/60 border border-red-500/30'
-            : 'border border-white/5 hover:border-white/20'
+          : light === 'red'    ? 'ring-2 ring-red-500/70 border border-red-500/30'
+          : light === 'orange' ? 'ring-2 ring-amber-400/70 border border-amber-400/30'
+          : 'border border-white/5 hover:border-white/20'
       }`}
       style={{ backgroundColor: '#0A1228', aspectRatio: '4/3' }}
       onClick={onMaximize}
@@ -1105,14 +1178,22 @@ function DenseStudentCell({
         </div>
       )}
 
-      {/* Alert badge */}
-      {student.alertCount > 0 && (
-        <span
-          className="absolute top-1 right-1 text-[9px] font-bold text-white px-1.5 py-0.5 rounded-full z-10"
-          style={{ backgroundColor: '#EF4444' }}
-        >
-          {student.alertCount}
-        </span>
+      {/* Semáforo + sugerencia de retiro (minimalista) */}
+      {!finished && (
+        <div className="absolute top-1 right-1 z-10 flex items-center gap-1">
+          {suggestRemove && (
+            <span className="text-[8px] font-bold text-white bg-red-600 px-1.5 py-0.5 rounded-full animate-pulse shadow">
+              RETIRAR
+            </span>
+          )}
+          <span className="flex items-center gap-0.5 bg-black/55 rounded-full pl-1 pr-1.5 py-0.5">
+            <Flag className={`h-3 w-3 ${
+              light === 'red' ? 'fill-red-500 text-red-500'
+                : light === 'orange' ? 'fill-amber-500 text-amber-500'
+                : 'fill-green-500 text-green-500'}`} />
+            {criticalCount > 0 && <span className="text-[8px] font-bold text-white">{criticalCount}</span>}
+          </span>
+        </div>
       )}
 
       {/* Name overlay — always visible */}
