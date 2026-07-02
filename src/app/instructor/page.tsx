@@ -11,11 +11,13 @@ import { useToast } from '@/hooks/use-toast';
 import {
   Eye,
   Copy,
+  Check,
   Save,
   Loader2,
   RefreshCw,
   MonitorPlay,
   AlertTriangle,
+  MicOff,
 } from 'lucide-react';
 
 // ─── Access-code generator ────────────────────────────────────────────────────
@@ -39,6 +41,8 @@ export default function InstructorHome() {
   const [section,    setSection]    = useState('');
   const [duration,   setDuration]   = useState<number>(60);
   const [accessCode, setAccessCode] = useState('');
+  const [audioDisabled, setAudioDisabled] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // ── Active-session guard (Bug 4) ───────────────────────────────────────────
@@ -79,7 +83,7 @@ export default function InstructorHome() {
       const response = await fetch('/api/exam-sessions/create', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body:    JSON.stringify({ title, subject, section, duration, accessCode }),
+        body:    JSON.stringify({ title, subject, section, duration, accessCode, audioDisabled }),
       });
 
       if (!response.ok) {
@@ -324,13 +328,14 @@ export default function InstructorHome() {
                     variant="outline"
                     size="icon"
                     className="h-11 w-11 border-gray-200 flex-shrink-0"
-                    title="Copiar código"
+                    title={copied ? 'Copiado' : 'Copiar código'}
                     onClick={() => {
                       navigator.clipboard.writeText(accessCode);
-                      toast({ description: 'Código copiado al portapapeles' });
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
                     }}
                   >
-                    <Copy className="h-4 w-4" />
+                    {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
                   </Button>
                 </div>
                 <p className="text-xs text-gray-400">
@@ -338,6 +343,28 @@ export default function InstructorHome() {
                 </p>
               </div>
             </div>
+
+            {/* Modo presencial: desactiva el micrófono del alumno */}
+            <label
+              htmlFor="audioDisabled"
+              className="flex items-start gap-3 rounded-xl border border-gray-200 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+            >
+              <input
+                id="audioDisabled"
+                type="checkbox"
+                checked={audioDisabled}
+                onChange={e => setAudioDisabled(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[#1A1D47]"
+              />
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                  <MicOff className="h-4 w-4 text-gray-500" /> Modo presencial (sin micrófono)
+                </p>
+                <p className="text-xs text-gray-500">
+                  Para exámenes rendidos en sala. No se captura ni graba el audio de los alumnos; solo video y pantalla.
+                </p>
+              </div>
+            </label>
 
             <div className="flex justify-end pt-2">
               <Button
