@@ -58,6 +58,7 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
   const [error, setError] = useState<string | null>(null);
   const [videoAspect, setVideoAspect] = useState(4 / 3);
   const [holdSecs, setHoldSecs] = useState<number | null>(null); // countdown de estabilidad
+  const [docSeen, setDocSeen]   = useState(false);               // ¿parece haber una cédula en el marco?
 
   // Adjunta el stream a todos los <video> (fondo difuminado + ventanas nítidas).
   const attachStream = useCallback(() => {
@@ -142,6 +143,7 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
     const maskedCrop = mask.toDataURL('image/jpeg', 0.85);
 
     setHoldSecs(null);
+    setDocSeen(false);
     setIdCardPhoto(maskedCrop);
     setIsLoading(true);
     setError(null);
@@ -165,22 +167,27 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
   // ── Captura automática por ESTABILIDAD ─────────────────────────────────────
   // Muestrea el área del marco; cuando la imagen deja de moverse (y tiene
   // contenido) por HOLD_MS, captura sola. Muestra el conteo "Mantén… Ns".
-  const autoRef = useRef({ stableSince: 0, prev: null as Uint8ClampedArray | null, capturing: false });
+  const autoRef = useRef({ stableSince: 0, prevGray: null as Float32Array | null, capturing: false });
   useEffect(() => {
     if (!isOpen || idCardPhoto || isLoading || !hasCameraPermission) {
       autoRef.current.stableSince = 0;
-      autoRef.current.prev = null;
+      autoRef.current.prevGray = null;
       autoRef.current.capturing = false;
       setHoldSecs(null);
+      setDocSeen(false);
       return;
     }
     autoRef.current.capturing = false;
-    const SW = 64, SH = 48;
+    // Muestreamos el área del marco a baja resolución con el aspecto de la cédula.
+    const SW = 128, SH = Math.round(SW / CI_ASPECT); // ≈ 128×81
     const c = document.createElement('canvas');
     c.width = SW; c.height = SH;
     const cx = c.getContext('2d', { willReadFrequently: true });
-    const DIFF_T = 9;     // diferencia media máx. para considerar "quieto"
-    const VAR_FLOOR = 10; // varianza mín. para evitar capturar una escena vacía
+
+    // Umbrales (TESTEO — ajustables):
+    const EDGE_MAG_T = 36;  // magnitud de gradiente para contar un píxel-borde
+    const DENSITY_T  = 0.10; // % mín. de píxeles-borde → "parece un documento"
+    const DIFF_T     = 10;   // movimiento máx. para considerar "quieto"
 
     const id = setInterval(() => {
       const v = videoRef.current;
@@ -191,19 +198,45 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
       const fw = FRAME_WIDTH_FRAC * W, fhpx = fh * H;
       try { cx.drawImage(v, fx, fy, fw, fhpx, 0, 0, SW, SH); } catch { return; }
 
-      const cur = cx.getImageData(0, 0, SW, SH).data;
-      let mean = 0; for (let i = 0; i < cur.length; i += 4) mean += cur[i];
-      mean /= (cur.length / 4);
-      let varc = 0; for (let i = 0; i < cur.length; i += 4) { const d = cur[i] - mean; varc += d * d; }
-      varc = Math.sqrt(varc / (cur.length / 4));
+      const data = cx.getImageData(0, 0, SW, SH).data;
+      // 1) Escala de grises + brillo medio.
+      const gray = new Float32Array(SW * SH);
+      let bright = 0;
+      for (let p = 0, i = 0; p < data.length; p += 4, i++) {
+        const g = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
+        gray[i] = g; bright += g;
+      }
+      bright /= gray.length;
 
+      // 2) Densidad de bordes (gradiente) → una cédula tiene mucho texto/foto.
+      let edges = 0, count = 0;
+      for (let y = 1; y < SH - 1; y++) {
+        for (let x = 1; x < SW - 1; x++) {
+          const i = y * SW + x;
+          const gx = gray[i + 1] - gray[i - 1];
+          const gy = gray[i + SW] - gray[i - SW];
+          if (Math.abs(gx) + Math.abs(gy) > EDGE_MAG_T) edges++;
+          count++;
+        }
+      }
+      const density = edges / count;
+
+      // 3) Estabilidad (diferencia media respecto al frame anterior).
       let diff = 999;
-      const prev = autoRef.current.prev;
-      if (prev) { let s = 0, n = 0; for (let i = 0; i < cur.length; i += 4) { s += Math.abs(cur[i] - prev[i]); n++; } diff = s / n; }
-      autoRef.current.prev = cur;
+      const prev = autoRef.current.prevGray;
+      if (prev && prev.length === gray.length) {
+        let s = 0;
+        for (let i = 0; i < gray.length; i++) s += Math.abs(gray[i] - prev[i]);
+        diff = s / gray.length;
+      }
+      autoRef.current.prevGray = gray;
+
+      // ¿Parece una cédula? (rica en bordes, bien iluminada)
+      const isDoc = density > DENSITY_T && bright > 45 && bright < 245;
+      setDocSeen(isDoc);
 
       const now = Date.now();
-      if (diff < DIFF_T && varc > VAR_FLOOR) {
+      if (isDoc && diff < DIFF_T) {
         if (!autoRef.current.stableSince) autoRef.current.stableSince = now;
         const held = now - autoRef.current.stableSince;
         setHoldSecs(Math.max(0, Math.ceil((HOLD_MS - held) / 1000)));
@@ -288,7 +321,7 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
         <DialogHeader>
           <DialogTitle className="text-2xl font-headline text-primary">Verificación de Identidad</DialogTitle>
           <DialogDescription>
-            Coloca tu <strong>cédula</strong> dentro del marco. Solo se ven (y se guardan) las zonas <strong>verdes</strong> — tu <strong>foto y nombre</strong>; el resto queda difuminado. Al mantenerla quieta, se captura sola.
+            Coloca tu <strong>cédula</strong> dentro del marco. Solo se ven (y se guardan) las zonas <strong>verdes</strong> — tu <strong>foto y nombre</strong>; el resto queda difuminado. Cuando el sistema <strong>detecte tu cédula</strong> y la mantengas firme, se captura sola.
           </DialogDescription>
         </DialogHeader>
 
@@ -351,6 +384,10 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
                 {holdSecs !== null ? (
                   <span className="flex items-center gap-2 bg-emerald-600 text-white text-sm font-bold px-3 py-1.5 rounded-full shadow-lg animate-pulse">
                     <Camera className="h-4 w-4" /> Mantén firme… {holdSecs}s
+                  </span>
+                ) : docSeen ? (
+                  <span className="flex items-center gap-2 bg-emerald-500/90 text-white text-xs font-semibold px-3 py-1.5 rounded-full">
+                    <Check className="h-3.5 w-3.5" /> Cédula detectada — mantenla firme
                   </span>
                 ) : (
                   <span className="bg-black/70 text-white text-xs px-3 py-1.5 rounded-full">
