@@ -186,6 +186,19 @@ export function StudentCam({
     }
   }, [setupPhase]);
 
+  // POST autenticado a /api/live (el servidor deriva el studentId del token).
+  const postLive = useCallback(async (payload: any) => {
+    const token = user ? await user.getIdToken() : null;
+    return fetch('/api/live', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+  }, [user]);
+
   // ── sendAlert ──────────────────────────────────────────────────────────────
   // Recreates when examId, studentId, or onAlert changes — that is expected.
   // Consumers that must not trigger re-creates call sendAlertRef.current instead.
@@ -194,16 +207,12 @@ export function StudentCam({
     description: string,
     severity: 'low' | 'medium' | 'high' | 'critical' = 'medium',
   ) => {
-    fetch('/api/live', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action:      'alert',
-        studentId,
-        examId,
-        description,
-        severity,
-      }),
+    postLive({
+      action:      'alert',
+      studentId,
+      examId,
+      description,
+      severity,
     })
       .then(async res => {
         if (!res.ok) {
@@ -216,7 +225,7 @@ export function StudentCam({
       .catch(err => console.error('[Alert] 🔌 Error de red al persistir alerta:', err));
 
     if (onAlert) onAlert(alertType, description, severity);
-  }, [examId, studentId, onAlert]);
+  }, [examId, studentId, onAlert, postLive]);
 
   // Keep ref in sync — this useEffect is cheap and harmless.
   useEffect(() => { sendAlertRef.current = sendAlert; }, [sendAlert]);
@@ -358,17 +367,13 @@ export function StudentCam({
       if (url) evidenceUrl = url;
     }
 
-    fetch('/api/live', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action:      'alert',
-        studentId,
-        examId,
-        description,
-        severity,
-        ...(evidenceUrl ? { evidenceUrl } : {}),
-      }),
+    postLive({
+      action:      'alert',
+      studentId,
+      examId,
+      description,
+      severity,
+      ...(evidenceUrl ? { evidenceUrl } : {}),
     })
       .then(async res => {
         if (!res.ok) {
@@ -381,7 +386,7 @@ export function StudentCam({
       .catch(err => console.error('[Alert+Evidence] 🔌 Error de red:', err));
 
     if (onAlert) onAlert(alertType, description, severity);
-  }, [examId, studentId, onAlert, sendAlert, captureSnapshot, uploadSnapshot]);
+  }, [examId, studentId, onAlert, sendAlert, captureSnapshot, uploadSnapshot, postLive]);
 
   // ── sendSnapshotWithReason (periodic AI snapshots) ─────────────────────────
   // Called by the AI coordinator's onRequestSnapshot for periodic frames.
@@ -406,11 +411,7 @@ export function StudentCam({
   const sendSnapshotWithReason = useCallback((reason: string) => {
     const base64 = captureSnapshot();
     if (!base64) return;
-    fetch('/api/live', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'heartbeat', studentId, examId, imgSrc: base64 }),
-    })
+    postLive({ action: 'heartbeat', studentId, examId, imgSrc: base64 })
       .then(res => (res.ok ? res.json() : null))
       .then(data => {
         // El heartbeat devuelve los mensajes NO leídos del supervisor (una vez).
@@ -418,7 +419,7 @@ export function StudentCam({
         msgs.forEach(m => notifyMessage(m));
       })
       .catch(err => console.debug('[Snapshot] Heartbeat error:', err));
-  }, [examId, studentId, captureSnapshot, notifyMessage]);
+  }, [examId, studentId, captureSnapshot, notifyMessage, postLive]);
 
   // ── AI callbacks ────────────────────────────────────────────────────────────
   // handleAIAlert uses sendAlertWithSnapshot so high/critical detections

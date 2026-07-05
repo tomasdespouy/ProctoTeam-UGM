@@ -281,7 +281,10 @@ export function BiometricVerificationModal({ isOpen, onVerificationSuccess, exam
 
           await fetch('/api/live', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
             body: JSON.stringify({
               action: 'alert',
               payload: { examId, studentId, description, severity: matches ? 'info' : 'warning', evidenceUrl },

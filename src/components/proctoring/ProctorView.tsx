@@ -45,6 +45,7 @@ import {
 import { supabase } from '@/lib/supabase-client';
 import { getIceServers } from '@/lib/ice-servers';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/auth-context';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,7 @@ function formatDuration(seconds: number): string {
 export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = false }: ProctorViewProps) {
   const router      = useRouter();
   const { toast }   = useToast();
+  const { user }    = useAuth();
 
   const [students,          setStudents]          = useState<Map<string, StudentStream>>(new Map());
   const [alerts,            setAlerts]            = useState<DbAlert[]>([]);
@@ -196,10 +198,19 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
   const peerConnections  = useRef<Map<string, RTCPeerConnection>>(new Map());
   const signalingChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
+  // fetch autenticado a /api/live (el endpoint ahora exige token + propiedad).
+  const authFetch = useCallback(async (url: string, init?: RequestInit) => {
+    const token = user ? await user.getIdToken() : null;
+    return fetch(url, {
+      ...init,
+      headers: { ...(init?.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+  }, [user]);
+
   // ── Load students + historical alerts + exam metadata from DB ──────────────
   const loadData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/live?examId=${examId}`);
+      const res = await authFetch(`/api/live?examId=${examId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
@@ -255,7 +266,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
     } finally {
       setIsLoading(false);
     }
-  }, [examId]);
+  }, [examId, authFetch]);
 
   // ── Close exam — Graceful Shutdown (Nivel 1) ──────────────────────────────
   // After broadcasting 'exam-closed', we wait GRACE_MS before navigating away.
@@ -266,7 +277,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
   const handleCloseExam = async () => {
     setIsClosing(true);
     try {
-      const res = await fetch('/api/live', {
+      const res = await authFetch('/api/live', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
@@ -304,7 +315,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
     if (!maximizedStudent || !msgText.trim()) return;
     setIsSendingMsg(true);
     try {
-      const res = await fetch('/api/live', {
+      const res = await authFetch('/api/live', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
@@ -328,7 +339,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
   const handleRemoveStudent = async (student: StudentStream) => {
     setIsRemoving(true);
     try {
-      const res = await fetch('/api/live', {
+      const res = await authFetch('/api/live', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({

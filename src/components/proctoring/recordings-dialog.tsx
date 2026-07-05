@@ -34,14 +34,16 @@ export function RecordingsDialog({
     if (!open) return;
     setLoadingList(true);
     setSelected(null);
-    fetch(`/api/live?examId=${examId}`)
+    fetch(`/api/live?examId=${examId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
       .then(r => (r.ok ? r.json() : Promise.reject()))
       .then(data => setStudents(
         (data.students ?? []).map((s: any) => ({ id: s.id, name: s.name ?? s.studentId }))
       ))
       .catch(() => setStudents([]))
       .finally(() => setLoadingList(false));
-  }, [open, examId]);
+  }, [open, examId, token]);
 
   useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
 

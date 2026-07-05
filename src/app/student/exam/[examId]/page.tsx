@@ -180,9 +180,13 @@ export default function StudentExamLivePage() {
 
     setIsFinishing(true);
     try {
+      const token = user ? await user.getIdToken() : null;
       await fetch('/api/live', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           action: 'finish',
           payload: { studentId: studentIdToUse, examId },
