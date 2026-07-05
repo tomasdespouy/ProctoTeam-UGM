@@ -207,6 +207,12 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
     });
   }, [user]);
 
+  // Ref al usuario: el handler de señalización WebRTC tiene deps [] y capturaría
+  // un `user` congelado (null durante el login) → getIceServers(null) → 401 → STUN
+  // pegado toda la sesión. Con la ref siempre leemos el token vigente.
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+
   // ── Load students + historical alerts + exam metadata from DB ──────────────
   const loadData = useCallback(async () => {
     try {
@@ -394,7 +400,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
           peerConnections.current.delete(fromId);
         }
 
-        const iceServers = await getIceServers(user ? await user.getIdToken() : null);
+        const iceServers = await getIceServers(userRef.current ? await userRef.current.getIdToken() : null);
         pc = new RTCPeerConnection({ iceServers });
         peerConnections.current.set(fromId, pc);
 

@@ -20,13 +20,15 @@ export async function getIceServers(token?: string | null): Promise<RTCIceServer
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data?.iceServers) && data.iceServers.length > 0) {
-        cached = data.iceServers as RTCIceServer[];
+        cached = data.iceServers as RTCIceServer[]; // solo cacheamos ÉXITO
         return cached;
       }
     }
   } catch {
     /* red caída → usamos STUN */
   }
-  cached = STUN_FALLBACK;
-  return cached;
+  // NO cachear el fallo: un 401 transitorio (token aún no listo) o un blip no debe
+  // dejar la sesión en STUN-only para siempre; el próximo intento con token válido
+  // sí puede traer TURN.
+  return STUN_FALLBACK;
 }

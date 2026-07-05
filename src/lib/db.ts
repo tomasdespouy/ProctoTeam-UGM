@@ -29,6 +29,15 @@ if (!global.pool) {
 
 pool = global.pool;
 
+// Sin este handler, un error en un cliente idle del pool puede propagarse como
+// excepción no capturada y tumbar el proceso.
+if (!(global as any).__poolErrHandler) {
+  pool.on('error', (err) => {
+    console.error('[DB] error inesperado en cliente idle del pool:', err?.message);
+  });
+  (global as any).__poolErrHandler = true;
+}
+
 // ── Test direct PG once on startup; cache the result ──
 async function isPgAvailable(): Promise<boolean> {
   if (global.pgAvailable !== undefined) return global.pgAvailable;

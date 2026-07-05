@@ -181,7 +181,7 @@ export default function StudentExamLivePage() {
     setIsFinishing(true);
     try {
       const token = user ? await user.getIdToken() : null;
-      await fetch('/api/live', {
+      const res = await fetch('/api/live', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -192,6 +192,9 @@ export default function StudentExamLivePage() {
           payload: { studentId: studentIdToUse, examId },
         }),
       });
+      // Si el servidor no confirmó (token vencido, red), no dejamos al alumno
+      // atrapado: igual cerramos su vista; el cron de auto-cierre lo finaliza.
+      if (!res.ok) console.warn('[finish] el servidor no confirmó el cierre — HTTP', res.status);
       toast({ title: 'Examen Finalizado', description: 'Tu sesión de monitoreo ha terminado.' });
       setIsTerminated(true);
       setStep('finished');
