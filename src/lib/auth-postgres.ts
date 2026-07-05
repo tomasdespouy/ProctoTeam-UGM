@@ -1,4 +1,5 @@
 import { query } from './db';
+import { deleteUserStorage } from './storage-cleanup';
 
 export interface UserProfile {
   id: string;
@@ -152,6 +153,9 @@ export async function setUserActive(uid: string, active: boolean): Promise<void>
 // Eliminar un usuario de forma permanente. OJO: por las FK ON DELETE CASCADE,
 // borra en cascada sus exámenes/participaciones/alertas/mensajes.
 export async function deleteUser(uid: string): Promise<void> {
+  // Borra primero el storage (grabaciones + evidencia); la cascada de FK borrará
+  // luego participaciones/alertas y perderíamos los ids para localizarlo.
+  await deleteUserStorage(uid);
   await query('DELETE FROM users WHERE uid = $1', [uid]);
 }
 
