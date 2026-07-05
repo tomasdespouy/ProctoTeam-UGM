@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@/lib/auth-middleware';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -12,7 +13,14 @@ const STUN: RTCIceServer[] = [
   { urls: 'stun:stun2.l.google.com:19302' },
 ];
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Requiere autenticación (evita robo de ancho de banda del relay TURN).
+  try {
+    await getAuthenticatedUser(request);
+  } catch {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+  }
+
   // ── Opción A: API de Metered (recomendada) ────────────────────────────────
   // Requiere METERED_APP_NAME (el subdominio, p.ej. "miapp" de miapp.metered.live)
   // y METERED_API_KEY (tu API key). Devuelve iceServers frescos.

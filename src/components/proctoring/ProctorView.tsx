@@ -394,7 +394,7 @@ export function ProctorView({ examId, instructorId, onBlockStudent, readOnly = f
           peerConnections.current.delete(fromId);
         }
 
-        const iceServers = await getIceServers();
+        const iceServers = await getIceServers(user ? await user.getIdToken() : null);
         pc = new RTCPeerConnection({ iceServers });
         peerConnections.current.set(fromId, pc);
 

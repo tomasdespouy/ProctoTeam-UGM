@@ -800,7 +800,7 @@ export function StudentCam({
 
     // Construye la conexión WebRTC del alumno (tracks + handlers ICE).
     const buildPeer = async () => {
-      const iceServers = await getIceServers();
+      const iceServers = await getIceServers(user ? await user.getIdToken() : null);
       const pc = new RTCPeerConnection({ iceServers });
       peerConnectionRef.current = pc;
 

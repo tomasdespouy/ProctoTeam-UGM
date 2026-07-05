@@ -10,10 +10,13 @@ const STUN_FALLBACK: RTCIceServer[] = [
 
 let cached: RTCIceServer[] | null = null;
 
-export async function getIceServers(): Promise<RTCIceServer[]> {
+export async function getIceServers(token?: string | null): Promise<RTCIceServer[]> {
   if (cached) return cached;
   try {
-    const res = await fetch('/api/turn-credentials', { cache: 'no-store' });
+    const res = await fetch('/api/turn-credentials', {
+      cache: 'no-store',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data?.iceServers) && data.iceServers.length > 0) {

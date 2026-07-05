@@ -100,9 +100,9 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('Dev-login error:', error);
+    console.error('Dev-login error:', error?.message);
     return NextResponse.json(
-      { error: 'Error interno del servidor', details: error.message },
+      { error: 'Error interno del servidor' },
       { status: 500 }
     );
   }

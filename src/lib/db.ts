@@ -14,12 +14,16 @@ if (!global.pool) {
     (process.env.DATABASE_URL ?? '').includes('supabase.co') ||
     (process.env.DATABASE_URL ?? '').includes('pooler.supabase.com');
 
+  // Un '#' sin codificar en la contraseña trunca la URL (se interpreta como
+  // fragmento). Lo codificamos para que la conexión directa no falle por eso.
+  const connectionString = (process.env.DATABASE_URL ?? '').replace(/#/g, '%23') || undefined;
+
   global.pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
     ssl: isSupabase ? { rejectUnauthorized: false } : false,
     max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 2000, // cold-start: cae rápido a REST si PG directo no responde
   });
 }
 
