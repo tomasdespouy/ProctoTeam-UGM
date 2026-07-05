@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { db } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
-import { signEvidenceUrl } from '@/lib/evidence';
+import { signEvidencePaths } from '@/lib/evidence';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 const STATUS_LABEL: Record<string, string> = {
   joined: 'Unido',
@@ -161,9 +162,9 @@ export async function GET(
       { header: 'Evidencia', key: 'evidencia', width: 40 },
     ];
     headerStyle(s3.getRow(1));
-    const signed = await Promise.all(
-      alerts.map(a => (a.evidence_url ? signEvidenceUrl(a.evidence_url, 60 * 60 * 24 * 7) : Promise.resolve(null))),
-    );
+    // Firmas por lote, expiración 24 h (antes 7 días → menos riesgo si el Excel
+    // se reenvía).
+    const signed = await signEvidencePaths(alerts.map(a => a.evidence_url), 60 * 60 * 24);
     alerts.forEach((a, i) => {
       const row = s3.addRow({
         fecha: fmt(a.timestamp),

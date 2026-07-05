@@ -6,6 +6,7 @@ import { signEvidencePaths } from '@/lib/evidence';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'Pendiente',
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
     const exams = examsRes.rows;
     const teachers = teachersRes.rows;
     const alerts = alertsRes.rows;
-    const signed = await signEvidencePaths(alerts.map(a => a.evidence_url), 60 * 60 * 24 * 7);
+    const signed = await signEvidencePaths(alerts.map(a => a.evidence_url), 60 * 60 * 24);
 
     // ── Workbook ───────────────────────────────────────────────────────────
     const wb = new ExcelJS.Workbook();
