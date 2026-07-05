@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
+import { userCanAccessParticipation } from '@/lib/exam-access';
+import { db } from '@/lib/db';
 import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 const STORAGE_BUCKET = 'evidences';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -22,7 +26,7 @@ function getSupabaseAdmin() {
 // concatenados en orden, reconstruyen un webm reproducible.
 export async function POST(request: NextRequest) {
   try {
-    await getAuthenticatedUser(request); // lanza si no está autenticado
+    const user = await getAuthenticatedUser(request); // lanza si no está autenticado
 
     const form = await request.formData();
     const chunk = form.get('chunk');
@@ -33,9 +37,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'chunk requerido' }, { status: 400 });
     }
 
-    const safeId = participationId || 'sin-participacion';
+    // El participationId debe ser un UUID (evita path traversal en la clave de
+    // storage) y pertenecer al alumno que sube (evita pisar la grabación de otro).
+    if (!UUID_RE.test(participationId)) {
+      return NextResponse.json({ error: 'participationId inválido' }, { status: 400 });
+    }
+    const owner = await db.query(
+      'SELECT student_id FROM exam_participations WHERE id = $1',
+      [participationId],
+    );
+    const ownerId = owner.rows[0]?.student_id;
+    if (!ownerId || (ownerId !== user.uid && user.role !== 'super-admin')) {
+      return NextResponse.json({ error: 'No autorizado para esta participación' }, { status: 403 });
+    }
+
     const index = String(parseInt(indexRaw, 10) || 0).padStart(5, '0');
-    const storagePath = `recordings/${safeId}/${index}.webm`;
+    const storagePath = `recordings/${participationId}/${index}.webm`;
 
     const buffer = Buffer.from(await chunk.arrayBuffer());
     const supabase = getSupabaseAdmin();
@@ -69,13 +86,16 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser(request);
-    if (user.role !== 'instructor' && user.role !== 'super-admin' && user.role !== 'admin') {
-      return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
-    }
 
     const participationId = String(new URL(request.url).searchParams.get('participationId') ?? '').trim();
-    if (!participationId) {
-      return NextResponse.json({ error: 'participationId requerido' }, { status: 400 });
+    if (!UUID_RE.test(participationId)) {
+      return NextResponse.json({ error: 'participationId inválido' }, { status: 400 });
+    }
+
+    // Solo el instructor dueño del examen, un auditor (admin) o super-admin pueden
+    // descargar la grabación de esta participación (cierra el IDOR H2).
+    if (!(await userCanAccessParticipation(participationId, user, false))) {
+      return NextResponse.json({ error: 'No autorizado para esta grabación' }, { status: 403 });
     }
 
     const supabase = getSupabaseAdmin();
@@ -97,12 +117,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ chunks: [], count: 0 });
     }
 
-    const signed = await Promise.all(
-      webm.map(f =>
-        supabase.storage.from(STORAGE_BUCKET).createSignedUrl(`${folder}/${f.name}`, 3600)
-      )
-    );
-    const chunks = signed.map(s => s.data?.signedUrl).filter((u): u is string => !!u);
+    // Firmas por lote (una sola llamada) en vez de N createSignedUrl.
+    const { data: signed, error: signErr } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .createSignedUrls(webm.map(f => `${folder}/${f.name}`), 3600);
+    if (signErr) {
+      console.error(`[Recording] sign FAILED folder="${folder}" msg="${signErr.message}"`);
+      return NextResponse.json({ error: signErr.message }, { status: 500 });
+    }
+    const chunks = (signed ?? []).map(s => s.signedUrl).filter((u): u is string => !!u);
 
     return NextResponse.json({ chunks, count: chunks.length });
   } catch (error: any) {
