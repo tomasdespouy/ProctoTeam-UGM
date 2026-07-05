@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Nota: el build completo (que también corre el lint de Next) lo valida
+      # Vercel en cada deploy, donde están las variables de entorno reales.
+      # `npm run lint` (eslint .) tiene un problema pre-existente de flat-config
+      # (plugins fuera de scope); se corregirá aparte.
