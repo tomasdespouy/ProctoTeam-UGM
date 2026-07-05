@@ -633,21 +633,35 @@ export function StudentCam({
     try {
       const token = user ? await user.getIdToken() : null;
       if (!token) return;
-      const form = new FormData();
-      form.append('chunk', blob, `${index}.webm`);
-      form.append('participationId', participationId);
-      form.append('index', String(index));
-      const res = await fetch('/api/exam/recording', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-      if (!res.ok) {
-        const t = await res.text().catch(() => res.statusText);
-        console.error(`[Rec] chunk ${index} HTTP ${res.status}:`, t);
+
+      // Reintento con backoff: un fallo transitorio (5xx/429/red) NO debe dejar
+      // un hueco permanente en la grabación. El endpoint usa upsert, así que
+      // reenviar el mismo índice es idempotente. Los 4xx no se reintentan.
+      const MAX = 4;
+      for (let attempt = 1; attempt <= MAX; attempt++) {
+        try {
+          const form = new FormData();
+          form.append('chunk', blob, `${index}.webm`);
+          form.append('participationId', participationId);
+          form.append('index', String(index));
+          const res = await fetch('/api/exam/recording', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: form,
+          });
+          if (res.ok) return;
+          if (res.status < 500 && res.status !== 429) {
+            const t = await res.text().catch(() => res.statusText);
+            console.error(`[Rec] chunk ${index} HTTP ${res.status} (no se reintenta):`, t);
+            return;
+          }
+          console.warn(`[Rec] chunk ${index} HTTP ${res.status} — reintento ${attempt}/${MAX}`);
+        } catch {
+          console.warn(`[Rec] chunk ${index} error de red — reintento ${attempt}/${MAX}`);
+        }
+        if (attempt < MAX) await new Promise(r => setTimeout(r, attempt * 2000));
       }
-    } catch (err) {
-      console.error('[Rec] error subiendo chunk', err);
+      console.error(`[Rec] chunk ${index} DESCARTADO tras ${MAX} intentos`);
     } finally {
       pendingOpsRef.current -= 1;
     }
