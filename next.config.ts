@@ -8,28 +8,13 @@ const nextConfig = {
   },
   experimental: {
     optimizePackageImports: ['@tensorflow/tfjs', '@tensorflow-models/coco-ssd'],
+    // Origen de Server Actions: same-origin en producción (Vercel) + localhost en
+    // dev. Se quitaron los orígenes *.replit.dev heredados del prototipo.
     serverActions: {
-      allowedOrigins: [
-        '6b145858-516c-4253-bbb2-6042ec3593fe-00-3el5cnkqxkgt7.janeway.replit.dev',
-        '6b145858-516c-4253-bbb2-6042ec3593fe-00-3el5cnkqxkgt7.janeway.replit.dev:5000',
-        '*.replit.dev',
-        '*.repl.co',
-        'localhost:5000',
-        '127.0.0.1:5000',
-        '0.0.0.0:5000'
-      ],
+      allowedOrigins: ['localhost:3000', '127.0.0.1:3000'],
     },
   },
-  // Configure allowed origins for Replit environment
-  allowedDevOrigins: [
-    '6b145858-516c-4253-bbb2-6042ec3593fe-00-3el5cnkqxkgt7.janeway.replit.dev',
-    '6b145858-516c-4253-bbb2-6042ec3593fe-00-3el5cnkqxkgt7.janeway.replit.dev:5000',
-    '*.replit.dev',
-    '*.repl.co',
-    'localhost',
-    '127.0.0.1',
-    '0.0.0.0'
-  ],
+  allowedDevOrigins: ['localhost', '127.0.0.1'],
   webpack: (config: any, { isServer }: { isServer: boolean }) => {
     // Optimize chunk loading for heavy ML libraries
     if (!isServer) {
@@ -71,8 +56,26 @@ const nextConfig = {
         source: '/:path*',
         headers: [
           {
+            // Cámara/micrófono/pantalla solo para el propio origen (no se delegan
+            // a iframes de terceros anidados).
             key: 'Permissions-Policy',
-            value: 'camera=*, microphone=*, display-capture=*',
+            value: 'camera=(self), microphone=(self), display-capture=(self)',
+          },
+          {
+            // CSP acotada y SEGURA para no romper proctoring (MediaPipe/TF/WASM,
+            // Supabase realtime, Azure): solo endurece anti-clickjacking, <object>
+            // y <base>. Una CSP con script-src estricta queda como follow-up
+            // (requiere probar contra los CDN de ML en runtime).
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'",
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=31536000; includeSubDomains',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
           },
           {
             // Keep a usable handle to the MSAL login popup so its window.closed
