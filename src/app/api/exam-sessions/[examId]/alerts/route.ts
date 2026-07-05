@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/auth-middleware';
 import { db } from '@/lib/db';
 import { signEvidenceRows } from '@/lib/evidence';
+import { userCanAccessExam } from '@/lib/exam-access';
 
 export async function GET(
   request: NextRequest,
@@ -15,6 +16,12 @@ export async function GET(
 
     // Next.js 15: params debe ser awaited
     const { examId } = await params;
+
+    // Solo el instructor dueño, un auditor (admin) o super-admin pueden ver las
+    // alertas + evidencia de este examen (cierra el IDOR H1).
+    if (!(await userCanAccessExam(examId, authResult.user, false))) {
+      return NextResponse.json({ error: 'No autorizado para este examen' }, { status: 403 });
+    }
 
     // Get alerts for the session — JOIN exam_participations to resolve student_name
     const alertsResult = await db.query(

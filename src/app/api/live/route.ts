@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { liveSessionService } from '@/services/live-session.service';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
+import { userCanAccessExam } from '@/lib/exam-access';
 import { db } from '@/lib/db';
 
 /**
@@ -17,21 +18,13 @@ import { db } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-// Verifica acceso al examen. write=true exige instructor-dueño o super-admin
-// (el rol 'admin' es auditor de solo lectura). Lanza 'Forbidden' si no.
+// Verifica acceso al examen (usa el helper compartido). Lanza 'Forbidden' si no.
 async function assertExamAccess(
   examId: string,
   user: { uid: string; role: string },
   write: boolean,
 ) {
-  if (!examId) throw new Error('Forbidden');
-  if (user.role === 'super-admin') return;
-  if (user.role === 'admin' && !write) return;
-  if (user.role === 'instructor') {
-    const r = await db.query('SELECT instructor_id FROM exam_sessions WHERE id = $1', [examId]);
-    if (r.rows[0]?.instructor_id === user.uid) return;
-  }
-  throw new Error('Forbidden');
+  if (!(await userCanAccessExam(examId, user, write))) throw new Error('Forbidden');
 }
 
 export async function POST(request: NextRequest) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addAlert, getAlertsBySession } from '@/lib/exam-session-postgres';
 import { getAuthenticatedUser } from '@/lib/auth-middleware';
+import { userCanAccessExam } from '@/lib/exam-access';
 
 export async function POST(request: NextRequest) {
   try {
@@ -71,6 +72,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: 'Session ID is required' },
         { status: 400 }
+      );
+    }
+
+    // Un instructor solo puede ver alertas de SUS exámenes (cierra el IDOR).
+    if (!(await userCanAccessExam(sessionId, user, false))) {
+      return NextResponse.json(
+        { error: 'No autorizado para este examen' },
+        { status: 403 }
       );
     }
 
