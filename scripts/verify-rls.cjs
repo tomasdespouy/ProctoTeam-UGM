@@ -11,7 +11,7 @@ if (!url || !serviceKey) {
   process.exit(1);
 }
 
-const TABLES = ['users', 'exam_sessions', 'exam_participations', 'exam_alerts', 'alerts', 'messages'];
+const TABLES = ['users', 'exam_sessions', 'exam_participations', 'alerts', 'messages'];
 const admin = createClient(url, serviceKey, { auth: { persistSession: false }, db: { schema: process.env.SUPABASE_DB_SCHEMA || 'public' } });
 
 const ok = (b) => (b ? '✅' : '❌');
@@ -48,13 +48,13 @@ async function execSql(sql) {
   }
 
   // ── 2) Privilegios EXECUTE sobre exec_sql ────────────────────────────────
-  console.log('\n[2] EXECUTE sobre public.exec_sql(text, text[]):');
+  console.log('\n[2] EXECUTE sobre exec_sql(text, text[]):');
   try {
     const [p] = await execSql(`
       SELECT
-        has_function_privilege('anon',          `${process.env.SUPABASE_DB_SCHEMA || 'public'}.exec_sql(text, text[])`, 'EXECUTE') AS anon,
-        has_function_privilege('authenticated', `${process.env.SUPABASE_DB_SCHEMA || 'public'}.exec_sql(text, text[])`, 'EXECUTE') AS authenticated,
-        has_function_privilege('service_role',  `${process.env.SUPABASE_DB_SCHEMA || 'public'}.exec_sql(text, text[])`, 'EXECUTE') AS service_role;
+        has_function_privilege('anon',          '${process.env.SUPABASE_DB_SCHEMA || 'public'}.exec_sql(text, text[])', 'EXECUTE') AS anon,
+        has_function_privilege('authenticated', '${process.env.SUPABASE_DB_SCHEMA || 'public'}.exec_sql(text, text[])', 'EXECUTE') AS authenticated,
+        has_function_privilege('service_role',  '${process.env.SUPABASE_DB_SCHEMA || 'public'}.exec_sql(text, text[])', 'EXECUTE') AS service_role;
     `);
     console.log(`   ${ok(p.anon === false)} anon          = ${p.anon}  (debe ser false)`);
     console.log(`   ${ok(p.authenticated === false)} authenticated = ${p.authenticated}  (debe ser false)`);
