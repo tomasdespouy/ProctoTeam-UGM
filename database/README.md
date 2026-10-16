@@ -1,5 +1,25 @@
 # Database Setup
 
+## Ubicación actual: proyecto compartido UGM HUB (desde 2026-10-16)
+
+ProctoTeam vive en el proyecto Supabase compartido **UGM HUB** (`xupfxuwtcrgosxhgpcug`),
+en su propio schema **`proctoteam`**. Nunca se toca `public` ni los schemas de otras apps.
+
+- Migración: `migrations/001_hub_proctoteam_schema.sql` (schema, tablas, RLS, `exec_sql`,
+  exposición en PostgREST y bucket `evidences`).
+- La app se conecta con el rol **`proctoteam_app`**, que solo tiene permisos sobre
+  `proctoteam` y trae `search_path=proctoteam`. Por eso el SQL de la app no lleva prefijo.
+- `DATABASE_URL` usa el pooler IPv4 en modo transacción:
+  `postgresql://proctoteam_app.xupfxuwtcrgosxhgpcug:<pw>@aws-1-us-west-1.pooler.supabase.com:6543/postgres`
+- `SUPABASE_DB_SCHEMA=proctoteam` hace que el fallback REST llame a `proctoteam.exec_sql`.
+  Esa función tiene dueño `proctoteam_app`, así que tampoco alcanza otros schemas.
+- Las migraciones DDL se pueden correr con el usuario `postgres` por el pooler
+  (puerto 5432), ya no hace falta el SQL Editor.
+
+El proyecto anterior (`lmkujvtoojxkxypqkkkz`) queda como respaldo hasta su baja.
+Lo que sigue abajo es histórico.
+
+
 ## PostgreSQL Schema
 
 Este directorio contiene el esquema de base de datos PostgreSQL para UGM Proctor.

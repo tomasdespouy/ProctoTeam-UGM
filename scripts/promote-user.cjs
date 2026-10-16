@@ -15,7 +15,7 @@ if (!url || !key) { console.error('Faltan NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SE
 if (!email) { console.error('Uso: node --env-file=.env scripts/promote-user.cjs <email> [role]'); process.exit(1); }
 if (!['student', 'instructor', 'super-admin'].includes(role)) { console.error('Rol inválido:', role); process.exit(1); }
 
-const sb = createClient(url, key, { auth: { persistSession: false } });
+const sb = createClient(url, key, { auth: { persistSession: false }, db: { schema: process.env.SUPABASE_DB_SCHEMA || 'public' } });
 
 (async () => {
   const { data: found, error: e1 } = await sb

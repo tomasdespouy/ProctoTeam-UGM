@@ -53,12 +53,17 @@ async function isPgAvailable(): Promise<boolean> {
 }
 
 // ── Supabase REST fallback via exec_sql RPC ──
+// En el proyecto compartido UGM HUB las tablas viven en el schema `proctoteam`
+// (ver database/migrations/001_hub_proctoteam_schema.sql). La conexión directa
+// no lo necesita: el rol `proctoteam_app` ya trae search_path=proctoteam.
+const DB_SCHEMA = process.env.SUPABASE_DB_SCHEMA || 'public';
+
 async function queryViaRest(text: string, params?: any[]) {
   const stringParams = (params ?? []).map((p) =>
     p === null || p === undefined ? null : String(p)
   );
 
-  const { data, error } = await supabaseServer.rpc('exec_sql', {
+  const { data, error } = await supabaseServer.schema(DB_SCHEMA).rpc('exec_sql', {
     sql_text: text,
     params: stringParams,
   });

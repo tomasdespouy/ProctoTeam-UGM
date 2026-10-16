@@ -12,7 +12,7 @@ if (!url || !serviceKey) {
 }
 
 const TABLES = ['users', 'exam_sessions', 'exam_participations', 'exam_alerts', 'alerts', 'messages'];
-const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+const admin = createClient(url, serviceKey, { auth: { persistSession: false }, db: { schema: process.env.SUPABASE_DB_SCHEMA || 'public' } });
 
 const ok = (b) => (b ? '✅' : '❌');
 
@@ -33,7 +33,7 @@ async function execSql(sql) {
     rls = await execSql(`
       SELECT relname, relrowsecurity, relforcerowsecurity
       FROM pg_class
-      WHERE relnamespace = 'public'::regnamespace
+      WHERE relnamespace = '${process.env.SUPABASE_DB_SCHEMA || 'public'}'::regnamespace
         AND relname IN ('users','exam_sessions','exam_participations','exam_alerts','alerts','messages')
       ORDER BY relname;
     `);
@@ -52,9 +52,9 @@ async function execSql(sql) {
   try {
     const [p] = await execSql(`
       SELECT
-        has_function_privilege('anon',          'public.exec_sql(text, text[])', 'EXECUTE') AS anon,
-        has_function_privilege('authenticated', 'public.exec_sql(text, text[])', 'EXECUTE') AS authenticated,
-        has_function_privilege('service_role',  'public.exec_sql(text, text[])', 'EXECUTE') AS service_role;
+        has_function_privilege('anon',          `${process.env.SUPABASE_DB_SCHEMA || 'public'}.exec_sql(text, text[])`, 'EXECUTE') AS anon,
+        has_function_privilege('authenticated', `${process.env.SUPABASE_DB_SCHEMA || 'public'}.exec_sql(text, text[])`, 'EXECUTE') AS authenticated,
+        has_function_privilege('service_role',  `${process.env.SUPABASE_DB_SCHEMA || 'public'}.exec_sql(text, text[])`, 'EXECUTE') AS service_role;
     `);
     console.log(`   ${ok(p.anon === false)} anon          = ${p.anon}  (debe ser false)`);
     console.log(`   ${ok(p.authenticated === false)} authenticated = ${p.authenticated}  (debe ser false)`);
@@ -76,7 +76,7 @@ async function execSql(sql) {
   if (!anonKey) {
     console.log('   ⚠️ NEXT_PUBLIC_SUPABASE_ANON_KEY no está en el entorno — omito esta prueba.');
   } else {
-    const anon = createClient(url, anonKey, { auth: { persistSession: false } });
+    const anon = createClient(url, anonKey, { auth: { persistSession: false }, db: { schema: process.env.SUPABASE_DB_SCHEMA || 'public' } });
 
     // 4a) Lectura de tabla: con RLS sin política => 0 filas (datos protegidos)
     const { data, error } = await anon.from('users').select('id').limit(5);

@@ -11,7 +11,7 @@ if (!url || !key) {
   process.exit(1);
 }
 
-const sb = createClient(url, key, { auth: { persistSession: false } });
+const sb = createClient(url, key, { auth: { persistSession: false }, db: { schema: process.env.SUPABASE_DB_SCHEMA || 'public' } });
 
 (async () => {
   console.log('Supabase URL host:', new URL(url).host);
